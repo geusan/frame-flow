@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import re
 import uuid
@@ -15,7 +14,6 @@ from sqlalchemy.orm import Session
 from .compiler import DEFAULT_NODES
 from .database import ArtifactRecord, AuditEventRecord, NodeRunRecord, RunRecord, SessionLocal
 from .domain import ArtifactResponse, EventResponse, NodeRunResponse, NodeStatus, RunResponse
-from .providers import MockGoogleProvider
 from .storage import artifact_object_key, bucket_for_artifact, get_storage
 
 
@@ -34,15 +32,6 @@ def canonicalize_url(value: str) -> str:
     if "v" in query:
         safe_query = f"v={query['v'][0]}"
     return urlunparse((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path.rstrip("/"), "", safe_query, ""))
-
-
-def source_id_for(url: str) -> str:
-    parsed = urlparse(url)
-    video_id = parse_qs(parsed.query).get("v", [None])[0]
-    if video_id:
-        return video_id
-    slug = parsed.path.rstrip("/").split("/")[-1]
-    return slug or hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
 def create_artifact(
@@ -183,8 +172,8 @@ broker = EventBroker()
 active_tasks: set[asyncio.Task[None]] = set()
 
 
-class DemoRunEngine:
-    """Durable-state demo engine. Temporal replaces this scheduler in production."""
+class LocalRunEngine:
+    """Local async scheduler that executes the same real node contract as Temporal."""
 
     WAIT_INDEX = 7
 
@@ -194,7 +183,9 @@ class DemoRunEngine:
         task.add_done_callback(active_tasks.discard)
 
     async def _execute(self, run_id: str) -> None:
-        for ordinal, (node_key, pool, estimated_cost) in enumerate(DEFAULT_NODES):
+        from .workflow_execution import execute_workflow_node
+
+        for ordinal, (node_key, _pool, _estimated_cost) in enumerate(DEFAULT_NODES):
             with SessionLocal() as db:
                 run = db.get(RunRecord, run_id)
                 if not run or run.status == NodeStatus.CANCELED:
@@ -211,48 +202,22 @@ class DemoRunEngine:
                     db.commit()
                     await broker.publish(EventResponse(event="node.waiting_input", run_id=run_id, data={"node_run_id": node.id, "node_key": node.node_key}))
                     return
-                node.status = NodeStatus.RUNNING
-                node.attempt_count += 1
-                run.status = NodeStatus.RUNNING
-                db.commit()
-                await broker.publish(EventResponse(event="node.running", run_id=run_id, data={"node_run_id": node.id, "node_key": node.node_key}))
-
-            await asyncio.sleep(0.35)
-            with SessionLocal() as db:
-                run = db.get(RunRecord, run_id)
-                node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.ordinal == ordinal))
-                if not run or not node or run.status == NodeStatus.CANCELED:
-                    return
-                if pool.startswith("google"):
-                    submission = MockGoogleProvider(pool).submit({"run_id": run_id, "node_key": node_key}, node.id)
-                    node.provider_request_id = submission.provider_request_id
-                    node.provider_operation_id = submission.provider_operation_id
-                    node.request_hash = submission.request_hash
-                artifact_types = {
-                    "generation.resolve": ("GenerationSpec", "generation.spec.v1"),
-                    "script.generate": ("Script", "script.v1"),
-                    "script.fit_duration": ("TimedScript", "script.timed.v1"),
-                    "shot.plan": ("ShotPlan", "shot.plan.v1"),
-                    "image.generate": ("ImageList", "image.candidates.v1"),
-                    "video.generate": ("VideoClipList", "video.candidates.v1"),
-                    "tts.generate": ("Audio", None),
-                    "subtitle.align": ("Subtitle", "subtitle.ass.v1"),
-                    "timeline.compose": ("Timeline", "timeline.v1"),
-                    "video.render": ("Video", None),
-                    "media.qc": ("QCReport", "qc.report.v1"),
-                }
-                if node_key in artifact_types:
-                    artifact_type, schema_id = artifact_types[node_key]
-                    artifact = create_artifact(db, artifact_type, schema_id=schema_id, producer_node_run_id=node.id, content_seed=f"{run_id}:{node_key}:{node.attempt_count}", metadata={"immutable": True, "mock_provider": True})
-                    db.flush()
-                    node.output_artifact_ids = [artifact.id]
-                node.status = NodeStatus.SUCCEEDED
-                node.progress = 100
-                node.cost_usd = estimated_cost
-                run.actual_cost_usd = round(run.actual_cost_usd + estimated_cost, 2)
-                run.progress = min(99, round((ordinal + 1) / len(DEFAULT_NODES) * 100))
-                db.commit()
-                await broker.publish(EventResponse(event="node.succeeded", run_id=run_id, data={"node_run_id": node.id, "node_key": node.node_key, "artifact_ids": node.output_artifact_ids}))
+                node_id = node.id
+            await broker.publish(EventResponse(event="node.running", run_id=run_id, data={"node_run_id": node_id, "node_key": node_key}))
+            try:
+                result = await asyncio.to_thread(execute_workflow_node, run_id, node_key)
+            except Exception as exc:
+                with SessionLocal() as db:
+                    run = db.get(RunRecord, run_id)
+                    node = db.get(NodeRunRecord, node_id)
+                    if run and node:
+                        node.status = NodeStatus.FAILED
+                        run.status = NodeStatus.FAILED
+                        audit(db, "node.failed", node.id, {"error": str(exc), "node_key": node_key})
+                        db.commit()
+                await broker.publish(EventResponse(event="node.failed", run_id=run_id, data={"node_run_id": node_id, "node_key": node_key, "error": str(exc)}))
+                return
+            await broker.publish(EventResponse(event="node.succeeded", run_id=run_id, data={"node_run_id": node_id, "node_key": node_key, "artifact_ids": result["artifact_ids"]}))
 
         with SessionLocal() as db:
             run = db.get(RunRecord, run_id)
@@ -269,7 +234,11 @@ class DemoRunEngine:
             node = db.get(NodeRunRecord, node_run_id)
             if not run or not node or node.status != NodeStatus.WAITING_INPUT:
                 raise ValueError("node is not waiting for input")
-            selection = create_artifact(db, "SelectionArtifact", schema_id="selection.v1", producer_node_run_id=node.id, input_artifact_ids=[selected_artifact_id], metadata={"selected_artifact_id": selected_artifact_id})
+            video_node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.node_key == "video.generate"))
+            if not video_node or selected_artifact_id not in (video_node.output_artifact_ids or []):
+                raise ValueError("selected artifact is not a candidate produced by this run")
+            content = json.dumps({"version": "selection.v1", "selected_artifact_id": selected_artifact_id}, sort_keys=True).encode()
+            selection = create_artifact(db, "SelectionArtifact", schema_id="selection.v1", producer_node_run_id=node.id, input_artifact_ids=[selected_artifact_id], metadata={"selected_artifact_id": selected_artifact_id}, content=content, content_type="application/json", filename="selection.json")
             db.flush()
             node.output_artifact_ids = [selection.id]
             node.status = NodeStatus.SUCCEEDED
@@ -282,4 +251,4 @@ class DemoRunEngine:
         await self.start(run_id)
 
 
-demo_engine = DemoRunEngine()
+local_engine = LocalRunEngine()

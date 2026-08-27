@@ -7,6 +7,8 @@ from temporalio.client import Client
 from temporalio.worker import Worker
 
 from .database import create_all
+from .canvas_activities import execute_canvas_node_activity, finalize_canvas_run_activity, mark_canvas_waiting_activity, record_canvas_selection_activity
+from .canvas_temporal import CanvasRunWorkflow
 from .temporal_activities import execute_node, finalize_run, mark_waiting_input, record_candidate_selection
 from .temporal_workflow import GenerationRunWorkflow
 
@@ -26,8 +28,8 @@ async def run_worker() -> None:
             worker = Worker(
                 client,
                 task_queue=TASK_QUEUE,
-                workflows=[GenerationRunWorkflow],
-                activities=[execute_node, mark_waiting_input, record_candidate_selection, finalize_run],
+                workflows=[GenerationRunWorkflow, CanvasRunWorkflow],
+                activities=[execute_node, mark_waiting_input, record_candidate_selection, finalize_run, execute_canvas_node_activity, mark_canvas_waiting_activity, record_canvas_selection_activity, finalize_canvas_run_activity],
                 max_concurrent_activities=int(os.getenv("TEMPORAL_MAX_CONCURRENT_ACTIVITIES", "32")),
             )
             await worker.run()

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -8,9 +8,6 @@ import {
   Braces,
   Check,
   CircleDot,
-  Copy,
-  GitCompareArrows,
-  GitMerge,
   MoreHorizontal,
   Plus,
   Search,
@@ -18,39 +15,78 @@ import {
   Sparkles,
   WandSparkles,
 } from "lucide-react";
-import { formats } from "@/lib/demo-data";
+import { frameflowApi, type FormatRecord } from "@/lib/api";
+import type { FormatProfile } from "@/lib/types";
+import { useStudioStore } from "@/lib/store";
 
 const beatColors = ["#675cf6", "#4388c7", "#d18a36", "#24876a"];
 
+function toFormatProfile(row: FormatRecord): FormatProfile {
+  const confidenceValues = Object.values(row.payload.evidence ?? {}).map((value) => Number((value as { confidence?: number }).confidence ?? 0)).filter((value) => Number.isFinite(value));
+  return {
+    id: row.id,
+    name: row.name,
+    sourceCount: row.parent_ids.length,
+    createdAt: new Date(row.created_at).toLocaleString("ko-KR"),
+    confidence: confidenceValues.length ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length : 0,
+    tags: [row.kind, String(row.lineage.exact_model_id ?? "local")],
+    core: row.payload.core,
+    extensions: row.payload.extensions ?? {},
+  };
+}
+
 export function FormatLab() {
-  const [selected, setSelected] = useState(formats[0]);
+  const [formats, setFormats] = useState<FormatProfile[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<"overview" | "schema" | "evidence">("overview");
+  const [query, setQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<"all" | "profile" | "variant">("all");
+  const [creatingVariant, setCreatingVariant] = useState(false);
+  const setView = useStudioStore((state) => state.setView);
+
+  useEffect(() => {
+    frameflowApi.listFormats().then((rows) => {
+      const mapped = rows.map(toFormatProfile);
+      setFormats(mapped);
+      setSelectedId((current) => current ?? mapped[0]?.id ?? null);
+    }).catch(() => setFormats([]));
+  }, []);
+  const selected = formats.find((format) => format.id === selectedId) ?? formats[0];
+  const visibleFormats = useMemo(() => formats.filter((format) => format.name.toLowerCase().includes(query.toLowerCase()) && (kindFilter === "all" || format.tags.includes(kindFilter))), [formats, kindFilter, query]);
+
+  const createVariant = async () => {
+    if (!selected) return;
+    setCreatingVariant(true);
+    try {
+      await frameflowApi.createFormatVariants(selected.id, 1);
+      const rows = await frameflowApi.listFormats();
+      setFormats(rows.map(toFormatProfile));
+    } finally {
+      setCreatingVariant(false);
+    }
+  };
+
+  if (!selected) return <div className="format-layout"><section className="format-browser"><div className="format-browser-head"><div><span className="subtle-label">Format assets</span><strong>My formats</strong></div></div><p className="experiment-history-state">저장된 Format이 없습니다. Reference Set에서 추출을 실행하세요.</p></section></div>;
 
   return (
     <div className="format-layout">
       <section className="format-browser">
         <div className="format-browser-head">
           <div><span className="subtle-label">Format assets</span><strong>My formats</strong></div>
-          <button className="icon-button" type="button"><Plus size={15} /></button>
+          <button className="icon-button" type="button" onClick={() => setView("references")} aria-label="Extract a new format from references"><Plus size={15} /></button>
         </div>
-        <label className="input-shell format-search"><Search size={13} /><input placeholder="Search formats…" /></label>
-        <div className="format-filter-row"><button className="active" type="button">All <span>12</span></button><button type="button">Profiles <span>7</span></button><button type="button">Variants <span>5</span></button></div>
+        <label className="input-shell format-search"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search formats…" /></label>
+        <div className="format-filter-row"><button className={kindFilter === "all" ? "active" : ""} onClick={() => setKindFilter("all")} type="button">All <span>{formats.length}</span></button><button className={kindFilter === "profile" ? "active" : ""} onClick={() => setKindFilter("profile")} type="button">Profiles <span>{formats.filter((format) => format.tags.includes("profile")).length}</span></button><button className={kindFilter === "variant" ? "active" : ""} onClick={() => setKindFilter("variant")} type="button">Variants <span>{formats.filter((format) => format.tags.includes("variant")).length}</span></button></div>
         <div className="format-items">
-          {formats.map((format, index) => (
-            <button type="button" onClick={() => setSelected(format)} className={`format-item ${selected.id === format.id ? "active" : ""}`} key={format.id}>
+          {visibleFormats.map((format, index) => (
+            <button type="button" onClick={() => setSelectedId(format.id)} className={`format-item ${selected.id === format.id ? "active" : ""}`} key={format.id}>
               <span className={`format-icon f${index + 1}`}><Braces size={15} /></span>
               <span className="format-item-copy"><strong>{format.name}</strong><small>{format.sourceCount} sources · {Math.round(format.confidence * 100)}% confidence</small></span>
               <MoreHorizontal size={14} />
             </button>
           ))}
-          <button type="button" className="format-item">
-            <span className="format-icon f3"><WandSparkles size={15} /></span><span className="format-item-copy"><strong>Dynamic Hook Variant</strong><small>Variant · medium distance</small></span><MoreHorizontal size={14} />
-          </button>
-          <button type="button" className="format-item">
-            <span className="format-icon f4"><GitMerge size={15} /></span><span className="format-item-copy"><strong>History × Visual Proof</strong><small>Composition · 3 sources</small></span><MoreHorizontal size={14} />
-          </button>
         </div>
-        <div className="format-browser-footer"><button type="button"><Sparkles size={13} /> New extraction</button><button type="button"><GitMerge size={13} /> Merge</button></div>
+        <div className="format-browser-footer"><button type="button" onClick={() => setView("references")}><Sparkles size={13} /> New extraction</button></div>
       </section>
 
       <section className="format-detail">
@@ -59,12 +95,11 @@ export function FormatLab() {
             <span className="format-icon f1 large"><Braces size={18} /></span>
             <div><span className="subtle-label">FormatProfile · {selected.id}</span><h2>{selected.name}</h2></div>
           </div>
-          <div className="heading-actions"><button className="secondary-button" type="button"><Copy size={13} /> Duplicate</button><button className="secondary-button" type="button"><GitCompareArrows size={13} /> Compare</button><button className="primary-button" type="button"><WandSparkles size={13} /> Create variant</button></div>
+          <div className="heading-actions"><button className="primary-button" type="button" onClick={() => void createVariant()} disabled={creatingVariant}><WandSparkles size={13} /> {creatingVariant ? "Creating…" : "Create variant"}</button></div>
         </div>
 
         <div className="format-tabs">
           {(["overview", "schema", "evidence"] as const).map((key) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} type="button">{key[0].toUpperCase() + key.slice(1)}</button>)}
-          <button type="button">Lineage</button>
           <span className="format-save-state"><Check size={11} /> All changes saved</span>
         </div>
 
@@ -78,7 +113,7 @@ export function FormatLab() {
             </div>
 
             <article className="format-section panel">
-              <div className="panel-header"><div><h3>Narrative beat timeline</h3><p>영상의 시간 비율에 따라 추출된 서사 구조</p></div><button className="ghost-button" type="button"><SlidersHorizontal size={12} /> Edit beats</button></div>
+                <div className="panel-header"><div><h3>Narrative beat timeline</h3><p>영상의 시간 비율에 따라 추출된 서사 구조</p></div><SlidersHorizontal size={14} /></div>
               <div className="beat-chart">
                 <div className="beat-track">
                   {selected.core.narrative.beats.map((beat, index) => (
@@ -90,7 +125,7 @@ export function FormatLab() {
                 </div>
                 <div className="beat-axis"><span>0s</span><span>{Math.round(selected.core.duration.target_ms * .25 / 1000)}s</span><span>{Math.round(selected.core.duration.target_ms * .5 / 1000)}s</span><span>{Math.round(selected.core.duration.target_ms * .75 / 1000)}s</span><span>{selected.core.duration.target_ms / 1000}s</span></div>
                 <div className="beat-legend">
-                  {selected.core.narrative.beats.map((beat, index) => <div key={beat.role}><i style={{ background: beatColors[index] }} /><span><strong>{beat.role}</strong><small>{Math.round(beat.start_ratio * 100)}–{Math.round(beat.end_ratio * 100)}% {beat.pattern ? `· ${beat.pattern}` : ""}</small></span><button type="button">Evidence <ArrowRight size={10} /></button></div>)}
+                  {selected.core.narrative.beats.map((beat, index) => <div key={beat.role}><i style={{ background: beatColors[index] }} /><span><strong>{beat.role}</strong><small>{Math.round(beat.start_ratio * 100)}–{Math.round(beat.end_ratio * 100)}% {beat.pattern ? `· ${beat.pattern}` : ""}</small></span><ArrowRight size={10} /></div>)}
                 </div>
               </div>
             </article>
@@ -122,7 +157,7 @@ export function FormatLab() {
         {tab === "schema" && <div className="format-content"><pre className="schema-viewer">{JSON.stringify({ schema_version: selected.core.schema_version, core: selected.core, extensions: selected.extensions }, null, 2)}</pre></div>}
         {tab === "evidence" && (
           <div className="format-content evidence-list">
-            {["editing.median_shot_duration_ms", "narrative.beats[0].pattern", "voice.pace_syllables_per_second"].map((field, index) => <div className="evidence-row panel" key={field}><span className="evidence-index">0{index + 1}</span><div><strong>{field}</strong><p>Reference {index + 1} · {1.7 + index * 7.2}s–{4.4 + index * 7.2}s</p></div><span className="confidence-ring">{91 - index * 4}%</span><button className="secondary-button" type="button">View timeline</button></div>)}
+            {Object.keys(selected.extensions).length ? Object.keys(selected.extensions).map((field, index) => <div className="evidence-row panel" key={field}><span className="evidence-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{field}</strong><p>Provider-derived extension</p></div></div>) : <p className="experiment-history-state">이 Format에는 저장된 extension evidence가 없습니다.</p>}
           </div>
         )}
       </section>

@@ -35,7 +35,7 @@ export type PortType =
   | "QCReport"
   | "Any";
 
-export type StudioView = "canvas" | "references" | "formats" | "runs" | "models";
+export type StudioView = "canvas" | "assets" | "references" | "formats" | "runs" | "models";
 
 export interface FormatCore {
   schema_version: "format.core.v1";
@@ -75,19 +75,6 @@ export interface FormatProfile {
   tags: string[];
 }
 
-export interface ReferenceItem {
-  id: string;
-  title: string;
-  creator: string;
-  duration: string;
-  source: string;
-  language: string;
-  rights: "owned" | "licensed" | "creative_commons" | "analysis_only" | "unknown";
-  status: "analyzed" | "processing" | "ready";
-  thumbnail: string;
-  profiles: number;
-}
-
 export interface RunSummary {
   id: string;
   name: string;
@@ -98,15 +85,4 @@ export interface RunSummary {
   cost: number;
   nodesDone: number;
   nodesTotal: number;
-}
-
-export interface ModelEntry {
-  alias: string;
-  modelId: string;
-  provider: string;
-  kind: string;
-  region: string;
-  status: "active" | "experimental" | "disabled";
-  quota: string;
-  fallback?: string;
 }

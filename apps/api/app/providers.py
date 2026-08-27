@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -19,22 +18,6 @@ class GenerationProvider(Protocol):
     def cancel(self, operation_id: str) -> None: ...
 
 
-class MockGoogleProvider:
-    """Deterministic provider used by local development and contract tests."""
-
-    def __init__(self, logical_model: str) -> None:
-        self.logical_model = logical_model
-
-    def submit(self, payload: dict[str, Any], idempotency_key: str) -> ProviderSubmission:
-        request_hash = hashlib.sha256(f"{self.logical_model}:{payload}:{idempotency_key}".encode()).hexdigest()
-        suffix = request_hash[:14]
-        operation = f"operations/mock-{suffix}" if "video" in self.logical_model else None
-        return ProviderSubmission(f"req_{suffix}", operation, request_hash)
-
-    def cancel(self, operation_id: str) -> None:
-        return None
-
-
 MODEL_REGISTRY = {
     "google.text.fast": "gemini-2.5-flash",
     "google.text.quality": "gemini-2.5-pro",
@@ -46,3 +29,12 @@ MODEL_REGISTRY = {
     "google.stt.default": "chirp_3",
 }
 
+OPENAI_MODEL_REGISTRY = {
+    "openai.text.fast": "gpt-5.6-luna",
+    "openai.text.quality": "gpt-5.6-terra",
+    "openai.chat.latest": "chat-latest",
+    "openai.image.default": "gpt-image-2",
+    "openai.tts.default": "gpt-4o-mini-tts",
+}
+
+ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY}

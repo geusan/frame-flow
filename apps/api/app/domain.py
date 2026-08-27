@@ -171,7 +171,7 @@ class GenerationBriefRequest(BaseModel):
     aspect_ratio: Literal["9:16", "16:9", "1:1"] = "9:16"
     additional_prompt: str = ""
     format_id: str
-    candidate_count: int = Field(default=4, ge=1, le=8)
+    candidate_count: int = Field(default=4, ge=1, le=4)
     budget_limit_usd: float = Field(default=5, gt=0)
 
 
@@ -198,14 +198,33 @@ class SignedUrlRequest(BaseModel):
     size_bytes: int = Field(gt=0)
 
 
+class ArtifactUrlImportRequest(BaseModel):
+    url: HttpUrl
+
+
+class FrameCaptureRequest(BaseModel):
+    timestamp_ms: int = Field(ge=0)
+
+
 class ExperimentRunRequest(BaseModel):
     canvas_id: str = Field(min_length=1, max_length=128)
     node_id: str = Field(min_length=1, max_length=128)
     node_key: str = Field(min_length=1, max_length=128)
-    prompt: str = Field(min_length=1, max_length=32_000)
+    prompt: str = Field(default="", max_length=32_000)
     model_alias: str = Field(min_length=1, max_length=128)
     parameters: dict[str, Any] = Field(default_factory=dict)
     inputs: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
+
+
+class CanvasRunRequest(BaseModel):
+    canvas_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(default="Untitled canvas", min_length=1, max_length=255)
+    nodes: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+    edges: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+
+
+class CanvasSelectionRequest(BaseModel):
+    artifact_id: str = Field(min_length=1, max_length=128)
 
 
 class ApiRecord(BaseModel):
@@ -246,6 +265,31 @@ class ExperimentRunResponse(ApiRecord):
     cached_from_id: str | None
     is_baseline: bool
     error: str | None
+
+
+class CanvasNodeRunResponse(ApiRecord):
+    canvas_node_id: str
+    node_key: str
+    status: NodeStatus
+    progress: int
+    attempt_count: int
+    provider_request_id: str | None
+    provider_operation_id: str | None
+    request_hash: str | None
+    output_artifact_ids: list[str]
+    output: dict[str, Any]
+    duration_ms: int
+    cost_usd: float
+    error: str | None
+
+
+class CanvasRunResponse(ApiRecord):
+    canvas_id: str
+    name: str
+    status: NodeStatus
+    progress: int
+    graph: dict[str, Any]
+    node_runs: list[CanvasNodeRunResponse]
 
 
 class NodeRunResponse(ApiRecord):

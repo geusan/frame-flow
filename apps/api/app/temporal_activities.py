@@ -1,33 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from sqlalchemy import select
 from temporalio import activity
 
-from .compiler import DEFAULT_NODES
 from .database import NodeRunRecord, RunRecord, SessionLocal
 from .domain import NodeStatus
-from .providers import MockGoogleProvider
 from .service import audit, create_artifact
-
-
-NODE_COST = {node_key: cost for node_key, _pool, cost in DEFAULT_NODES}
-NODE_POOL = {node_key: pool for node_key, pool, _cost in DEFAULT_NODES}
-ARTIFACT_TYPES: dict[str, tuple[str, str | None]] = {
-    "generation.resolve": ("GenerationSpec", "generation.spec.v1"),
-    "script.generate": ("Script", "script.v1"),
-    "script.fit_duration": ("TimedScript", "script.timed.v1"),
-    "shot.plan": ("ShotPlan", "shot.plan.v1"),
-    "image.generate": ("ImageList", "image.candidates.v1"),
-    "video.generate": ("VideoClipList", "video.candidates.v1"),
-    "tts.generate": ("Audio", None),
-    "subtitle.align": ("Subtitle", "subtitle.ass.v1"),
-    "timeline.compose": ("Timeline", "timeline.v1"),
-    "video.render": ("Video", None),
-    "media.qc": ("QCReport", "qc.report.v1"),
-}
+from .workflow_execution import execute_workflow_node
 
 
 def _get_node(run_id: str, node_key: str) -> tuple[RunRecord, NodeRunRecord]:
@@ -46,46 +29,13 @@ def _get_node(run_id: str, node_key: str) -> tuple[RunRecord, NodeRunRecord]:
 @activity.defn(name="execute_node")
 async def execute_node(run_id: str, node_key: str) -> dict[str, Any]:
     _get_node(run_id, node_key)
-    with SessionLocal() as db:
-        run = db.get(RunRecord, run_id)
-        node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.node_key == node_key))
-        if not run or not node:
-            raise ValueError("run or node disappeared")
-        if run.status == NodeStatus.CANCELED:
-            raise asyncio.CancelledError
-        if node.status == NodeStatus.SUCCEEDED:
-            return {"node_run_id": node.id, "artifact_ids": node.output_artifact_ids, "cache_hit": True}
-        node.status = NodeStatus.RUNNING
-        node.attempt_count += 1
-        run.status = NodeStatus.RUNNING
-        db.commit()
-
-    activity.heartbeat({"stage": "executing", "node_key": node_key})
-    await asyncio.sleep(0.05)
-
-    with SessionLocal() as db:
-        run = db.get(RunRecord, run_id)
-        node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.node_key == node_key))
-        if not run or not node:
-            raise ValueError("run or node disappeared")
-        pool = NODE_POOL[node_key]
-        if pool.startswith("google") and not node.provider_request_id:
-            submission = MockGoogleProvider(pool).submit({"run_id": run_id, "node_key": node_key}, node.id)
-            node.provider_request_id = submission.provider_request_id
-            node.provider_operation_id = submission.provider_operation_id
-            node.request_hash = submission.request_hash
-        if node_key in ARTIFACT_TYPES and not node.output_artifact_ids:
-            artifact_type, schema_id = ARTIFACT_TYPES[node_key]
-            artifact = create_artifact(db, artifact_type, schema_id=schema_id, producer_node_run_id=node.id, content_seed=f"{run_id}:{node_key}:{node.attempt_count}", metadata={"immutable": True, "execution_backend": "temporal"})
-            db.flush()
-            node.output_artifact_ids = [artifact.id]
-        node.status = NodeStatus.SUCCEEDED
-        node.progress = 100
-        node.cost_usd = NODE_COST[node_key]
-        run.actual_cost_usd = round(sum(item.cost_usd for item in run.node_runs), 2)
-        run.progress = min(99, round((node.ordinal + 1) / len(DEFAULT_NODES) * 100))
-        db.commit()
-        return {"node_run_id": node.id, "artifact_ids": node.output_artifact_ids, "cache_hit": False}
+    task = asyncio.create_task(asyncio.to_thread(execute_workflow_node, run_id, node_key))
+    while not task.done():
+        activity.heartbeat({"stage": "executing", "node_key": node_key})
+        done, _ = await asyncio.wait({task}, timeout=20)
+        if done:
+            break
+    return await task
 
 
 @activity.defn(name="mark_waiting_input")
@@ -107,7 +57,11 @@ async def record_candidate_selection(run_id: str, node_key: str, selected_artifa
         node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.node_key == node_key))
         if not run or not node:
             raise ValueError("run or node not found")
-        selection = create_artifact(db, "SelectionArtifact", schema_id="selection.v1", producer_node_run_id=node.id, input_artifact_ids=[selected_artifact_id], metadata={"selected_artifact_id": selected_artifact_id})
+        video_node = db.scalar(select(NodeRunRecord).where(NodeRunRecord.run_id == run_id, NodeRunRecord.node_key == "video.generate"))
+        if not video_node or selected_artifact_id not in (video_node.output_artifact_ids or []):
+            raise ValueError("selected artifact is not a candidate produced by this run")
+        content = json.dumps({"version": "selection.v1", "selected_artifact_id": selected_artifact_id}, sort_keys=True).encode()
+        selection = create_artifact(db, "SelectionArtifact", schema_id="selection.v1", producer_node_run_id=node.id, input_artifact_ids=[selected_artifact_id], metadata={"selected_artifact_id": selected_artifact_id}, content=content, content_type="application/json", filename="selection.json")
         db.flush()
         node.output_artifact_ids = [selection.id]
         node.status = NodeStatus.SUCCEEDED

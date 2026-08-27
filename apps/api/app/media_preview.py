@@ -42,7 +42,7 @@ def render_video_mp4(digest: str, duration_seconds: int = 6) -> bytes:
             subprocess.run(command, check=True, capture_output=True, text=True, timeout=45)
         except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             detail = getattr(exc, "stderr", None) or str(exc)
-            raise RuntimeError(f"could not create deterministic video preview: {detail}") from exc
+            raise RuntimeError(f"could not create fixture video: {detail}") from exc
         return output.read_bytes()
 
 

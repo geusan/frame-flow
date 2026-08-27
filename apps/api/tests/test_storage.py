@@ -20,6 +20,7 @@ def test_memory_storage_persists_bytes_and_signs_the_same_object():
     )
     assert stored.sha256 == "d4dc56669143034f31aa309635d4113d9ad76a02b1739da22c965ed2049be9e6"
     assert stored.size_bytes == 6
+    assert storage.get_bytes(bucket=stored.bucket, key=stored.key) == b"<svg/>"
     assert storage.create_download_url(bucket=stored.bucket, key=stored.key) == stored.uri
 
 

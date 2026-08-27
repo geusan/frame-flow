@@ -114,7 +114,7 @@ class ExperimentRunRecord(Timestamped, Base):
     node_id: Mapped[str] = mapped_column(String(128), index=True)
     node_key: Mapped[str] = mapped_column(String(128), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
-    execution_mode: Mapped[str] = mapped_column(String(32), default="deterministic")
+    execution_mode: Mapped[str] = mapped_column(String(32), default="google-live.v1")
     prompt: Mapped[str] = mapped_column(Text)
     model_alias: Mapped[str] = mapped_column(String(128))
     exact_model_id: Mapped[str] = mapped_column(String(255))
@@ -130,6 +130,37 @@ class ExperimentRunRecord(Timestamped, Base):
     cached_from_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CanvasRunRecord(Timestamped, Base):
+    __tablename__ = "canvas_runs"
+    canvas_id: Mapped[str] = mapped_column(String(128), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    graph_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    node_runs: Mapped[list["CanvasNodeRunRecord"]] = relationship(back_populates="run", cascade="all, delete-orphan", order_by="CanvasNodeRunRecord.ordinal")
+
+
+class CanvasNodeRunRecord(Timestamped, Base):
+    __tablename__ = "canvas_node_runs"
+    run_id: Mapped[str] = mapped_column(ForeignKey("canvas_runs.id"), index=True)
+    canvas_node_id: Mapped[str] = mapped_column(String(128), index=True)
+    node_key: Mapped[str] = mapped_column(String(128), index=True)
+    ordinal: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), index=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_operation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    output_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    output_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run: Mapped[CanvasRunRecord] = relationship(back_populates="node_runs")
 
 
 class AuditEventRecord(Timestamped, Base):

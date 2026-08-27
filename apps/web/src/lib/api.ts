@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export interface InspectResult {
   canonical_url: string;
@@ -12,6 +12,81 @@ export interface InspectResult {
   estimated_bytes: number;
   thumbnail_url?: string;
   duplicate_reference_id?: string;
+}
+
+export interface ReferenceRecord {
+  id: string;
+  created_at: string;
+  title: string;
+  creator: string;
+  duration_ms: number;
+  rights_basis: "owned" | "licensed" | "creative_commons" | "analysis_only" | "unknown";
+  allow_generation_input: boolean;
+  status: "analyzed" | "processing" | "ready";
+  metadata: Record<string, unknown>;
+  thumbnail_url?: string;
+}
+
+export interface FormatRecord {
+  id: string;
+  created_at: string;
+  name: string;
+  kind: string;
+  parent_ids: string[];
+  payload: { core: import("./types").FormatCore; extensions?: Record<string, unknown>; evidence?: Record<string, unknown> };
+  lineage: Record<string, unknown>;
+}
+
+export interface RunRecord {
+  id: string;
+  created_at: string;
+  name: string;
+  status: string;
+  progress: number;
+  estimated_cost_usd: number;
+  actual_cost_usd: number;
+  budget_limit_usd: number;
+  execution_plan: Record<string, unknown>;
+  node_runs: Array<{ id: string; node_key: string; status: string; progress: number; cost_usd: number; output_artifact_ids: string[] }>;
+}
+
+export interface ModelRecord {
+  logical_alias: string;
+  exact_model_id: string;
+  provider: string;
+  modality: string;
+  region: string;
+  status: "active" | "disabled";
+  configured: boolean;
+}
+
+export interface CanvasNodeRunRecord {
+  id: string;
+  created_at: string;
+  canvas_node_id: string;
+  node_key: string;
+  status: string;
+  progress: number;
+  attempt_count: number;
+  provider_request_id?: string;
+  provider_operation_id?: string;
+  request_hash?: string;
+  output_artifact_ids: string[];
+  output: ExperimentOutput | Record<string, never>;
+  duration_ms: number;
+  cost_usd: number;
+  error?: string;
+}
+
+export interface CanvasRunRecord {
+  id: string;
+  created_at: string;
+  canvas_id: string;
+  name: string;
+  status: string;
+  progress: number;
+  graph: Record<string, unknown>;
+  node_runs: CanvasNodeRunRecord[];
 }
 
 export interface ExperimentOutput {
@@ -57,10 +132,39 @@ export interface CreateExperimentInput {
   inputs: Array<Record<string, unknown>>;
 }
 
+export interface UploadedArtifact {
+  artifact_id: string;
+  type: "Image" | "Video" | "Audio" | "Text";
+  content_type: string;
+  size_bytes: number;
+  filename: string;
+  source_url?: string;
+  downloader_provider?: string;
+  url: string;
+}
+
+export interface ArtifactListItem {
+  id: string;
+  created_at: string;
+  type: "Image" | "Video" | "Audio" | "Text" | "FinalVideo";
+  content_type: string;
+  size_bytes: number;
+  filename: string;
+  source: string;
+  duration_ms: number;
+  url: string;
+}
+
+export interface CapturedFrameArtifact extends ArtifactListItem {
+  source_artifact_id: string;
+  timestamp_ms: number;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: { ...(hasFormBody ? {} : { "content-type": "application/json" }), ...init?.headers },
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
@@ -70,12 +174,46 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const frameflowApi = {
-  health: () => request<{ status: string; service: string }>("/health"),
+  health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string }>("/health"),
   inspectReferences: (urls: string[]) => request<InspectResult[]>("/references/inspect", { method: "POST", body: JSON.stringify({ urls }) }),
+  listReferences: () => request<ReferenceRecord[]>("/references"),
+  importReference: (metadata: InspectResult, rightsBasis: ReferenceRecord["rights_basis"] = "analysis_only") => request<{ reference_id: string; deduplicated: boolean; artifact_ids: string[] }>("/references/import", { method: "POST", body: JSON.stringify({ metadata, rights_basis: rightsBasis, allow_generation_input: ["owned", "licensed", "creative_commons"].includes(rightsBasis), allow_direct_asset_use: ["owned", "licensed"].includes(rightsBasis) }) }),
+  createReferenceSet: (name: string, referenceIds: string[]) => request<{ id: string; name: string; reference_ids: string[] }>("/reference-sets", { method: "POST", body: JSON.stringify({ name, reference_ids: referenceIds }) }),
+  extractFormat: (referenceSetId: string, name: string) => request<{ id: string; name: string; artifact_id: string }>("/format-runs", { method: "POST", body: JSON.stringify({ reference_set_id: referenceSetId, name }) }),
+  listFormats: () => request<FormatRecord[]>("/formats"),
+  createFormatVariants: (formatId: string, count = 1) => request<Array<{ id: string; name: string }>>(`/formats/${formatId}/variants`, { method: "POST", body: JSON.stringify({ count, distance: "medium", variation_axes: ["visual_motion"] }) }),
+  listRuns: () => request<RunRecord[]>("/runs"),
+  listModels: () => request<ModelRecord[]>("/models"),
   createExperiment: (payload: CreateExperimentInput) => request<ExperimentRun>("/experiments", { method: "POST", body: JSON.stringify(payload) }),
   listExperiments: (canvasId: string, nodeId: string, limit = 20) => {
     const query = new URLSearchParams({ canvas_id: canvasId, node_id: nodeId, limit: String(limit) });
     return request<ExperimentRun[]>(`/experiments?${query}`);
   },
   setExperimentBaseline: (experimentId: string) => request<ExperimentRun>(`/experiments/${experimentId}/baseline`, { method: "POST" }),
+  uploadArtifact: (file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<UploadedArtifact>("/artifacts/upload", { method: "POST", body });
+  },
+  importArtifactUrl: (url: string) => request<UploadedArtifact>("/artifacts/import-url", { method: "POST", body: JSON.stringify({ url }) }),
+  listArtifacts: (types: ArtifactListItem["type"][] = ["Image", "Video", "FinalVideo"], limit = 500, offset = 0) => {
+    const query = new URLSearchParams({ types: types.join(","), limit: String(limit), offset: String(offset) });
+    return request<ArtifactListItem[]>(`/artifacts?${query}`);
+  },
+  listAllArtifacts: async (types: ArtifactListItem["type"][] = ["Image", "Video", "FinalVideo"]) => {
+    const assets: ArtifactListItem[] = [];
+    const pageSize = 500;
+    while (true) {
+      const query = new URLSearchParams({ types: types.join(","), limit: String(pageSize), offset: String(assets.length) });
+      const page = await request<ArtifactListItem[]>(`/artifacts?${query}`);
+      assets.push(...page);
+      if (page.length < pageSize) return assets;
+    }
+  },
+  captureVideoFrame: (artifactId: string, timestampMs: number) => request<CapturedFrameArtifact>(`/artifacts/${artifactId}/capture-frame`, { method: "POST", body: JSON.stringify({ timestamp_ms: timestampMs }) }),
+  createCanvasRun: (payload: { canvas_id: string; name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
+  getCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}`),
+  cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),
+  selectCanvasCandidate: (runId: string, canvasNodeId: string, artifactId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/select`, { method: "POST", body: JSON.stringify({ artifact_id: artifactId }) }),
+  canvasRunEventsUrl: (runId: string) => `${API_BASE}/canvas-runs/${runId}/events`,
 };

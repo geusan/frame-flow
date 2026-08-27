@@ -1,11 +1,23 @@
 from fastapi.testclient import TestClient
+import json
+import threading
 import time
+from types import SimpleNamespace
 
-from app.experiments import EXECUTOR_REVISION
+from app.experiments import FIXTURE_EXECUTOR_REVISION
+from app.media_preview import render_audio_wav
+from app.providers_localization import (
+    LocalizationServices,
+    SpeechSegment,
+    SynthesizedSpeech,
+    TranscriptResult,
+    TranslationResult,
+)
+from app.providers_generation import LiveGenerationResult
 
 
 def test_executor_revision_fits_persisted_execution_mode():
-    assert len(EXECUTOR_REVISION) <= 32
+    assert len(FIXTURE_EXECUTOR_REVISION) <= 32
 
 
 def import_reference(client: TestClient, suffix: str = "abc") -> str:
@@ -87,7 +99,9 @@ def test_run_waits_for_candidate_selection_then_resumes(client: TestClient):
         time.sleep(0.08)
     assert run["status"] == "WAITING_INPUT"
     candidate_node = next(node for node in run["node_runs"] if node["node_key"] == "candidate.select")
-    selected = client.post(f"/node-runs/{candidate_node['id']}/select", json={"artifact_id": "art_candidate_02"})
+    video_node = next(node for node in run["node_runs"] if node["node_key"] == "video.generate")
+    assert video_node["output_artifact_ids"]
+    selected = client.post(f"/node-runs/{candidate_node['id']}/select", json={"artifact_id": video_node["output_artifact_ids"][0]})
     assert selected.status_code == 201
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
@@ -130,8 +144,9 @@ def test_single_experiment_snapshots_inputs_caches_and_sets_baseline(client: Tes
     assert download["provider"] == "memory"
     assert download["url"].startswith("memory://project-generation-assets/")
     content = client.get(f"/artifacts/{artifact_id}/content", follow_redirects=False)
-    assert content.status_code == 307
-    assert content.headers["location"] == download["url"]
+    assert content.status_code == 200
+    assert content.headers["content-type"].startswith("video/mp4")
+    assert len(content.content) == artifact["metadata"]["storage"]["size_bytes"]
 
     second_run = client.post("/experiments", json=payload).json()
     assert second_run["id"] != first_run["id"]
@@ -152,3 +167,335 @@ def test_single_experiment_snapshots_inputs_caches_and_sets_baseline(client: Tes
     assert sum(item["is_baseline"] for item in history.json()) == 1
     invalid = client.post("/experiments", json={**payload, "model_alias": "text.quality"})
     assert invalid.status_code == 422
+
+
+def test_live_generation_mode_uses_google_service_without_deterministic_fallback(client: TestClient, monkeypatch):
+    class FakeLiveServices:
+        def execute(self, payload, inputs):
+            assert payload.node_key == "image.generate"
+            assert inputs == []
+            return LiveGenerationResult(
+                {"kind": "image", "title": "Live image", "mimeType": "image/png"},
+                "Image", "google.image.v1", "google_live_request", b"\x89PNG\r\n\x1a\n",
+                "image/png", "generated.png", [],
+            )
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr("app.experiments.get_google_generation_services", lambda: FakeLiveServices())
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_live",
+        "node_id": "image_live",
+        "node_key": "image.generate",
+        "prompt": "A live provider image",
+        "model_alias": "image.fast",
+        "parameters": {"aspect_ratio": "9:16"},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["execution_mode"] == "google-live.v1"
+    assert result["provider_request_id"] == "google_live_request"
+    assert result["output"]["title"] == "Live image"
+
+
+def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):
+    class FakeOpenAIServices:
+        def execute(self, payload, inputs):
+            assert payload.model_alias == "openai.chat.latest"
+            assert payload.node_key == "llm.assistant"
+            return LiveGenerationResult(
+                {"kind": "text", "title": "ChatGPT response", "text": "OpenAI response"},
+                "Text", "openai.text.v1", "resp_openai_test", b"OpenAI response",
+                "text/plain", "result.txt", [],
+            )
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr("app.experiments.get_openai_generation_services", lambda: FakeOpenAIServices())
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_openai",
+        "node_id": "assistant_openai",
+        "node_key": "llm.assistant",
+        "prompt": "Use ChatGPT",
+        "model_alias": "openai.chat.latest",
+        "parameters": {},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["execution_mode"] == "openai-live.v1"
+    assert result["exact_model_id"] == "chat-latest"
+    assert result["provider_request_id"] == "resp_openai_test"
+    mismatch = client.post("/experiments", json={
+        "canvas_id": "canvas_openai",
+        "node_id": "assistant_mismatch",
+        "node_key": "llm.assistant",
+        "prompt": "Mismatch",
+        "model_alias": "openai.chat.latest",
+        "parameters": {"provider": "google"},
+        "inputs": [],
+    })
+    assert mismatch.status_code == 422
+
+
+def test_canvas_can_import_a_video_url_as_an_artifact(client: TestClient):
+    response = client.post("/artifacts/import-url", json={"url": "https://youtube.com/watch?v=canvas-url"})
+    assert response.status_code == 201
+    imported = response.json()
+    assert imported["type"] == "Video"
+    assert imported["content_type"] == "video/mp4"
+    assert imported["filename"].endswith(".mp4")
+    assert imported["source_url"] == "https://youtube.com/watch?v=canvas-url"
+    assert imported["downloader_provider"] == "fixture"
+    assert imported["size_bytes"] > 0
+    assert client.get(f"/artifacts/{imported['artifact_id']}/content").content[:8] != b""
+    artifact = client.get(f"/artifacts/{imported['artifact_id']}").json()
+    assert artifact["metadata"]["source"] == "canvas_url_import"
+    assert artifact["metadata"]["source_url"] == imported["source_url"]
+    assert artifact["metadata"]["downloader_provider"] == "fixture"
+    listed = client.get("/artifacts", params={"types": "Image,Video,FinalVideo", "limit": 500}).json()
+    listed_asset = next(item for item in listed if item["id"] == imported["artifact_id"])
+    assert listed_asset["source"] == "canvas_url_import"
+    assert listed_asset["size_bytes"] == imported["size_bytes"]
+    assert listed_asset["duration_ms"] == 35_000
+
+
+def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient):
+    imported = client.post(
+        "/artifacts/import-url",
+        json={"url": "https://youtube.com/watch?v=frame-capture"},
+    ).json()
+    partial = client.get(
+        f"/artifacts/{imported['artifact_id']}/content",
+        headers={"Range": "bytes=0-99"},
+    )
+    assert partial.status_code == 206
+    assert len(partial.content) == 100
+    assert partial.headers["accept-ranges"] == "bytes"
+    assert partial.headers["content-range"].endswith(f"/{imported['size_bytes']}")
+
+    response = client.post(
+        f"/artifacts/{imported['artifact_id']}/capture-frame",
+        json={"timestamp_ms": 500},
+    )
+
+    assert response.status_code == 201
+    captured = response.json()
+    assert captured["type"] == "Image"
+    assert captured["content_type"] == "image/jpeg"
+    assert captured["source"] == "video_frame_capture"
+    assert captured["source_artifact_id"] == imported["artifact_id"]
+    assert captured["timestamp_ms"] == 500
+    assert captured["filename"].endswith("-frame-00-00-00-500.jpg")
+    content = client.get(f"/artifacts/{captured['id']}/content")
+    assert content.status_code == 200
+    assert content.content.startswith(b"\xff\xd8")
+
+    artifact = client.get(f"/artifacts/{captured['id']}").json()
+    assert artifact["input_artifact_ids"] == [imported["artifact_id"]]
+    assert artifact["metadata"]["capture"] == {
+        "operation": "ffmpeg-accurate-seek.v1",
+        "source_artifact_id": imported["artifact_id"],
+        "timestamp_ms": 500,
+        "source_duration_ms": 1000,
+        "width": 360,
+        "height": 640,
+    }
+
+    past_end = client.post(
+        f"/artifacts/{imported['artifact_id']}/capture-frame",
+        json={"timestamp_ms": 2_000},
+    )
+    assert past_end.status_code == 422
+
+
+def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypatch):
+    upload = client.post("/artifacts/upload", files={"file": ("note.txt", b"Canvas source", "text/plain")})
+    assert upload.status_code == 201
+    uploaded = upload.json()
+    assert uploaded["type"] == "Text"
+    assert client.get(f"/artifacts/{uploaded['artifact_id']}/content").content == b"Canvas source"
+
+    def execute(node_id: str, node_key: str, model_alias: str, prompt: str = "", inputs: list[dict] | None = None, parameters: dict | None = None):
+        response = client.post("/experiments", json={
+            "canvas_id": "canvas_media_pipeline",
+            "node_id": node_id,
+            "node_key": node_key,
+            "prompt": prompt,
+            "model_alias": model_alias,
+            "parameters": parameters or {},
+            "inputs": inputs or [],
+        })
+        assert response.status_code == 201
+        result = response.json()
+        assert result["status"] == "SUCCEEDED", result.get("error")
+        return result
+
+    video = execute("video", "video.generate", "video.fast", "A real editable video source")
+    video_two = execute("video-two", "video.generate", "video.fast", "A second editable video source")
+    audio = execute("audio", "tts.generate", "tts.fast", "Replacement narration")
+    script = execute("script", "script.generate", "text.quality", "First sentence. Second sentence.")
+
+    edited = execute(
+        "editor",
+        "video.edit",
+        "local.ffmpeg",
+        inputs=[
+            {"type": "Video", "artifact_ids": video["output_artifact_ids"]},
+            {"type": "Video", "artifact_ids": video_two["output_artifact_ids"]},
+        ],
+        parameters={"resolution": "source", "aspect_ratio": "source", "target_duration_seconds": 7, "transition": "crossfade"},
+    )
+    assert edited["execution_mode"] == "local-media.v1"
+    assert edited["output"]["mimeType"] == "video/mp4"
+    edited_artifact = client.get(f"/artifacts/{edited['output_artifact_ids'][0]}").json()
+    assert edited_artifact["input_artifact_ids"] == video["output_artifact_ids"] + video_two["output_artifact_ids"]
+
+    localized = execute(
+        "replace-audio",
+        "video.change_voice",
+        "local.ffmpeg",
+        inputs=[
+            {"type": "Video", "artifact_ids": edited["output_artifact_ids"]},
+            {"type": "Audio", "artifact_ids": audio["output_artifact_ids"]},
+        ],
+    )
+
+    class FakeRecognizer:
+        def transcribe(self, audio: bytes, *, language_code: str, duration_ms: int) -> TranscriptResult:
+            assert audio.startswith(b"RIFF")
+            assert language_code == "auto"
+            assert duration_ms > 0
+            return TranscriptResult("en-US", [
+                SpeechSegment(0, 0, 900, "First sentence."),
+                SpeechSegment(1, 900, 1800, "Second sentence."),
+            ])
+
+    class FakeTranslator:
+        def translate(self, transcript: TranscriptResult, *, target_language: str) -> TranslationResult:
+            assert transcript.language_code == "en-US"
+            assert target_language == "ko-KR"
+            return TranslationResult([
+                SpeechSegment(0, 0, 900, "첫 번째 문장입니다."),
+                SpeechSegment(1, 900, 1800, "두 번째 문장입니다."),
+            ], "google_translation_test")
+
+    class FakeSynthesizer:
+        def synthesize(self, text: str, *, language_code: str, voice_name: str) -> SynthesizedSpeech:
+            assert "첫 번째" in text
+            assert language_code == "ko-KR"
+            assert voice_name == "Kore"
+            return SynthesizedSpeech(render_audio_wav("abc123", duration_seconds=2), "audio/wav", "google_tts_test")
+
+    monkeypatch.setattr(
+        "app.canvas_operations.get_localization_services",
+        lambda: LocalizationServices(FakeRecognizer(), FakeTranslator(), FakeSynthesizer()),
+    )
+    translated = execute(
+        "translate",
+        "video.translate",
+        "google.localization.pipeline",
+        inputs=[{"type": "Video", "artifact_ids": video["output_artifact_ids"]}],
+        parameters={"source_language": "auto", "target_language": "ko-KR", "voice_name": "Kore"},
+    )
+    assert translated["execution_mode"] == "google-localization.v1"
+    assert translated["provider_request_id"] == "google_translation_test"
+    assert translated["output"]["sourceLanguage"] == "en-US"
+    assert translated["output"]["targetLanguage"] == "ko-KR"
+    translated_artifact = client.get(f"/artifacts/{translated['output_artifact_ids'][0]}").json()
+    assert len(translated_artifact["input_artifact_ids"]) == 5
+
+    subtitles = execute(
+        "subtitles",
+        "subtitle.align",
+        "local.subtitle-align",
+        inputs=[
+            {"type": "Audio", "artifact_ids": audio["output_artifact_ids"]},
+            {"type": "Script", "artifact_ids": script["output_artifact_ids"]},
+        ],
+    )
+    assert "-->" in subtitles["output"]["text"]
+
+    timeline = execute(
+        "timeline",
+        "timeline.compose",
+        "local.timeline",
+        inputs=[
+            {"type": "Video", "artifact_ids": localized["output_artifact_ids"]},
+            {"type": "Subtitle", "artifact_ids": subtitles["output_artifact_ids"]},
+        ],
+    )
+    assert '"version": "timeline.v1"' in timeline["output"]["text"]
+
+    rendered = execute(
+        "render",
+        "video.render",
+        "local.ffmpeg",
+        inputs=[{"type": "Timeline", "artifact_ids": timeline["output_artifact_ids"]}],
+    )
+    qc = execute(
+        "qc",
+        "media.qc",
+        "local.ffprobe",
+        inputs=[{"type": "Video", "artifact_ids": rendered["output_artifact_ids"]}],
+    )
+    report = json.loads(qc["output"]["text"])
+    assert report["passed"] is True
+    assert report["checks"]["video_codec"]["actual"] == "h264"
+
+
+def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(client: TestClient, monkeypatch):
+    starts: list[float] = []
+    lock = threading.Lock()
+
+    def fake_run_experiment(db, payload):
+        del db
+        with lock:
+            starts.append(time.monotonic())
+        time.sleep(0.2)
+        return SimpleNamespace(
+            status="SUCCEEDED",
+            provider_request_id=f"provider_{payload.node_id}",
+            request_hash=f"{payload.node_id:0<64}"[:64],
+            output_artifact_ids=[],
+            output_payload={"kind": "text", "title": payload.node_id, "text": "done"},
+            duration_ms=200,
+            cost_usd=0.01,
+            cache_hit=False,
+            error=None,
+        )
+
+    monkeypatch.setattr("app.canvas_runs.run_experiment", fake_run_experiment)
+    graph = {
+        "canvas_id": "parallel_canvas",
+        "name": "Parallel Canvas",
+        "nodes": [
+            {"id": "prompt", "data": {"key": "prompt.input", "label": "Prompt", "kind": "input", "executable": False, "configText": "same prompt", "outputType": "Prompt"}},
+            {"id": "gen_a", "data": {"key": "llm.assistant", "label": "A", "kind": "generate", "provider": "google", "model": "text.fast", "outputType": "Text"}},
+            {"id": "gen_b", "data": {"key": "llm.assistant", "label": "B", "kind": "generate", "provider": "openai", "model": "openai.chat.latest", "outputType": "Text"}},
+        ],
+        "edges": [
+            {"id": "prompt-a", "source": "prompt", "target": "gen_a"},
+            {"id": "prompt-b", "source": "prompt", "target": "gen_b"},
+        ],
+    }
+    started_at = time.monotonic()
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    run_id = response.json()["id"]
+    deadline = time.monotonic() + 3
+    run = response.json()
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run_id}").json()
+        if run["status"] == "SUCCEEDED":
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+    assert len(starts) == 2
+    assert abs(starts[0] - starts[1]) < 0.12
+    assert time.monotonic() - started_at < 0.55
+    event_stream = client.get(f"/canvas-runs/{run_id}/events")
+    assert event_stream.status_code == 200
+    assert "event: canvas.run.updated" in event_stream.text
+    assert '"status":"SUCCEEDED"' in event_stream.text

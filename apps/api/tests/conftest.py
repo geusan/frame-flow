@@ -6,6 +6,12 @@ if TEST_DB.exists():
     TEST_DB.unlink()
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
 os.environ["STORAGE_PROVIDER"] = "memory"
+os.environ["APP_ENV"] = "test"
+os.environ["GENERATION_PROVIDER_MODE"] = "fixture"
+os.environ["REFERENCE_PROVIDER_MODE"] = "fixture"
+os.environ["VIDEO_DOWNLOADER_PROVIDER"] = "fixture"
+os.environ["FORMAT_PROVIDER_MODE"] = "fixture"
+os.environ["SUBTITLE_ALIGNMENT_MODE"] = "heuristic"
 
 import pytest
 from fastapi.testclient import TestClient

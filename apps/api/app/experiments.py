@@ -2,18 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .database import ExperimentRunRecord
+from .database import ArtifactRecord, ExperimentRunRecord
+from .canvas_operations import (
+    executor_revision,
+    execute_canvas_operation,
+    is_local_operation,
+    resolve_local_model,
+)
 from .domain import ExperimentRunRequest, ExperimentRunResponse, NodeStatus
 from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
-from .providers import MODEL_REGISTRY
+from .providers import ALL_MODEL_REGISTRY
+from .providers_generation import LIVE_GENERATION_REVISION, InputMedia, get_google_generation_services
+from .providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
 from .service import audit, create_artifact, new_id
-from .storage import artifact_content_url
+from .storage import artifact_content_url, get_storage, storage_location
 
 
 MODEL_COSTS = {
@@ -25,32 +34,45 @@ MODEL_COSTS = {
     "google.video.quality": 2.80,
     "google.tts.fast": 0.12,
 }
-EXECUTOR_REVISION = "deterministic.v2.storage"
+FIXTURE_EXECUTOR_REVISION = "fixture-media.v2"
 
 
-def resolve_model(model_alias: str) -> tuple[str, str]:
-    normalized = model_alias if model_alias.startswith("google.") else f"google.{model_alias}"
-    exact = MODEL_REGISTRY.get(normalized)
+def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
+    mode = os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower()
+    if mode == "live":
+        return OPENAI_LIVE_REVISION if model_alias.startswith("openai.") else LIVE_GENERATION_REVISION
+    if mode == "fixture":
+        if os.getenv("APP_ENV") != "test":
+            raise ValueError("GENERATION_PROVIDER_MODE=fixture is only allowed when APP_ENV=test")
+        return FIXTURE_EXECUTOR_REVISION
+    raise ValueError("GENERATION_PROVIDER_MODE must be live or fixture")
+
+
+def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
+    if is_local_operation(node_key):
+        return resolve_local_model(node_key)
+    normalized = model_alias if model_alias.startswith(("google.", "openai.")) else f"google.{model_alias}"
+    exact = ALL_MODEL_REGISTRY.get(normalized)
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")
     return normalized, exact
 
 
 def validate_model_for_node(node_key: str, model_alias: str) -> None:
-    expected_family = {
-        "image.generate": "google.image.",
-        "video.generate": "google.video.",
-        "tts.generate": "google.tts.",
-        "llm.assistant": "google.text.",
-        "script.generate": "google.text.",
+    allowed_families = {
+        "image.generate": ("google.image.", "openai.image."),
+        "video.generate": ("google.video.",),
+        "tts.generate": ("google.tts.", "openai.tts."),
+        "llm.assistant": ("google.text.", "openai.text.", "openai.chat."),
+        "script.generate": ("google.text.", "openai.text.", "openai.chat."),
     }.get(node_key)
-    if expected_family and not model_alias.startswith(expected_family):
-        raise ValueError(f"{node_key} requires a {expected_family.removesuffix('.')} model")
+    if allowed_families and not model_alias.startswith(allowed_families):
+        raise ValueError(f"{node_key} requires one of these model families: {', '.join(allowed_families)}")
 
 
 def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_model_id: str) -> str:
     snapshot = {
-        "executor_revision": EXECUTOR_REVISION,
+        "executor_revision": executor_revision(payload.node_key) if is_local_operation(payload.node_key) else generation_executor_revision(model_alias),
         "node_key": payload.node_key,
         "prompt": payload.prompt,
         "model_alias": model_alias,
@@ -63,7 +85,7 @@ def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_m
 
 
 @dataclass(frozen=True)
-class DeterministicResult:
+class FixtureResult:
     output: dict[str, object]
     artifact_type: str
     schema_id: str | None
@@ -73,23 +95,50 @@ class DeterministicResult:
     filename: str
 
 
-def execute_deterministic(payload: ExperimentRunRequest, exact_model_id: str, digest: str) -> DeterministicResult:
+def execute_fixture(payload: ExperimentRunRequest, exact_model_id: str, digest: str) -> FixtureResult:
     provider_request_id = f"local_{digest[:20]}"
     if payload.node_key == "image.generate":
         output = {"kind": "image", "title": "Experiment image", "mimeType": "image/svg+xml"}
         content = render_image_svg(payload.prompt, exact_model_id, digest)
-        return DeterministicResult(output, "Image", "experiment.image.v1", provider_request_id, content, "image/svg+xml", "preview.svg")
+        return FixtureResult(output, "Image", "experiment.image.v1", provider_request_id, content, "image/svg+xml", "preview.svg")
     if payload.node_key == "video.generate":
         output = {"kind": "video", "title": "Experiment video", "mimeType": "video/mp4"}
         content = render_video_mp4(digest)
-        return DeterministicResult(output, "Video", "experiment.video.v1", provider_request_id, content, "video/mp4", "preview.mp4")
+        return FixtureResult(output, "Video", "experiment.video.v1", provider_request_id, content, "video/mp4", "preview.mp4")
     if payload.node_key == "tts.generate":
-        output = {"kind": "audio", "title": "Experiment voiceover", "text": f"Local deterministic preview · {exact_model_id}", "mimeType": "audio/wav"}
+        output = {"kind": "audio", "title": "Fixture voiceover", "text": f"Test fixture · {exact_model_id}", "mimeType": "audio/wav"}
         content = render_audio_wav(digest)
-        return DeterministicResult(output, "Audio", "experiment.audio.v1", provider_request_id, content, "audio/wav", "preview.wav")
+        return FixtureResult(output, "Audio", "experiment.audio.v1", provider_request_id, content, "audio/wav", "preview.wav")
     refined = f"{payload.prompt.strip()}\n\nCinematic intent preserved. Subject, action, camera motion, lighting, timing, and exclusions are explicit."
+    if payload.node_key == "script.generate":
+        output = {"kind": "text", "title": "Generated script", "text": refined}
+        return FixtureResult(output, "Script", "script.v1", provider_request_id, refined.encode(), "text/plain", "script.txt")
     output = {"kind": "text", "title": "Experiment text", "text": refined}
-    return DeterministicResult(output, "Text", "experiment.text.v1", provider_request_id, refined.encode(), "text/plain", "result.txt")
+    return FixtureResult(output, "Text", "experiment.text.v1", provider_request_id, refined.encode(), "text/plain", "result.txt")
+
+
+def execute_live_provider(db: Session, payload: ExperimentRunRequest):
+    storage = get_storage()
+    input_ids: list[str] = []
+    inputs: list[InputMedia] = []
+    for item in payload.inputs:
+        artifact_ids = list(item.get("artifact_ids") or [])
+        if item.get("artifact_id"):
+            artifact_ids.insert(0, item["artifact_id"])
+        for artifact_id_value in artifact_ids:
+            artifact_id = str(artifact_id_value)
+            if artifact_id in input_ids:
+                continue
+            artifact = db.get(ArtifactRecord, artifact_id)
+            if not artifact:
+                raise ValueError(f"input artifact does not exist: {artifact_id}")
+            bucket, key = storage_location(artifact.uri, artifact.metadata_json)
+            content_type = str((artifact.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream")
+            inputs.append(InputMedia(artifact.id, artifact.type, storage.get_bytes(bucket=bucket, key=key), content_type))
+            input_ids.append(artifact.id)
+    services = get_openai_generation_services() if payload.model_alias.startswith("openai.") else get_google_generation_services()
+    result = services.execute(payload, inputs)
+    return result
 
 
 def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
@@ -120,7 +169,10 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
 
 
 def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRecord:
-    model_alias, exact_model_id = resolve_model(payload.model_alias)
+    model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key)
+    requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
+    if requested_provider and model_alias.startswith(("google.", "openai.")) and not model_alias.startswith(f"{requested_provider}."):
+        raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")
     validate_model_for_node(payload.node_key, model_alias)
     digest = request_fingerprint(payload, model_alias, exact_model_id)
     cached = db.scalar(
@@ -130,7 +182,9 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     )
     record = ExperimentRunRecord(
         id=new_id("exp"), canvas_id=payload.canvas_id, node_id=payload.node_id, node_key=payload.node_key,
-        status=NodeStatus.RUNNING, execution_mode=EXECUTOR_REVISION, prompt=payload.prompt,
+        status=NodeStatus.RUNNING,
+        execution_mode=executor_revision(payload.node_key) if is_local_operation(payload.node_key) else generation_executor_revision(model_alias),
+        prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=payload.parameters,
         input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},
     )
@@ -153,15 +207,45 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
 
     started = time.perf_counter()
     try:
-        result = execute_deterministic(payload, exact_model_id, digest)
+        if is_local_operation(payload.node_key):
+            result = execute_canvas_operation(db, payload, digest)
+        elif generation_executor_revision(model_alias) in {LIVE_GENERATION_REVISION, OPENAI_LIVE_REVISION}:
+            result = execute_live_provider(db, payload)
+        else:
+            result = execute_fixture(payload, exact_model_id, digest)
+        input_artifact_ids = getattr(result, "input_artifact_ids", [])
         artifact = create_artifact(
             db, result.artifact_type, schema_id=result.schema_id,
-            metadata={"experiment_id": record.id, "request_hash": digest, "output": result.output, "immutable": True},
+            input_artifact_ids=input_artifact_ids,
+            metadata={
+                "experiment_id": record.id,
+                "request_hash": digest,
+                "execution_mode": record.execution_mode,
+                "output": result.output,
+                "immutable": True,
+            },
             content_seed=digest,
             content=result.content,
             content_type=result.content_type,
             filename=result.filename,
         )
+        artifacts = [artifact]
+        for additional in getattr(result, "additional_assets", ()):
+            artifacts.append(create_artifact(
+                db, result.artifact_type, schema_id=result.schema_id,
+                input_artifact_ids=input_artifact_ids,
+                metadata={
+                    "experiment_id": record.id,
+                    "request_hash": digest,
+                    "execution_mode": record.execution_mode,
+                    "immutable": True,
+                    "candidate_index": len(artifacts) + 1,
+                },
+                content_seed=digest,
+                content=additional.data,
+                content_type=additional.content_type,
+                filename=additional.filename,
+            ))
         db.flush()
     except Exception as exc:
         db.rollback()
@@ -175,14 +259,14 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         return record
     record.status = NodeStatus.SUCCEEDED
     record.provider_request_id = result.provider_request_id
-    record.output_artifact_ids = [artifact.id]
+    record.output_artifact_ids = [item.id for item in artifacts]
     output = dict(result.output)
     if result.output.get("kind") in {"image", "video", "audio"}:
         output["url"] = artifact_content_url(artifact.id)
     record.output_payload = output
     record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
     record.cost_usd = MODEL_COSTS.get(model_alias, 0)
-    audit(db, "experiment.succeeded", record.id, {"request_hash": digest, "artifact_id": artifact.id})
+    audit(db, "experiment.succeeded", record.id, {"request_hash": digest, "artifact_ids": record.output_artifact_ids})
     db.commit()
     db.refresh(record)
     return record

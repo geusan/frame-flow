@@ -132,6 +132,8 @@ class ObjectStorage(Protocol):
         metadata: dict[str, str] | None = None,
     ) -> StoredObject: ...
 
+    def get_bytes(self, *, bucket: str, key: str) -> bytes: ...
+
     def create_download_url(self, *, bucket: str, key: str) -> str: ...
 
     def create_upload_url(self, *, bucket: str, key: str, content_type: str) -> UploadTarget: ...
@@ -157,6 +159,12 @@ class MemoryObjectStorage:
         digest = hashlib.sha256(data).hexdigest()
         self.objects[(bucket, key)] = (data, content_type, metadata or {})
         return StoredObject("memory", bucket, key, f"memory://{bucket}/{key}", len(data), digest, content_type, digest)
+
+    def get_bytes(self, *, bucket: str, key: str) -> bytes:
+        try:
+            return self.objects[(bucket, key)][0]
+        except KeyError as exc:
+            raise StorageError(f"object does not exist: {bucket}/{key}") from exc
 
     def create_download_url(self, *, bucket: str, key: str) -> str:
         if (bucket, key) not in self.objects:
@@ -235,6 +243,14 @@ class S3CompatibleObjectStorage:
             content_type,
             response.get("ETag", "").strip('"') or None,
         )
+
+    def get_bytes(self, *, bucket: str, key: str) -> bytes:
+        try:
+            response = self.client.get_object(Bucket=bucket, Key=key)
+            return response["Body"].read()
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "unknown")
+            raise StorageError(f"failed to read object {bucket}/{key}: {code}") from exc
 
     def create_download_url(self, *, bucket: str, key: str) -> str:
         try:

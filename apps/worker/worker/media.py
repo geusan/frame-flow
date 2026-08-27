@@ -31,7 +31,7 @@ def probe_media(path: Path) -> dict[str, Any]:
 
 
 def render_timeline(timeline: dict[str, Any], output_path: Path) -> Path:
-    """Render a standards-compliant placeholder timeline for local/mock runs.
+    """Render a standards-compliant synthetic source for the golden codec/QC test.
 
     Production render activities replace the synthetic sources with immutable
     Artifact paths while keeping this codec/loudness output contract.
@@ -103,4 +103,3 @@ def build_provenance_manifest(
         "reference_originals_used": False,
         "reference_isolation_enforced": True,
     }
-

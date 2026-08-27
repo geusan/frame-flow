@@ -63,8 +63,7 @@ def compile_generation_plan(brief: dict[str, Any], workflow_definition_id: str) 
             "snapshot": {
                 "format_schema": "format.core.v1",
                 "renderer_version": "ffmpeg.timeline.v1",
-                "model_registry_revision": "local-demo-2026-08-24",
+                "model_registry_revision": "google-live-2026-08-27",
             },
         }
     )
-

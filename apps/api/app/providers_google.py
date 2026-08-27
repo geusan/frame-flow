@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,6 +67,38 @@ class GoogleProviderBase:
 
 
 class GoogleTextProvider(GoogleProviderBase):
+    def generate_text(
+        self,
+        *,
+        logical_model: str,
+        system_prompt: str,
+        rendered_prompt: str,
+        temperature: float = 0.4,
+        seed: int | None = None,
+    ) -> tuple[str, str]:
+        exact_model = self.exact_model(logical_model)
+        payload = {
+            "model": exact_model,
+            "system_prompt": system_prompt,
+            "rendered_prompt": rendered_prompt,
+            "temperature": temperature,
+            "seed": seed,
+        }
+        digest = request_hash(logical_model, payload)
+        response = self.client.models.generate_content(
+            model=exact_model,
+            contents=rendered_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_modalities=[types.Modality.TEXT],
+                temperature=temperature,
+                seed=seed,
+            ),
+        )
+        if not response.text:
+            raise GoogleProviderError("Google text provider returned no content")
+        return response.text, _request_id(digest)
+
     def generate_structured(
         self,
         *,
@@ -151,17 +184,23 @@ class GoogleVideoProvider(GoogleProviderBase):
         aspect_ratio: str = "9:16",
         seed: int | None = None,
         output_gcs_uri: str | None = None,
+        image_data: bytes | None = None,
+        image_mime_type: str = "image/png",
+        resolution: str = "720p",
     ) -> ProviderSubmission:
         if duration_seconds not in {4, 6, 8}:
             raise GoogleProviderError("Veo shot duration must be 4, 6, or 8 seconds")
         if not 1 <= candidate_count <= 4:
             raise GoogleProviderError("Veo candidate_count must be between 1 and 4")
         exact_model = self.exact_model(logical_model)
-        payload = {"model": exact_model, "prompt": prompt, "duration_seconds": duration_seconds, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "output_gcs_uri": output_gcs_uri}
+        payload = {"model": exact_model, "prompt": prompt, "duration_seconds": duration_seconds, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "output_gcs_uri": output_gcs_uri, "has_image": image_data is not None, "resolution": resolution}
         digest = request_hash(logical_model, payload)
         operation = self.client.models.generate_videos(
             model=exact_model,
-            source=types.GenerateVideosSource(prompt=prompt),
+            source=types.GenerateVideosSource(
+                prompt=prompt,
+                image=types.Image(image_bytes=image_data, mime_type=image_mime_type) if image_data else None,
+            ),
             config=types.GenerateVideosConfig(
                 duration_seconds=duration_seconds,
                 number_of_videos=candidate_count,
@@ -170,6 +209,7 @@ class GoogleVideoProvider(GoogleProviderBase):
                 enhance_prompt=True,
                 seed=seed,
                 output_gcs_uri=output_gcs_uri,
+                resolution=resolution,
             ),
         )
         if not operation.name:
@@ -186,6 +226,57 @@ class GoogleVideoProvider(GoogleProviderBase):
         videos = getattr(response, "generated_videos", None) or []
         uris = [generated.video.uri for generated in videos if generated.video and generated.video.uri]
         return True, uris
+
+    def wait_for_generated(
+        self,
+        submission: ProviderSubmission,
+        *,
+        logical_model: str = "google.video.fast",
+        timeout_seconds: int = 900,
+        poll_interval_seconds: float = 10,
+    ) -> list[GeneratedBinary]:
+        if not submission.provider_operation_id:
+            raise GoogleProviderError("Google video submission has no operation ID")
+        deadline = time.monotonic() + timeout_seconds
+        operation = types.GenerateVideosOperation(name=submission.provider_operation_id)
+        while time.monotonic() < deadline:
+            operation = self.client.operations.get(operation)
+            if operation.done:
+                break
+            time.sleep(poll_interval_seconds)
+        if not operation.done:
+            raise GoogleProviderError(f"Google video operation timed out: {submission.provider_operation_id}")
+        if operation.error:
+            raise GoogleProviderError(f"Google video operation failed: {operation.error}")
+        response = operation.response or operation.result
+        videos = getattr(response, "generated_videos", None) or []
+        generated_results: list[GeneratedBinary] = []
+        for generated in videos:
+            video = getattr(generated, "video", None)
+            if not video:
+                continue
+            data = getattr(video, "video_bytes", None)
+            mime_type = getattr(video, "mime_type", None) or "video/mp4"
+            if not data and getattr(video, "uri", None):
+                data = self._download_gcs(video.uri)
+            if data:
+                generated_results.append(GeneratedBinary(data, mime_type, self.exact_model(logical_model), submission.provider_request_id))
+        if not generated_results:
+            raise GoogleProviderError("Google video operation returned no downloadable video")
+        return generated_results
+
+    @staticmethod
+    def _download_gcs(uri: str) -> bytes:
+        if not uri.startswith("gs://"):
+            raise GoogleProviderError(f"unsupported generated video URI: {uri}")
+        try:
+            from google.cloud import storage
+        except ImportError as exc:
+            raise GoogleProviderError("google-cloud-storage is required to download Veo GCS output") from exc
+        bucket_name, _, blob_name = uri[5:].partition("/")
+        if not bucket_name or not blob_name:
+            raise GoogleProviderError(f"invalid generated video GCS URI: {uri}")
+        return storage.Client().bucket(bucket_name).blob(blob_name).download_as_bytes()
 
 
 class GoogleTtsProvider(GoogleProviderBase):
@@ -217,4 +308,3 @@ class GoogleTtsProvider(GoogleProviderBase):
                 if part.inline_data and part.inline_data.data:
                     return GeneratedBinary(part.inline_data.data, part.inline_data.mime_type or "audio/pcm;rate=24000", exact_model, _request_id(digest))
         raise GoogleProviderError("Gemini-TTS returned no audio data")
-
