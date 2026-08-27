@@ -188,6 +188,7 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
 
 function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactListItem; onClose: () => void; onCaptured: (captured: CapturedFrameArtifact) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoStageRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<SceneSearchProvider>("google");
   const [modelAlias, setModelAlias] = useState("google.text.fast");
@@ -197,12 +198,33 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const [capturing, setCapturing] = useState(false);
   const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [playerSize, setPlayerSize] = useState<{ width: number; height: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selected || !videoRef.current || videoRef.current.readyState < 1) return;
     videoRef.current.currentTime = Math.min(selected.timestamp_ms / 1000, videoRef.current.duration || 0);
   }, [selected]);
+
+  useEffect(() => {
+    const stage = videoStageRef.current;
+    if (!stage || !videoDimensions?.width || !videoDimensions.height) return;
+    const fitPlayer = () => {
+      const style = window.getComputedStyle(stage);
+      const availableWidth = Math.max(1, stage.clientWidth - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight));
+      const availableHeight = Math.max(1, stage.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom));
+      const videoRatio = videoDimensions.width / videoDimensions.height;
+      const stageRatio = availableWidth / availableHeight;
+      const next = stageRatio > videoRatio
+        ? { width: availableHeight * videoRatio, height: availableHeight }
+        : { width: availableWidth, height: availableWidth / videoRatio };
+      setPlayerSize((current) => current && Math.abs(current.width - next.width) < 1 && Math.abs(current.height - next.height) < 1 ? current : next);
+    };
+    fitPlayer();
+    const observer = new ResizeObserver(fitPlayer);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [videoDimensions]);
 
   const searchScenes = async () => {
     if (!prompt.trim()) return;
@@ -261,8 +283,8 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
     <section className="scene-search-dialog video-asset-dialog" role="dialog" aria-modal="true" aria-label={`Play and search ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
       <div className="scene-search-head"><span><small>Video asset</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close video"><X size={16} /></button></div>
       <div className="scene-search-body">
-        <div className="scene-search-source">
-          <video ref={videoRef} src={asset.url} controls muted playsInline autoPlay preload="metadata" onLoadedMetadata={(event) => {
+        <div className="scene-search-source" ref={videoStageRef}>
+          <video ref={videoRef} src={asset.url} controls muted playsInline autoPlay preload="metadata" style={{ aspectRatio: videoDimensions ? `${videoDimensions.width} / ${videoDimensions.height}` : "auto", width: playerSize?.width, height: playerSize?.height }} onLoadedMetadata={(event) => {
             setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
             setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
             if (selected) event.currentTarget.currentTime = Math.min(selected.timestamp_ms / 1000, event.currentTarget.duration || 0);
