@@ -259,6 +259,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
     parameters.setdefault("transition", data.get("transition"))
     parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
+    parameters.setdefault("frame_timestamp_ms", data.get("frameTimestampMs"))
     parameters.setdefault("source_language", data.get("sourceLanguage"))
     parameters.setdefault("target_language", data.get("targetLanguage"))
     parameters.setdefault("voice_name", data.get("voiceName"))

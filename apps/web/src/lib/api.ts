@@ -160,6 +160,73 @@ export interface CapturedFrameArtifact extends ArtifactListItem {
   timestamp_ms: number;
 }
 
+export interface SceneSearchCandidate {
+  index: number;
+  timestamp_ms: number;
+  score: number;
+  reason: string;
+  thumbnail_data_url: string;
+}
+
+export interface SceneSearchResult {
+  search_id: string;
+  source_artifact_id: string;
+  prompt: string;
+  provider: string;
+  exact_model_id: string;
+  provider_request_id: string;
+  source_duration_ms: number;
+  candidates: SceneSearchCandidate[];
+}
+
+export interface SceneCaptureContext {
+  search_id: string;
+  search_prompt: string;
+  search_score: number;
+  search_reason: string;
+  search_model: string;
+  provider_request_id: string;
+}
+
+export interface ArtifactLineageNode extends ArtifactListItem {
+  schema_id?: string;
+  sha256: string;
+  producer_node_run_id?: string;
+  input_artifact_ids: string[];
+  metadata: Record<string, unknown>;
+  derivation: {
+    operation: string;
+    title: string;
+    description: string;
+    prompt?: string;
+    model_alias?: string;
+    exact_model_id?: string;
+    parameters: Record<string, unknown>;
+    request_hash?: string;
+    execution_mode?: string;
+  };
+  is_root: boolean;
+}
+
+export interface ArtifactLineageEdge {
+  id: string;
+  created_at: string;
+  parent_artifact_id: string;
+  child_artifact_id: string;
+  role: string;
+  ordinal: number;
+  operation_id?: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ArtifactLineageGraph {
+  root_artifact_id: string;
+  direction: "ancestors" | "descendants" | "both";
+  depth: number;
+  nodes: ArtifactLineageNode[];
+  edges: ArtifactLineageEdge[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
@@ -210,7 +277,12 @@ export const frameflowApi = {
       if (page.length < pageSize) return assets;
     }
   },
-  captureVideoFrame: (artifactId: string, timestampMs: number) => request<CapturedFrameArtifact>(`/artifacts/${artifactId}/capture-frame`, { method: "POST", body: JSON.stringify({ timestamp_ms: timestampMs }) }),
+  captureVideoFrame: (artifactId: string, timestampMs: number, context?: SceneCaptureContext) => request<CapturedFrameArtifact>(`/artifacts/${artifactId}/capture-frame`, { method: "POST", body: JSON.stringify({ timestamp_ms: timestampMs, ...context }) }),
+  searchVideoScenes: (artifactId: string, prompt: string, candidateCount = 4, sampleCount = 12) => request<SceneSearchResult>(`/artifacts/${artifactId}/scene-search`, { method: "POST", body: JSON.stringify({ prompt, candidate_count: candidateCount, sample_count: sampleCount }) }),
+  getArtifactLineage: (artifactId: string, direction: ArtifactLineageGraph["direction"] = "both", depth = 8) => {
+    const query = new URLSearchParams({ direction, depth: String(depth) });
+    return request<ArtifactLineageGraph>(`/artifacts/${artifactId}/lineage?${query}`);
+  },
   createCanvasRun: (payload: { canvas_id: string; name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
   getCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}`),
   cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),

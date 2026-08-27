@@ -10,6 +10,7 @@ os.environ["APP_ENV"] = "test"
 os.environ["GENERATION_PROVIDER_MODE"] = "fixture"
 os.environ["REFERENCE_PROVIDER_MODE"] = "fixture"
 os.environ["VIDEO_DOWNLOADER_PROVIDER"] = "fixture"
+os.environ["SCENE_SEARCH_PROVIDER_MODE"] = "fixture"
 os.environ["FORMAT_PROVIDER_MODE"] = "fixture"
 os.environ["SUBTITLE_ALIGNMENT_MODE"] = "heuristic"
 

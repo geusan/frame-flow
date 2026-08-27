@@ -47,6 +47,7 @@ export interface StudioNodeData extends Record<string, unknown> {
   executable?: boolean;
   transition?: string;
   targetDurationSeconds?: number;
+  frameTimestampMs?: number;
   sourceLanguage?: string;
   targetLanguage?: string;
   voiceName?: string;
@@ -83,6 +84,7 @@ export interface NodeTemplate {
     executable?: boolean;
     transition?: string;
     targetDurationSeconds?: number;
+    frameTimestampMs?: number;
     sourceLanguage?: string;
     targetLanguage?: string;
     voiceName?: string;
@@ -103,6 +105,7 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "image-category", label: "Image Generator", group: "Image", data: { key: "image.generate", label: "Image generator", description: "Prompt 필수 · Asset은 선택", icon: "image", kind: "generate", inputTypes: ["Prompt", "ReferenceAsset"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video-category", label: "Video Generator", group: "Video", data: { key: "video.generate", label: "Video generator", description: "Prompt 필수 · 여러 이미지는 선택", icon: "video", kind: "generate", inputTypes: ["Prompt", "Image", "ReferenceAsset"], requiredInputTypes: ["Prompt"], multiInputTypes: ["Image"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video-editor", label: "Video Editor", group: "Video", data: { key: "video.edit", label: "Video editor", description: "여러 Video를 연결 순서대로 합성하고 트랜지션·길이를 적용", icon: "timeline", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00", resolution: "1080p", aspectRatio: "9:16", transition: "hard_cut", targetDurationSeconds: 30 } },
+  { id: "frame-extract", label: "Frame Extract", group: "Video", data: { key: "video.frame_extract", label: "Frame extract", description: "Video의 지정 타임스탬프를 Image Artifact로 캡처", icon: "image", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "Image", model: "local.ffmpeg", cost: "$0.00", frameTimestampMs: 0 } },
 
   { id: "voice-category", label: "Voiceover", group: "Audio", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
   { id: "change-voice", label: "Replace Audio", group: "Audio", data: { key: "video.change_voice", label: "Replace video audio", description: "Video의 기존 오디오를 연결된 Audio로 실제 교체", icon: "changeVoice", kind: "compose", inputTypes: ["Video", "Audio"], requiredInputTypes: ["Video", "Audio"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },

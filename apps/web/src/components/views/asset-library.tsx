@@ -6,13 +6,17 @@ import {
   CircleCheck,
   ExternalLink,
   Film,
+  GitBranch,
   HardDrive,
   Image as ImageIcon,
+  Play,
   RefreshCw,
   Search,
+  Sparkles,
+  X,
 } from "lucide-react";
 
-import { frameflowApi, type ArtifactListItem, type CapturedFrameArtifact } from "@/lib/api";
+import { frameflowApi, type ArtifactLineageGraph, type ArtifactListItem, type CapturedFrameArtifact, type SceneSearchCandidate, type SceneSearchResult } from "@/lib/api";
 
 type AssetTab = "images" | "videos";
 
@@ -50,7 +54,205 @@ function formatPlaybackTimestamp(timestampMs: number): string {
   return `${Math.floor(totalSeconds / 60).toString().padStart(2, "0")}:${(totalSeconds % 60).toString().padStart(2, "0")}.${tenths}`;
 }
 
-function AssetCard({ asset, onCaptured }: { asset: ArtifactListItem; onCaptured: (captured: CapturedFrameArtifact) => void }) {
+function lineageColumns(graph: ArtifactLineageGraph): Array<{ level: number; nodes: ArtifactLineageGraph["nodes"] }> {
+  const levels = new Map<string, number>([[graph.root_artifact_id, 0]]);
+  for (let pass = 0; pass < graph.nodes.length; pass += 1) {
+    let changed = false;
+    for (const edge of graph.edges) {
+      const parentLevel = levels.get(edge.parent_artifact_id);
+      const childLevel = levels.get(edge.child_artifact_id);
+      if (parentLevel !== undefined && childLevel === undefined) {
+        levels.set(edge.child_artifact_id, parentLevel + 1);
+        changed = true;
+      } else if (childLevel !== undefined && parentLevel === undefined) {
+        levels.set(edge.parent_artifact_id, childLevel - 1);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const grouped = new Map<number, ArtifactLineageGraph["nodes"]>();
+  for (const node of graph.nodes) {
+    const level = levels.get(node.id) ?? 0;
+    grouped.set(level, [...(grouped.get(level) ?? []), node]);
+  }
+  return [...grouped.entries()].sort(([left], [right]) => left - right).map(([level, nodes]) => ({ level, nodes }));
+}
+
+function ComparisonMedia({ node, label, seekMs = 0 }: { node: ArtifactLineageGraph["nodes"][number]; label: string; seekMs?: number }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  return <div className="asset-compare-item">
+    <span>{label}</span>
+    <div className="asset-compare-media">
+      {isVideo(node)
+        ? <video ref={videoRef} src={node.url} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(seekMs / 1000, event.currentTarget.duration || 0); }} />
+        : <div role="img" aria-label={node.filename} style={{ backgroundImage: `url(${node.url})` }} />}
+    </div>
+    <strong title={node.filename}>{node.filename}</strong>
+  </div>;
+}
+
+function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClose: () => void }) {
+  const [lineage, setLineage] = useState<ArtifactLineageGraph | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    frameflowApi.getArtifactLineage(asset.id)
+      .then((graph) => { if (active) setLineage(graph); })
+      .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "Lineage loading failed"); });
+    return () => { active = false; };
+  }, [asset.id]);
+
+  const columns = lineage ? lineageColumns(lineage) : [];
+  const nodeById = new Map((lineage?.nodes ?? []).map((node) => [node.id, node]));
+  const rootNode = lineage?.nodes.find((node) => node.id === lineage.root_artifact_id);
+  const parentEdge = lineage?.edges.find((edge) => edge.child_artifact_id === lineage.root_artifact_id);
+  const parentNode = parentEdge ? nodeById.get(parentEdge.parent_artifact_id) : undefined;
+  const comparableTypes = new Set(["Image", "Video", "FinalVideo"]);
+  const canCompare = Boolean(rootNode && parentNode && comparableTypes.has(rootNode.type) && comparableTypes.has(parentNode.type));
+  const captureMetadata = (rootNode?.metadata.capture ?? {}) as { timestamp_ms?: number };
+  return <div className="asset-detail-backdrop" role="presentation" onMouseDown={onClose}>
+    <aside className="asset-detail-drawer" role="dialog" aria-modal="true" aria-label={`Asset details for ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="asset-detail-head"><span><small>Artifact lineage</small><strong title={asset.filename}>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close asset details"><X size={16} /></button></div>
+      <div className="asset-detail-scroll">
+        <div className={`asset-detail-preview ${isVideo(asset) ? "video" : "image"}`}>
+          {isVideo(asset) ? <video src={asset.url} controls muted playsInline preload="metadata" /> : <div role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
+        </div>
+        <div className="asset-detail-summary">
+          <div><small>Type</small><strong>{isVideo(asset) ? "Video" : "Image"}</strong></div>
+          <div><small>Source</small><strong>{sourceLabel(asset.source)}</strong></div>
+          <div><small>Size</small><strong>{formatBytes(asset.size_bytes)}</strong></div>
+          <div><small>Created</small><strong>{new Date(asset.created_at).toLocaleString("ko-KR")}</strong></div>
+        </div>
+
+        {rootNode && <section className="asset-derivation-section">
+          <div className="asset-detail-section-head"><span><GitBranch size={14} /> How this asset was created</span><small>{rootNode.derivation.operation}</small></div>
+          <div className="asset-derivation-card">
+            <strong>{rootNode.derivation.title}</strong>
+            <p>{rootNode.derivation.description}</p>
+            {rootNode.derivation.prompt && <div><small>Prompt</small><blockquote>{rootNode.derivation.prompt}</blockquote></div>}
+            <div className="asset-derivation-meta">
+              {rootNode.derivation.model_alias && <span><small>Model</small><strong>{rootNode.derivation.model_alias}</strong></span>}
+              {rootNode.derivation.exact_model_id && <span><small>Exact version</small><strong>{rootNode.derivation.exact_model_id}</strong></span>}
+              {rootNode.derivation.execution_mode && <span><small>Execution</small><strong>{rootNode.derivation.execution_mode}</strong></span>}
+            </div>
+            {!!Object.keys(rootNode.derivation.parameters ?? {}).length && <details><summary>Parameters</summary><pre>{JSON.stringify(rootNode.derivation.parameters, null, 2)}</pre></details>}
+          </div>
+        </section>}
+
+        {canCompare && rootNode && parentNode && <section className="asset-comparison-section">
+          <div className="asset-detail-section-head"><span>Before / After</span><small>{parentEdge?.role ?? "input"}</small></div>
+          <div className="asset-comparison-grid">
+            <ComparisonMedia node={parentNode} label="Before" seekMs={Number(captureMetadata.timestamp_ms ?? 0)} />
+            <ComparisonMedia node={rootNode} label="After" />
+          </div>
+        </section>}
+
+        <section className="asset-lineage-section">
+          <div className="asset-detail-section-head"><span><GitBranch size={14} /> Lineage graph</span><small>{lineage ? `${lineage.nodes.length} assets · ${lineage.edges.length} relations` : "Loading…"}</small></div>
+          {error && <div className="asset-lineage-state error">{error}</div>}
+          {!error && !lineage && <div className="asset-lineage-state"><RefreshCw size={15} className="spin" /> Loading lineage…</div>}
+          {lineage && <>
+            <div className="asset-lineage-graph">
+              {columns.map((column) => <div className="asset-lineage-column" key={column.level}>
+                <small>{column.level < 0 ? "Ancestors" : column.level > 0 ? "Derived" : "Selected"}</small>
+                {column.nodes.map((node) => <article className={node.is_root ? "root" : ""} key={node.id}>
+                  <span>{node.type === "Image" ? <ImageIcon size={13} /> : <Film size={13} />}</span>
+                  <div><strong title={node.filename}>{node.filename}</strong><small>{node.type} · {node.id.slice(0, 10)}</small></div>
+                </article>)}
+              </div>)}
+            </div>
+            {!!lineage.edges.length && <div className="asset-lineage-relations">{lineage.edges.map((edge) => <div key={edge.id}><span><strong>{nodeById.get(edge.parent_artifact_id)?.filename ?? edge.parent_artifact_id}</strong><small>{edge.role}</small></span><span>→</span><span><strong>{nodeById.get(edge.child_artifact_id)?.filename ?? edge.child_artifact_id}</strong><small>{edge.operation_id ?? "derived"}</small></span></div>)}</div>}
+            {!lineage.edges.length && <div className="asset-lineage-state">This is a root asset with no recorded derivations.</div>}
+          </>}
+        </section>
+      </div>
+      <div className="asset-detail-foot"><code>{asset.id}</code><button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")}><ExternalLink size={13} /> Open original</button></div>
+    </aside>
+  </div>;
+}
+
+function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactListItem; onClose: () => void; onCaptured: (captured: CapturedFrameArtifact) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [prompt, setPrompt] = useState("");
+  const [result, setResult] = useState<SceneSearchResult | null>(null);
+  const [selected, setSelected] = useState<SceneSearchCandidate | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selected || !videoRef.current || videoRef.current.readyState < 1) return;
+    videoRef.current.currentTime = Math.min(selected.timestamp_ms / 1000, videoRef.current.duration || 0);
+  }, [selected]);
+
+  const searchScenes = async () => {
+    if (!prompt.trim()) return;
+    setSearching(true);
+    setError(null);
+    try {
+      const nextResult = await frameflowApi.searchVideoScenes(asset.id, prompt.trim());
+      setResult(nextResult);
+      setSelected(nextResult.candidates[0] ?? null);
+    } catch (searchError) {
+      setError(searchError instanceof Error ? searchError.message : "Scene search failed");
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const captureSelected = async () => {
+    if (!result || !selected) return;
+    setCapturing(true);
+    setError(null);
+    try {
+      const captured = await frameflowApi.captureVideoFrame(asset.id, selected.timestamp_ms, {
+        search_id: result.search_id,
+        search_prompt: result.prompt,
+        search_score: selected.score,
+        search_reason: selected.reason,
+        search_model: result.exact_model_id,
+        provider_request_id: result.provider_request_id,
+      });
+      onCaptured(captured);
+      onClose();
+    } catch (captureError) {
+      setError(captureError instanceof Error ? captureError.message : "Scene capture failed");
+    } finally {
+      setCapturing(false);
+    }
+  };
+
+  return <div className="scene-search-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="scene-search-dialog" role="dialog" aria-modal="true" aria-label={`Search scenes in ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="scene-search-head"><span><small>Visual scene search</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close scene search"><X size={16} /></button></div>
+      <div className="scene-search-body">
+        <div className="scene-search-source">
+          <video ref={videoRef} src={asset.url} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => { if (selected) event.currentTarget.currentTime = Math.min(selected.timestamp_ms / 1000, event.currentTarget.duration || 0); }} />
+          <form onSubmit={(event) => { event.preventDefault(); void searchScenes(); }}>
+            <label><Search size={14} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 인물이 카메라를 바라보는 장면" autoFocus /></label>
+            <button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search scenes"}</button>
+          </form>
+          {result && <div className="scene-search-provider"><span>{result.provider} · {result.exact_model_id}</span><code>{result.provider_request_id}</code></div>}
+          {error && <div className="scene-search-error">{error}</div>}
+        </div>
+        <div className="scene-search-results">
+          <div><strong>Scene candidates</strong><small>{result ? `${result.candidates.length} matches` : "Enter a visual description to search"}</small></div>
+          {!result && !searching && <div className="scene-search-empty"><Sparkles size={22} /><span>Prompt와 가장 관련 있는 장면을 찾아 타임스탬프와 점수로 보여줍니다.</span></div>}
+          {searching && <div className="scene-search-empty"><RefreshCw size={22} className="spin" /><span>Sampling and ranking video frames…</span></div>}
+          {result && <div className="scene-candidate-grid">{result.candidates.map((candidate) => <button type="button" className={selected?.index === candidate.index ? "selected" : ""} onClick={() => setSelected(candidate)} key={`${candidate.index}-${candidate.timestamp_ms}`}>
+            <span style={{ backgroundImage: `url(${candidate.thumbnail_data_url})` }}><Play size={15} fill="currentColor" /><b>{formatPlaybackTimestamp(candidate.timestamp_ms)}</b></span>
+            <div><strong>{Math.round(candidate.score * 100)}% match</strong><small>{candidate.reason}</small></div>
+          </button>)}</div>}
+        </div>
+      </div>
+      <div className="scene-search-foot"><span>{selected ? `Selected · ${formatPlaybackTimestamp(selected.timestamp_ms)} · ${Math.round(selected.score * 100)}%` : "Select a candidate to seek the player"}</span><button type="button" onClick={() => void captureSelected()} disabled={!selected || capturing}><Camera size={14} /> {capturing ? "Capturing…" : "Capture selected frame"}</button></div>
+    </section>
+  </div>;
+}
+
+function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: ArtifactListItem; onCaptured: (captured: CapturedFrameArtifact) => void; onInspect: () => void; onSearchScenes: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
   const [capturing, setCapturing] = useState(false);
@@ -91,12 +293,12 @@ function AssetCard({ asset, onCaptured }: { asset: ArtifactListItem; onCaptured:
       {duration && <span className="asset-duration">{duration}</span>}
     </div>
     <div className="asset-card-copy">
-      <div className="asset-card-title"><strong title={asset.filename}>{asset.filename}</strong><button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button></div>
+      <div className="asset-card-title"><strong title={asset.filename}>{asset.filename}</strong><button type="button" onClick={onInspect} aria-label={`View lineage for ${asset.filename}`}><GitBranch size={13} /></button><button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button></div>
       <span><small>{sourceLabel(asset.source)}</small><i /> <small>{formatBytes(asset.size_bytes)}</small></span>
       <time dateTime={asset.created_at}>{new Date(asset.created_at).toLocaleString("ko-KR")}</time>
       {isVideo(asset) && <div className="asset-capture-actions">
         <span><small>Current frame</small><strong>{currentTimestamp}</strong></span>
-        <button className="asset-capture-button" type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button>
+        <div><button className="asset-scene-search-button" type="button" onClick={onSearchScenes}><Sparkles size={13} /> Prompt search</button><button className="asset-capture-button" type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button></div>
       </div>}
       {captureError && <p className="asset-capture-error">{captureError}</p>}
     </div>
@@ -110,6 +312,8 @@ export function AssetLibrary() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [capturedAsset, setCapturedAsset] = useState<CapturedFrameArtifact | null>(null);
+  const [inspectedAsset, setInspectedAsset] = useState<ArtifactListItem | null>(null);
+  const [sceneSearchAsset, setSceneSearchAsset] = useState<ArtifactListItem | null>(null);
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -193,9 +397,11 @@ export function AssetLibrary() {
 
       {!error && !loading && visibleAssets.length > 0 && (
         <div className="asset-grid">
-          {visibleAssets.map((asset) => <AssetCard asset={asset} onCaptured={handleCaptured} key={asset.id} />)}
+          {visibleAssets.map((asset) => <AssetCard asset={asset} onCaptured={handleCaptured} onInspect={() => setInspectedAsset(asset)} onSearchScenes={() => setSceneSearchAsset(asset)} key={asset.id} />)}
         </div>
       )}
+      {inspectedAsset && <AssetLineageDrawer asset={inspectedAsset} onClose={() => setInspectedAsset(null)} key={inspectedAsset.id} />}
+      {sceneSearchAsset && <SceneSearchDialog asset={sceneSearchAsset} onClose={() => setSceneSearchAsset(null)} onCaptured={handleCaptured} key={sceneSearchAsset.id} />}
     </div>
   );
 }

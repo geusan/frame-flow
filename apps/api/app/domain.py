@@ -204,6 +204,18 @@ class ArtifactUrlImportRequest(BaseModel):
 
 class FrameCaptureRequest(BaseModel):
     timestamp_ms: int = Field(ge=0)
+    search_id: str | None = Field(default=None, max_length=128)
+    search_prompt: str | None = Field(default=None, max_length=4_000)
+    search_score: float | None = Field(default=None, ge=0, le=1)
+    search_reason: str | None = Field(default=None, max_length=1_000)
+    search_model: str | None = Field(default=None, max_length=255)
+    provider_request_id: str | None = Field(default=None, max_length=255)
+
+
+class SceneSearchRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4_000)
+    candidate_count: int = Field(default=4, ge=1, le=8)
+    sample_count: int = Field(default=12, ge=3, le=24)
 
 
 class ExperimentRunRequest(BaseModel):

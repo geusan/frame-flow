@@ -21,6 +21,8 @@
 - Gemini Image·Veo·Gemini-TTS 결과를 MinIO에 저장하고 Canvas에서 재생하는 실제 생성 경로
 - 교체 가능한 Video Downloader Adapter(`yt-dlp` 기본)를 통한 Canvas URL 업로드 Artifact와 FFmpeg 기반 Video Editor·오디오 교체·자막 Mux·최종 렌더·ffprobe QC
 - Asset Library 비디오 seek·현재 프레임 캡처와 원본 Video → Image Artifact lineage
+- 정규화된 `artifact_edges`, 양방향 Lineage API·그래프·Before/After·생성 Prompt/모델 상세
+- Gemini Vision Prompt 장면 검색·후보 seek/캡처와 Canvas Frame Extract 노드
 - `memory`·`minio`·`r2`·`s3`로 교체 가능한 S3 호환 Storage Provider
 - Artifact SHA-256·Object Key·MIME·크기 보존과 Signed GET/PUT URL
 - 동일 요청 해시 캐시와 노드별 Baseline 지정

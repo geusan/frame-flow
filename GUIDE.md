@@ -152,7 +152,7 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | Upload | 로컬 파일 또는 영상 URL | `ReferenceAsset` | 이미지·영상·오디오 파일 선택, 공개 영상 URL 가져오기 |
 | Assets | 저장 Asset 한 개 | `ReferenceAsset` | 미니 Popover에서 저장된 이미지·비디오 하나 선택 |
 
-사이드바의 Asset Library는 저장된 이미지와 비디오를 탭·검색·미리보기로 모아 보여준다. 비디오 플레이어에서 원하는 위치로 이동한 뒤 `Capture frame`을 누르면 해당 시점의 JPEG가 새 Image Artifact로 저장된다. 캡처 이미지는 원본 Video Artifact ID, 정확한 타임스탬프와 FFmpeg 작업 버전을 lineage로 보존한다. Canvas의 Assets 노드는 같은 목록을 축소한 Popover를 열며, 이미지/비디오 탭에서 한 개를 선택해 해당 노드 출력으로 사용한다. ReferenceSet을 Canvas 생성 입력으로 직접 사용하지 않는다.
+사이드바의 Asset Library는 저장된 이미지와 비디오를 탭·검색·미리보기로 모아 보여준다. 비디오 플레이어에서 원하는 위치로 이동한 뒤 `Capture frame`을 누르면 해당 시점의 JPEG가 새 Image Artifact로 저장된다. `Prompt search`는 영상을 샘플링하고 Gemini Vision이 Prompt 관련도를 평가해 후보 썸네일·점수·타임스탬프를 반환한다. 후보를 누르면 플레이어가 해당 위치로 seek하며 선택 장면을 캡처할 수 있다. 캡처 이미지는 원본 Video Artifact ID, 정확한 타임스탬프, 검색 Prompt·점수·모델과 FFmpeg 작업 버전을 lineage로 보존한다. Canvas의 Assets 노드는 같은 목록을 축소한 Popover를 열며, 이미지/비디오 탭에서 한 개를 선택해 해당 노드 출력으로 사용한다. ReferenceSet을 Canvas 생성 입력으로 직접 사용하지 않는다.
 
 이미지를 다른 앱에서 복사한 뒤 Canvas에서 `⌘V`를 누르면 마우스 위치에 Upload 노드가 생성되고 Preview와 `ReferenceAsset` 출력이 설정된다. 공개 영상 URL을 Canvas 빈 영역에 붙여넣어도 Upload 노드가 생성되고 Video Downloader Adapter로 영상을 내려받아 Artifact로 저장한다. 현재 기본 Adapter는 `yt-dlp`다. Upload 노드의 URL 입력란에서는 URL을 붙여넣는 즉시 가져오기를 시작한다. 그 밖의 일반 텍스트 붙여넣기는 Prompt 입력으로 유지된다.
 
@@ -163,6 +163,7 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | Image Generator | `Prompt`, 선택 `ReferenceAsset` | `Image` | 단일 이미지 생성 |
 | Video Generator | `Prompt`, 선택 `Image × N`, 선택 `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
+| Frame Extract | `Video` | `Image` | 지정한 millisecond 타임스탬프의 프레임을 JPEG Artifact로 추출 |
 
 Video Editor 설정:
 
@@ -278,6 +279,8 @@ Upload 노드, 클립보드 이미지와 URL 영상은 최대 250MB까지 불변
 Artifact Content API는 HTTP byte-range 응답을 지원한다. 따라서 브라우저 비디오 플레이어가 전체 파일을 다시 받지 않고 원하는 시점으로 seek할 수 있으며, 현재 재생 위치를 millisecond 단위로 Frame Capture API에 전달한다.
 
 URL 영상 다운로드는 `VideoDownloaderAdapter` 계약과 provider registry를 통한다. `VIDEO_DOWNLOADER_PROVIDER`의 기본값은 `yt-dlp`이며, 실행 파일 경로는 `YT_DLP_EXECUTABLE`로 바꿀 수 있다. 새 provider는 `inspect`와 `download` 계약을 구현하고 registry에 등록하면 Reference 수집과 Canvas URL 업로드에서 같은 방식으로 선택할 수 있다. 사용된 provider 이름은 Artifact metadata와 audit event에 기록된다.
+
+Artifact 파생관계는 `artifact_edges` 테이블에 부모·자식·역할·순서·작업 ID로 정규화된다. `/artifacts/{id}/lineage`는 조상·후손·양방향 그래프를 반환하며 Asset 상세 Drawer에서 생성 설명, Prompt, 모델, 파라미터, Before/After와 전체 lineage를 확인한다. `SCENE_SEARCH_PROVIDER_MODE=live`는 Gemini Vision을 사용하고 테스트에서만 `fixture` 모드를 허용한다.
 
 ### Object Storage
 

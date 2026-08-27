@@ -302,12 +302,119 @@ def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient
         "width": 360,
         "height": 640,
     }
+    lineage = client.get(f"/artifacts/{captured['id']}/lineage").json()
+    assert lineage["root_artifact_id"] == captured["id"]
+    assert {node["id"] for node in lineage["nodes"]} == {
+        imported["artifact_id"],
+        captured["id"],
+    }
+    captured_node = next(node for node in lineage["nodes"] if node["id"] == captured["id"])
+    assert captured_node["derivation"]["operation"] == "video.frame.capture"
+    assert "0.500s" in captured_node["derivation"]["description"]
+    assert captured_node["derivation"]["parameters"]["source_artifact_id"] == imported["artifact_id"]
+    assert len(lineage["edges"]) == 1
+    edge = lineage["edges"][0]
+    assert edge["parent_artifact_id"] == imported["artifact_id"]
+    assert edge["child_artifact_id"] == captured["id"]
+    assert edge["role"] == "source_video"
+    assert edge["ordinal"] == 0
+    assert edge["operation_id"] == "ffmpeg-accurate-seek.v1"
+    descendants = client.get(
+        f"/artifacts/{imported['artifact_id']}/lineage",
+        params={"direction": "descendants", "depth": 1},
+    ).json()
+    assert {node["id"] for node in descendants["nodes"]} == {
+        imported["artifact_id"],
+        captured["id"],
+    }
 
     past_end = client.post(
         f"/artifacts/{imported['artifact_id']}/capture-frame",
         json={"timestamp_ms": 2_000},
     )
     assert past_end.status_code == 422
+
+
+def test_frame_extract_canvas_operation_preserves_timestamp_and_lineage(client: TestClient):
+    imported = client.post(
+        "/artifacts/import-url",
+        json={"url": "https://youtube.com/watch?v=frame-node"},
+    ).json()
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_frame_extract",
+        "node_id": "frame_extract_1",
+        "node_key": "video.frame_extract",
+        "prompt": "",
+        "model_alias": "local.ffmpeg",
+        "parameters": {"frame_timestamp_ms": 400},
+        "inputs": [{
+            "node_id": "video_source",
+            "type": "Video",
+            "artifact_ids": [imported["artifact_id"]],
+        }],
+    })
+
+    assert response.status_code == 201
+    experiment = response.json()
+    assert experiment["status"] == "SUCCEEDED"
+    assert experiment["output"]["kind"] == "image"
+    assert "0.400s" in experiment["output"]["title"]
+    artifact_id = experiment["output_artifact_ids"][0]
+    artifact = client.get(f"/artifacts/{artifact_id}").json()
+    assert artifact["input_artifact_ids"] == [imported["artifact_id"]]
+    assert artifact["metadata"]["capture"]["timestamp_ms"] == 400
+    lineage = client.get(f"/artifacts/{artifact_id}/lineage").json()
+    edge = lineage["edges"][0]
+    assert edge["role"] == "source_video"
+    extracted_node = next(node for node in lineage["nodes"] if node["id"] == artifact_id)
+    assert extracted_node["derivation"]["operation"] == "video.frame_extract"
+
+
+def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: TestClient):
+    imported = client.post(
+        "/artifacts/import-url",
+        json={"url": "https://youtube.com/watch?v=scene-search"},
+    ).json()
+    response = client.post(
+        f"/artifacts/{imported['artifact_id']}/scene-search",
+        json={
+            "prompt": "인물이 카메라를 바라보는 장면",
+            "candidate_count": 3,
+            "sample_count": 5,
+        },
+    )
+
+    assert response.status_code == 200
+    search = response.json()
+    assert search["provider"] == "fixture"
+    assert search["exact_model_id"] == "fixture-scene-ranker.v1"
+    assert len(search["candidates"]) == 3
+    assert all(candidate["thumbnail_data_url"].startswith("data:image/jpeg;base64,") for candidate in search["candidates"])
+    assert [candidate["score"] for candidate in search["candidates"]] == sorted(
+        [candidate["score"] for candidate in search["candidates"]],
+        reverse=True,
+    )
+
+    selected = search["candidates"][0]
+    captured_response = client.post(
+        f"/artifacts/{imported['artifact_id']}/capture-frame",
+        json={
+            "timestamp_ms": selected["timestamp_ms"],
+            "search_id": search["search_id"],
+            "search_prompt": search["prompt"],
+            "search_score": selected["score"],
+            "search_reason": selected["reason"],
+            "search_model": search["exact_model_id"],
+            "provider_request_id": search["provider_request_id"],
+        },
+    )
+    assert captured_response.status_code == 201
+    captured = captured_response.json()
+    lineage = client.get(f"/artifacts/{captured['id']}/lineage").json()
+    captured_node = next(node for node in lineage["nodes"] if node["id"] == captured["id"])
+    assert captured_node["derivation"]["prompt"] == search["prompt"]
+    assert "Match score" in captured_node["derivation"]["description"]
+    assert captured_node["derivation"]["parameters"]["scene_search"]["search_id"] == search["search_id"]
 
 
 def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypatch):

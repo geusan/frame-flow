@@ -214,10 +214,14 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         else:
             result = execute_fixture(payload, exact_model_id, digest)
         input_artifact_ids = getattr(result, "input_artifact_ids", [])
+        result_metadata = dict(getattr(result, "metadata", {}) or {})
+        input_artifact_roles = dict(getattr(result, "input_artifact_roles", {}) or {})
         artifact = create_artifact(
             db, result.artifact_type, schema_id=result.schema_id,
             input_artifact_ids=input_artifact_ids,
+            input_artifact_roles=input_artifact_roles,
             metadata={
+                **result_metadata,
                 "experiment_id": record.id,
                 "request_hash": digest,
                 "execution_mode": record.execution_mode,
@@ -234,7 +238,9 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             artifacts.append(create_artifact(
                 db, result.artifact_type, schema_id=result.schema_id,
                 input_artifact_ids=input_artifact_ids,
+                input_artifact_roles=input_artifact_roles,
                 metadata={
+                    **result_metadata,
                     "experiment_id": record.id,
                     "request_hash": digest,
                     "execution_mode": record.execution_mode,

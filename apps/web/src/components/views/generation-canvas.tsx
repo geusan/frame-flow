@@ -233,6 +233,7 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         executable: template.data.executable,
         transition: node.data.transition ?? template.data.transition,
         targetDurationSeconds: node.data.targetDurationSeconds ?? template.data.targetDurationSeconds,
+        frameTimestampMs: node.data.frameTimestampMs ?? template.data.frameTimestampMs,
         sourceLanguage: node.data.sourceLanguage ?? template.data.sourceLanguage,
         targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
         voiceName: node.data.voiceName ?? template.data.voiceName,
@@ -690,7 +691,7 @@ function EditableCanvas() {
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName"]);
+    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "frameTimestampMs", "sourceLanguage", "targetLanguage", "voiceName"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -940,6 +941,7 @@ function EditableCanvas() {
           output_count: 1,
           transition: node.data.transition,
           target_duration_seconds: node.data.targetDurationSeconds,
+          frame_timestamp_ms: node.data.frameTimestampMs,
           source_language: node.data.sourceLanguage,
           target_language: node.data.targetLanguage,
           voice_name: node.data.voiceName,
@@ -1306,6 +1308,10 @@ function EditableCanvas() {
                 <label><span>Output ratio</span><select value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
                 <label><span>Target length</span><select value={String(selectedNode.data.targetDurationSeconds ?? 30)} onChange={(event) => updateSelectedData({ targetDurationSeconds: Number(event.target.value) })}><option value="15">15s</option><option value="30">30s</option><option value="45">45s</option><option value="60">60s</option></select></label>
               </div>
+            </div>}
+            {selectedNode.data.key === "video.frame_extract" && <div className="video-editor-settings frame-extract-settings">
+              <div className="editor-input-count connected"><span>Frame output</span><strong>1</strong><small>연결된 Video에서 지정 시점의 JPEG를 추출합니다.</small></div>
+              <label className="field-label"><span>Timestamp (seconds)</span><input type="number" min="0" step="0.1" value={(selectedNode.data.frameTimestampMs ?? 0) / 1000} onChange={(event) => updateSelectedData({ frameTimestampMs: Math.max(0, Math.round(Number(event.target.value || 0) * 1000)) })} /><small>정확한 프레임 탐색을 위해 millisecond로 실행 이력에 저장됩니다.</small></label>
             </div>}
             {selectedNode.data.key === "video.translate" && <div className="video-editor-settings">
               <div className="editor-input-count connected"><span>Live pipeline</span><strong>3</strong><small>Chirp 3 STT → Gemini translation → Gemini TTS</small></div>

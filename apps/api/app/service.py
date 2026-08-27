@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .compiler import DEFAULT_NODES
-from .database import ArtifactRecord, AuditEventRecord, NodeRunRecord, RunRecord, SessionLocal
+from .database import ArtifactEdgeRecord, ArtifactRecord, AuditEventRecord, NodeRunRecord, RunRecord, SessionLocal
 from .domain import ArtifactResponse, EventResponse, NodeRunResponse, NodeStatus, RunResponse
 from .storage import artifact_object_key, bucket_for_artifact, get_storage
 
@@ -41,6 +41,7 @@ def create_artifact(
     schema_id: str | None = None,
     producer_node_run_id: str | None = None,
     input_artifact_ids: list[str] | None = None,
+    input_artifact_roles: dict[str, str] | None = None,
     metadata: dict[str, Any] | None = None,
     content_seed: str | None = None,
     content: bytes | None = None,
@@ -49,6 +50,13 @@ def create_artifact(
 ) -> ArtifactRecord:
     artifact_id = new_id("art")
     artifact_metadata = dict(metadata or {})
+    normalized_input_ids = list(dict.fromkeys(input_artifact_ids or []))
+    normalized_roles = {
+        parent_id: str((input_artifact_roles or {}).get(parent_id) or "input")[:64]
+        for parent_id in normalized_input_ids
+    }
+    if normalized_input_ids:
+        artifact_metadata["input_artifact_roles"] = normalized_roles
     if content is None:
         content_type = "application/json"
         content = json.dumps(
@@ -89,11 +97,82 @@ def create_artifact(
         uri=stored.uri,
         sha256=stored.sha256,
         producer_node_run_id=producer_node_run_id,
-        input_artifact_ids=input_artifact_ids or [],
+        input_artifact_ids=normalized_input_ids,
         metadata_json=artifact_metadata,
     )
     db.add(artifact)
+    persistent_parent_ids = set(db.scalars(
+        select(ArtifactRecord.id).where(ArtifactRecord.id.in_(normalized_input_ids))
+    ).all()) if normalized_input_ids else set()
+    pending_parent_ids = {
+        record.id for record in db.new if isinstance(record, ArtifactRecord)
+    }
+    known_parent_ids = persistent_parent_ids | pending_parent_ids
+    operation_id = str(
+        producer_node_run_id
+        or artifact_metadata.get("experiment_id")
+        or (artifact_metadata.get("capture") or {}).get("operation")
+        or artifact_metadata.get("operation")
+        or ""
+    )[:64] or None
+    for ordinal, parent_artifact_id in enumerate(normalized_input_ids):
+        if parent_artifact_id not in known_parent_ids:
+            continue
+        db.add(ArtifactEdgeRecord(
+            id=new_id("edge"),
+            parent_artifact_id=parent_artifact_id,
+            child_artifact_id=artifact_id,
+            role=normalized_roles[parent_artifact_id],
+            ordinal=ordinal,
+            operation_id=operation_id,
+            metadata_json={},
+        ))
     return artifact
+
+
+def backfill_artifact_edges(db: Session) -> int:
+    known_artifact_ids = set(db.scalars(select(ArtifactRecord.id)).all())
+    existing = {
+        (parent_id, child_id, role, ordinal)
+        for parent_id, child_id, role, ordinal in db.execute(
+            select(
+                ArtifactEdgeRecord.parent_artifact_id,
+                ArtifactEdgeRecord.child_artifact_id,
+                ArtifactEdgeRecord.role,
+                ArtifactEdgeRecord.ordinal,
+            )
+        ).all()
+    }
+    created = 0
+    for artifact in db.scalars(select(ArtifactRecord)).all():
+        input_ids = list(dict.fromkeys(artifact.input_artifact_ids or []))
+        roles = artifact.metadata_json.get("input_artifact_roles") or {}
+        operation_id = str(
+            artifact.producer_node_run_id
+            or artifact.metadata_json.get("experiment_id")
+            or (artifact.metadata_json.get("capture") or {}).get("operation")
+            or artifact.metadata_json.get("operation")
+            or ""
+        )[:64] or None
+        for ordinal, parent_artifact_id in enumerate(input_ids):
+            if parent_artifact_id not in known_artifact_ids:
+                continue
+            role = str(roles.get(parent_artifact_id) or "input")[:64]
+            key = (parent_artifact_id, artifact.id, role, ordinal)
+            if key in existing:
+                continue
+            db.add(ArtifactEdgeRecord(
+                id=new_id("edge"),
+                parent_artifact_id=parent_artifact_id,
+                child_artifact_id=artifact.id,
+                role=role,
+                ordinal=ordinal,
+                operation_id=operation_id,
+                metadata_json={"backfilled": True},
+            ))
+            existing.add(key)
+            created += 1
+    return created
 
 
 def artifact_response(record: ArtifactRecord) -> ArtifactResponse:

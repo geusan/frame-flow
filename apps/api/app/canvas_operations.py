@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
 from .domain import ExperimentRunRequest
+from .media_capture import capture_video_frame
 from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services
 from .service import create_artifact
 from .storage import get_storage, storage_location
@@ -30,6 +31,7 @@ LOCAL_MODELS: dict[str, tuple[str, str]] = {
     "script.fit_duration": ("local.script-fit", "script-fit.v1"),
     "shot.plan": ("local.shot-plan", "shot-plan.v1"),
     "video.edit": ("local.ffmpeg", "ffmpeg"),
+    "video.frame_extract": ("local.ffmpeg", "ffmpeg-accurate-seek.v1"),
     "video.change_voice": ("local.ffmpeg", "ffmpeg"),
     "video.translate": ("google.localization.pipeline", "chirp_3+gemini-2.5-pro+gemini-2.5-flash-tts"),
     "subtitle.align": ("google.stt.default", "chirp_3"),
@@ -49,6 +51,8 @@ class CanvasOperationResult:
     content_type: str
     filename: str
     input_artifact_ids: list[str]
+    metadata: dict[str, Any] = field(default_factory=dict)
+    input_artifact_roles: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -548,6 +552,40 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
         return CanvasOperationResult(
             {"kind": "video", "title": "Edited video", "mimeType": "video/mp4"}, "Video", "video.edited.v1",
             f"local_{digest[:20]}", content, "video/mp4", "edited.mp4", input_ids,
+        )
+
+    if node_key == "video.frame_extract":
+        video = _require(artifacts, "Video", "Video", "FinalVideo")
+        requested_timestamp_ms = max(0, int(payload.parameters.get("frame_timestamp_ms") or 0))
+        captured = capture_video_frame(video.data, video.content_type, requested_timestamp_ms)
+        capture_metadata = {
+            "operation": "ffmpeg-accurate-seek.v1",
+            "source_artifact_id": video.record.id,
+            "timestamp_ms": captured.timestamp_ms,
+            "source_duration_ms": captured.source_duration_ms,
+            "width": captured.width,
+            "height": captured.height,
+        }
+        return CanvasOperationResult(
+            {
+                "kind": "image",
+                "title": f"Video frame · {captured.timestamp_ms / 1000:.3f}s",
+                "mimeType": "image/jpeg",
+            },
+            "Image",
+            "video.frame.v1",
+            f"local_{digest[:20]}",
+            captured.content,
+            captured.content_type,
+            f"video-frame-{captured.timestamp_ms:010d}.jpg",
+            [video.record.id],
+            metadata={
+                "source": "video_frame_capture",
+                "source_artifact_id": video.record.id,
+                "timestamp_ms": captured.timestamp_ms,
+                "capture": capture_metadata,
+            },
+            input_artifact_roles={video.record.id: "source_video"},
         )
 
     if node_key == "video.change_voice":

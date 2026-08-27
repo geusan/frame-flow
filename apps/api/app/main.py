@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import mimetypes
 import os
 import re
 from contextlib import asynccontextmanager
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,15 +55,18 @@ from .domain import (
     RunResponse,
     SelectionRequest,
     SignedUrlRequest,
+    SceneSearchRequest,
     VariationRequest,
     utc_now,
 )
 from .canvas_runs import canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_selection
+from .artifact_lineage import artifact_lineage_graph
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
 from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
 from .providers import MODEL_REGISTRY, OPENAI_MODEL_REGISTRY
 from .reference_ingest import ReferenceIngestError, get_reference_provider, render_proxy
+from .scene_search import SceneSearchError, search_video_scenes
 from .experiments import experiment_response, run_experiment
 from .temporal_runtime import TASK_QUEUE
 from .temporal_workflow import GenerationRunWorkflow, GenerationWorkflowInput
@@ -71,6 +75,7 @@ from .video_downloaders import configured_video_downloader_name, get_video_downl
 from .service import (
     artifact_response,
     audit,
+    backfill_artifact_edges,
     broker,
     canonicalize_url,
     create_artifact,
@@ -88,6 +93,9 @@ CANVAS_ARTIFACT_MAX_BYTES = 250 * 1024 * 1024
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_all()
     get_storage().initialize()
+    with SessionLocal() as lineage_db:
+        if backfill_artifact_edges(lineage_db):
+            lineage_db.commit()
     if not uses_temporal():
         with SessionLocal() as startup_db:
             resumable_runs = startup_db.scalars(select(CanvasRunRecord).where(CanvasRunRecord.status.in_([NodeStatus.READY, NodeStatus.RUNNING]))).unique().all()
@@ -139,6 +147,7 @@ def health() -> dict[str, Any]:
         "generation_provider_mode": os.getenv("GENERATION_PROVIDER_MODE", "live"),
         "reference_provider_mode": os.getenv("REFERENCE_PROVIDER_MODE", "live"),
         "video_downloader_provider": configured_video_downloader_name(),
+        "scene_search_provider_mode": os.getenv("SCENE_SEARCH_PROVIDER_MODE", "live"),
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
         "google_configured": bool(os.getenv("GOOGLE_CLOUD_PROJECT")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
@@ -704,6 +713,72 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)) -> ArtifactRes
     return artifact_response(artifact)
 
 
+@app.get("/artifacts/{artifact_id}/lineage")
+def get_artifact_lineage(
+    artifact_id: str,
+    direction: Literal["ancestors", "descendants", "both"] = Query(default="both"),
+    depth: int = Query(default=8, ge=0, le=32),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        return artifact_lineage_graph(db, artifact_id, direction=direction, depth=depth)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.post("/artifacts/{artifact_id}/scene-search")
+def search_artifact_scenes(
+    artifact_id: str,
+    payload: SceneSearchRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    source = db.get(ArtifactRecord, artifact_id)
+    if not source:
+        raise HTTPException(404, "source video artifact not found")
+    if source.type not in {"Video", "FinalVideo"}:
+        raise HTTPException(415, "only video artifacts support scene search")
+    storage = get_storage()
+    try:
+        bucket, key = storage_location(source.uri, source.metadata_json)
+        content_type = str((source.metadata_json.get("storage") or {}).get("content_type") or "video/mp4")
+        result = search_video_scenes(
+            storage.get_bytes(bucket=bucket, key=key),
+            content_type,
+            payload.prompt,
+            candidate_count=payload.candidate_count,
+            sample_count=payload.sample_count,
+        )
+    except StorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except SceneSearchError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    search_id = new_id("search")
+    audit(db, "artifact.scene_searched", source.id, {
+        "search_id": search_id,
+        "prompt": payload.prompt,
+        "provider": result.provider,
+        "provider_request_id": result.provider_request_id,
+        "candidate_count": len(result.scenes),
+    })
+    db.commit()
+    return {
+        "search_id": search_id,
+        "source_artifact_id": source.id,
+        "prompt": payload.prompt,
+        "provider": result.provider,
+        "exact_model_id": result.exact_model_id,
+        "provider_request_id": result.provider_request_id,
+        "source_duration_ms": result.source_duration_ms,
+        "candidates": [{
+            "index": scene.frame.index,
+            "timestamp_ms": scene.frame.timestamp_ms,
+            "score": scene.score,
+            "reason": scene.reason,
+            "thumbnail_data_url": f"data:{scene.frame.content_type};base64,{base64.b64encode(scene.frame.content).decode()}",
+        } for scene in result.scenes],
+    }
+
+
 @app.post("/artifacts/{artifact_id}/capture-frame", status_code=status.HTTP_201_CREATED)
 def capture_artifact_frame(
     artifact_id: str,
@@ -733,10 +808,21 @@ def capture_artifact_frame(
     hours, minutes = divmod(minutes, 60)
     timestamp_label = f"{hours:02d}-{minutes:02d}-{seconds:02d}-{milliseconds:03d}"
     filename = f"{safe_stem[:150]}-frame-{timestamp_label}.jpg"
+    search_context = payload.model_dump(exclude={"timestamp_ms"}, exclude_none=True)
+    capture_metadata = {
+        "operation": "ffmpeg-accurate-seek.v1",
+        "source_artifact_id": source.id,
+        "timestamp_ms": captured.timestamp_ms,
+        "source_duration_ms": captured.source_duration_ms,
+        "width": captured.width,
+        "height": captured.height,
+        **({"scene_search": search_context} if search_context else {}),
+    }
     artifact = create_artifact(
         db,
         "Image",
         input_artifact_ids=[source.id],
+        input_artifact_roles={source.id: "source_video"},
         content=captured.content,
         content_type=captured.content_type,
         filename=filename,
@@ -745,14 +831,7 @@ def capture_artifact_frame(
             "filename": filename,
             "source_artifact_id": source.id,
             "timestamp_ms": captured.timestamp_ms,
-            "capture": {
-                "operation": "ffmpeg-accurate-seek.v1",
-                "source_artifact_id": source.id,
-                "timestamp_ms": captured.timestamp_ms,
-                "source_duration_ms": captured.source_duration_ms,
-                "width": captured.width,
-                "height": captured.height,
-            },
+            "capture": capture_metadata,
             "immutable": True,
         },
     )
@@ -760,6 +839,7 @@ def capture_artifact_frame(
     audit(db, "artifact.video_frame_captured", artifact.id, {
         "source_artifact_id": source.id,
         "timestamp_ms": captured.timestamp_ms,
+        **({"search_id": payload.search_id} if payload.search_id else {}),
     })
     db.commit()
     return {

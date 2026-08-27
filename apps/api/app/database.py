@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .domain import utc_now
@@ -105,6 +105,29 @@ class ArtifactRecord(Timestamped, Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     producer_node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     input_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class ArtifactEdgeRecord(Timestamped, Base):
+    __tablename__ = "artifact_edges"
+    __table_args__ = (
+        UniqueConstraint(
+            "parent_artifact_id",
+            "child_artifact_id",
+            "role",
+            "ordinal",
+            name="uq_artifact_edges_relation",
+        ),
+    )
+    parent_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("artifacts.id", ondelete="CASCADE"), index=True
+    )
+    child_artifact_id: Mapped[str] = mapped_column(
+        ForeignKey("artifacts.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(64), default="input")
+    ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    operation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
