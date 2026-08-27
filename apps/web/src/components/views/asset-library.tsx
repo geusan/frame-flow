@@ -195,6 +195,8 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const [selected, setSelected] = useState<SceneSearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -241,83 +243,88 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
     }
   };
 
-  return <div className="scene-search-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="scene-search-dialog" role="dialog" aria-modal="true" aria-label={`Search scenes in ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="scene-search-head"><span><small>Visual scene search</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close scene search"><X size={16} /></button></div>
-      <div className="scene-search-body">
-        <div className="scene-search-source">
-          <video ref={videoRef} src={asset.url} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => { if (selected) event.currentTarget.currentTime = Math.min(selected.timestamp_ms / 1000, event.currentTarget.duration || 0); }} />
-          <form onSubmit={(event) => { event.preventDefault(); void searchScenes(); }}>
-            <label><Search size={14} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 인물이 카메라를 바라보는 장면" autoFocus /></label>
-            <button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search scenes"}</button>
-          </form>
-          <div className="scene-search-model-settings">
-            <label><span>Provider</span><select value={provider} onChange={(event) => { const nextProvider = event.target.value as SceneSearchProvider; setProvider(nextProvider); setModelAlias(sceneSearchModels[nextProvider][0].value); setResult(null); setSelected(null); }}><option value="google">Google</option><option value="openai">OpenAI</option></select></label>
-            <label><span>Model</span><select value={modelAlias} onChange={(event) => { setModelAlias(event.target.value); setResult(null); setSelected(null); }}>{sceneSearchModels[provider].map((model) => <option value={model.value} key={model.value}>{model.label}</option>)}</select></label>
-          </div>
-          {result && <div className="scene-search-provider"><span>{result.provider} · {result.model_alias} → {result.exact_model_id}</span><code>{result.provider_request_id}</code></div>}
-          {error && <div className="scene-search-error">{error}</div>}
-        </div>
-        <div className="scene-search-results">
-          <div><strong>Scene candidates</strong><small>{result ? `${result.candidates.length} matches` : "Enter a visual description to search"}</small></div>
-          {!result && !searching && <div className="scene-search-empty"><Sparkles size={22} /><span>Prompt와 가장 관련 있는 장면을 찾아 타임스탬프와 점수로 보여줍니다.</span></div>}
-          {searching && <div className="scene-search-empty"><RefreshCw size={22} className="spin" /><span>Sampling and ranking video frames…</span></div>}
-          {result && <div className="scene-candidate-grid">{result.candidates.map((candidate) => <button type="button" className={selected?.index === candidate.index ? "selected" : ""} onClick={() => setSelected(candidate)} key={`${candidate.index}-${candidate.timestamp_ms}`}>
-            <span style={{ backgroundImage: `url(${candidate.thumbnail_data_url})` }}><Play size={15} fill="currentColor" /><b>{formatPlaybackTimestamp(candidate.timestamp_ms)}</b></span>
-            <div><strong>{Math.round(candidate.score * 100)}% match</strong><small>{candidate.reason}</small></div>
-          </button>)}</div>}
-        </div>
-      </div>
-      <div className="scene-search-foot"><span>{selected ? `Selected · ${formatPlaybackTimestamp(selected.timestamp_ms)} · ${Math.round(selected.score * 100)}%` : "Select a candidate to seek the player"}</span><button type="button" onClick={() => void captureSelected()} disabled={!selected || capturing}><Camera size={14} /> {capturing ? "Capturing…" : "Capture selected frame"}</button></div>
-    </section>
-  </div>;
-}
-
-function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: ArtifactListItem; onCaptured: (captured: CapturedFrameArtifact) => void; onInspect: () => void; onSearchScenes: () => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [aspectRatio, setAspectRatio] = useState(16 / 10);
-  const [capturing, setCapturing] = useState(false);
-  const [captureError, setCaptureError] = useState<string | null>(null);
-  const duration = formatDuration(asset.duration_ms);
-  const currentTimestamp = formatPlaybackTimestamp(currentTimestampMs);
-  const galleryStyle = {
-    "--asset-ratio": aspectRatio,
-    "--asset-basis": `${aspectRatio * 260}px`,
-  } as CSSProperties;
-
-  const captureCurrentFrame = async () => {
-    if (!isVideo(asset)) return;
+  const captureCurrent = async () => {
     const timestampMs = Math.max(0, Math.round((videoRef.current?.currentTime ?? 0) * 1000));
     setCapturing(true);
-    setCaptureError(null);
+    setError(null);
     try {
       onCaptured(await frameflowApi.captureVideoFrame(asset.id, timestampMs));
-    } catch (error) {
-      setCaptureError(error instanceof Error ? error.message : "Frame capture failed");
+      onClose();
+    } catch (captureError) {
+      setError(captureError instanceof Error ? captureError.message : "Frame capture failed");
     } finally {
       setCapturing(false);
     }
   };
 
+  return <div className="scene-search-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="scene-search-dialog video-asset-dialog" role="dialog" aria-modal="true" aria-label={`Play and search ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
+      <div className="scene-search-head"><span><small>Video asset</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close video"><X size={16} /></button></div>
+      <div className="scene-search-body">
+        <div className="scene-search-source">
+          <video ref={videoRef} src={asset.url} controls muted playsInline autoPlay preload="metadata" onLoadedMetadata={(event) => {
+            setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
+            setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
+            if (selected) event.currentTarget.currentTime = Math.min(selected.timestamp_ms / 1000, event.currentTarget.duration || 0);
+          }} onTimeUpdate={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))} />
+        </div>
+        <aside className="scene-search-panel">
+          <section className="video-asset-description">
+            <small>About this video</small>
+            <h3>{asset.filename}</h3>
+            <p>{sourceLabel(asset.source)}로 저장된 영상입니다. 영상을 직접 재생하거나, 아래 프롬프트로 원하는 장면을 찾아 해당 시점으로 이동할 수 있습니다.</p>
+            <div><span><small>Resolution</small><strong>{videoDimensions ? `${videoDimensions.width} × ${videoDimensions.height}` : "Loading…"}</strong></span><span><small>Duration</small><strong>{formatDuration(asset.duration_ms) ?? "—"}</strong></span><span><small>Size</small><strong>{formatBytes(asset.size_bytes)}</strong></span></div>
+          </section>
+          <section className="scene-search-compose">
+            <div><span><Sparkles size={14} /> Prompt scene search</span><small>Describe a visual moment</small></div>
+            <form onSubmit={(event) => { event.preventDefault(); void searchScenes(); }}>
+              <label><Search size={14} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 인물이 카메라를 바라보는 장면" autoFocus /></label>
+              <button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search"}</button>
+            </form>
+            <div className="scene-search-model-settings">
+              <label><span>Provider</span><select value={provider} onChange={(event) => { const nextProvider = event.target.value as SceneSearchProvider; setProvider(nextProvider); setModelAlias(sceneSearchModels[nextProvider][0].value); setResult(null); setSelected(null); }}><option value="google">Google</option><option value="openai">OpenAI</option></select></label>
+              <label><span>Model</span><select value={modelAlias} onChange={(event) => { setModelAlias(event.target.value); setResult(null); setSelected(null); }}>{sceneSearchModels[provider].map((model) => <option value={model.value} key={model.value}>{model.label}</option>)}</select></label>
+            </div>
+            {result && <div className="scene-search-provider"><span>{result.provider} · {result.model_alias} → {result.exact_model_id}</span><code>{result.provider_request_id}</code></div>}
+            {error && <div className="scene-search-error">{error}</div>}
+          </section>
+          <div className="scene-search-results">
+            <div><strong>Scene candidates</strong><small>{result ? `${result.candidates.length} matches` : "프롬프트를 입력해 장면을 검색하세요"}</small></div>
+            {!result && !searching && <div className="scene-search-empty"><Sparkles size={22} /><span>프롬프트와 가장 관련 있는 장면을 찾아 타임스탬프와 점수로 보여줍니다.</span></div>}
+            {searching && <div className="scene-search-empty"><RefreshCw size={22} className="spin" /><span>Sampling and ranking video frames…</span></div>}
+            {result && <div className="scene-candidate-grid">{result.candidates.map((candidate) => <button type="button" className={selected?.index === candidate.index ? "selected" : ""} onClick={() => setSelected(candidate)} key={`${candidate.index}-${candidate.timestamp_ms}`}>
+              <span style={{ backgroundImage: `url(${candidate.thumbnail_data_url})` }}><Play size={15} fill="currentColor" /><b>{formatPlaybackTimestamp(candidate.timestamp_ms)}</b></span>
+              <div><strong>{Math.round(candidate.score * 100)}% match</strong><small>{candidate.reason}</small></div>
+            </button>)}</div>}
+          </div>
+        </aside>
+      </div>
+      <div className="scene-search-foot"><span>{selected ? `Selected · ${formatPlaybackTimestamp(selected.timestamp_ms)} · ${Math.round(selected.score * 100)}%` : `Current · ${formatPlaybackTimestamp(currentTimestampMs)}`}</span><div><button type="button" onClick={() => void captureCurrent()} disabled={capturing}><Camera size={14} /> Capture current frame</button><button type="button" onClick={() => void captureSelected()} disabled={!selected || capturing}><Sparkles size={14} /> Capture searched frame</button></div></div>
+    </section>
+  </div>;
+}
+
+function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem; onInspect: () => void; onOpenVideo: () => void }) {
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [aspectRatio, setAspectRatio] = useState(16 / 10);
+  const duration = formatDuration(asset.duration_ms);
+  const galleryStyle = {
+    "--asset-ratio": aspectRatio,
+    "--asset-basis": `${aspectRatio * 260}px`,
+  } as CSSProperties;
+
   return <article className={`asset-card ${isVideo(asset) ? "video" : "image"}`} style={galleryStyle}>
-    <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`}>
+    <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`} role={isVideo(asset) ? "button" : undefined} tabIndex={isVideo(asset) ? 0 : undefined} aria-label={isVideo(asset) ? `Play ${asset.filename}` : undefined} onClick={() => { if (isVideo(asset)) onOpenVideo(); }} onKeyDown={(event) => { if (isVideo(asset) && ["Enter", " "].includes(event.key)) { event.preventDefault(); onOpenVideo(); } }}>
       {isVideo(asset)
         ? <video
-            ref={videoRef}
             src={asset.url}
-            controls
             muted
             playsInline
             preload="metadata"
             onLoadedMetadata={(event) => {
-              setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
               setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
               if (event.currentTarget.videoWidth && event.currentTarget.videoHeight) setAspectRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight);
             }}
-            onTimeUpdate={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
-            onSeeked={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
           />
         : <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -325,25 +332,19 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
               if (event.currentTarget.naturalWidth && event.currentTarget.naturalHeight) setAspectRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight);
             }} />
           </>}
+      {isVideo(asset) && <span className="asset-video-dialog-trigger"><Play size={20} fill="currentColor" /></span>}
       <div className="asset-tile-top">
         <span className="asset-kind-badge">{isVideo(asset) ? <Film size={11} /> : <ImageIcon size={11} />}{isVideo(asset) ? "Video" : "Image"}</span>
         <span className="asset-tile-quick-actions">
           {duration && <small>{duration}</small>}
-          <button type="button" onClick={onInspect} aria-label={`View lineage for ${asset.filename}`}><GitBranch size={13} /></button>
-          <button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button>
+          <button type="button" onClick={(event) => { event.stopPropagation(); onInspect(); }} aria-label={`View lineage for ${asset.filename}`}><GitBranch size={13} /></button>
+          <button type="button" onClick={(event) => { event.stopPropagation(); window.open(asset.url, "_blank", "noopener,noreferrer"); }} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button>
         </span>
       </div>
       <div className="asset-tile-info">
         <strong title={asset.filename}>{asset.filename}</strong>
         <span>{sourceLabel(asset.source)} · {formatBytes(asset.size_bytes)} · {new Date(asset.created_at).toLocaleDateString("ko-KR")}</span>
-        {isVideo(asset) && <>
-          <span>Original {videoDimensions ? `${videoDimensions.width}×${videoDimensions.height}` : "ratio"} · {currentTimestamp}</span>
-          <div className="asset-tile-video-actions">
-            <button type="button" onClick={onSearchScenes}><Sparkles size={13} /> Prompt search</button>
-            <button type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button>
-          </div>
-        </>}
-        {captureError && <p className="asset-capture-error">{captureError}</p>}
+        {isVideo(asset) && <span>Original {videoDimensions ? `${videoDimensions.width}×${videoDimensions.height}` : "ratio"} · Click to play</span>}
       </div>
     </div>
   </article>;
@@ -441,7 +442,7 @@ export function AssetLibrary() {
 
       {!error && !loading && visibleAssets.length > 0 && (
         <div className="asset-grid">
-          {visibleAssets.map((asset) => <AssetCard asset={asset} onCaptured={handleCaptured} onInspect={() => setInspectedAsset(asset)} onSearchScenes={() => setSceneSearchAsset(asset)} key={asset.id} />)}
+          {visibleAssets.map((asset) => <AssetCard asset={asset} onInspect={() => setInspectedAsset(asset)} onOpenVideo={() => setSceneSearchAsset(asset)} key={asset.id} />)}
         </div>
       )}
       {inspectedAsset && <AssetLineageDrawer asset={inspectedAsset} onClose={() => setInspectedAsset(null)} key={inspectedAsset.id} />}
