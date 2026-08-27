@@ -11,7 +11,7 @@ Frameflow는 레퍼런스 영상의 원본 자산을 생성 단계와 분리하�
 1. Canvas 중심의 브라우저 편집기
 2. Reference·Format·Run·Artifact를 관리하는 FastAPI/Temporal 기반 Control Plane
 
-Canvas는 실제로 노드를 추가·연결·편집하고 Step 단위로 실행할 수 있다. 다만 Canvas의 미디어 생성 결과는 현재 로컬 Mock Preview이며, Google Provider와 FFmpeg Worker는 별도 Adapter/Worker로 구현되어 있지만 Canvas 실행과 완전히 연결되지는 않았다.
+Canvas는 실제로 노드를 추가·연결·편집하고 Step 단위로 실행할 수 있다. 로컬 미디어 생성 결과는 deterministic SVG·MP4·WAV 파일로 만들어 MinIO에 저장되고 Canvas에서 표시·재생된다. 이 결과는 실제 Google 생성 결과가 아니며, Google Provider와 FFmpeg Timeline Worker는 별도 Adapter/Worker로 구현되어 있지만 Canvas 실행과 완전히 연결되지는 않았다.
 
 ## 2. 실행 방법
 
@@ -256,7 +256,7 @@ Video Generator C → Video ─┘                  └→ Change Voice
 
 ## 9. Canvas 결과 Preview
 
-현재 Canvas는 생성 노드의 결과를 단일 Experiment API에서 받아 노드 안에 표시한다. 기타 compose·logic 노드는 아직 로컬 Preview 실행을 사용한다.
+현재 Canvas는 생성 노드의 결과를 단일 Experiment API에서 받아 노드 안에 표시한다. Image Generation은 SVG, Video Generation은 오디오를 포함한 H.264 MP4, Audio Generation은 24kHz WAV를 생성해 Object Storage에 저장한다. 기타 compose·logic 노드는 아직 로컬 Preview 실행을 사용한다.
 
 | 결과 | Preview |
 | --- | --- |
@@ -267,9 +267,15 @@ Video Generator C → Video ─┘                  └→ Change Voice
 | Text | 텍스트 Preview |
 | JSON/Spec | JSON Preview |
 
-중요: 기본 Experiment 실행 모드는 요청 해시로 고정되는 `deterministic` Preview다. 실제 Gemini Image, Veo, Gemini-TTS Adapter 코드는 존재하지만 단일 Experiment Executor의 운영 Provider로는 아직 연결되지 않았다. 이 구분은 Experiment 이력의 `execution_mode`에 기록된다.
+중요: 기본 Experiment 실행 모드는 요청 해시로 고정되는 `deterministic` 미디어다. 파일은 실제로 저장되고 재생되지만 콘텐츠는 로컬 테스트용이다. 실제 Gemini Image, Veo, Gemini-TTS Adapter 코드는 존재하나 단일 Experiment Executor의 운영 Provider로는 아직 연결되지 않았다. 이 구분은 Experiment 이력의 `execution_mode`에 기록된다.
 
 Video Editor도 현재 설정·다중 입력 검증·Mock 결과까지 동작하며, FFmpeg Timeline 합성은 Canvas 실행과 아직 연결되지 않았다.
+
+### Object Storage
+
+로컬 기본 Provider는 MinIO다. Artifact 본문은 불변 Object Key에 저장되며 PostgreSQL에는 URI, SHA-256, MIME, 크기와 Storage Provider가 기록된다. Canvas가 사용하는 `/artifacts/{id}/content` URL은 API가 매 요청마다 Signed GET URL로 연결하므로 브라우저 저장 데이터에 만료된 서명을 남기지 않는다.
+
+`STORAGE_PROVIDER`로 `memory`, `minio`, `r2`, `s3` 중 하나를 선택할 수 있다. MinIO는 필요한 버킷을 자동 생성하며 R2/S3 버킷은 배포 전에 생성한다. 브라우저 직접 업로드를 위한 `/artifacts/upload-url`도 실제 Signed PUT URL을 반환한다.
 
 ## 10. Reference와 권리 격리
 
@@ -412,13 +418,12 @@ make check
 
 1. Canvas Step Run을 FastAPI/Temporal NodeRun과 연결
 2. Google Provider 실제 자격증명 기반 생성
-3. 생성 Artifact를 GCS/MinIO에 저장하고 실제 URL Preview 제공
-4. Upload와 Assets를 Artifact API 및 Reference Library와 연결
-5. Video Editor를 Timeline JSON·FFmpeg Render와 연결
-6. 연결된 Video의 순서 변경·Trim·삭제 UI
-7. Canvas 정의를 DB의 WorkflowDefinition/Version으로 저장
-8. Run Inspector를 실제 Canvas Run과 연결
-9. Reference Collection Fan-out 실행
-10. 인증·Workspace 데이터 격리·관측성 운영 설정
+3. Upload와 Assets를 Artifact API 및 Reference Library와 연결
+4. Video Editor를 Timeline JSON·FFmpeg Render와 연결
+5. 연결된 Video의 순서 변경·Trim·삭제 UI
+6. Canvas 정의를 DB의 WorkflowDefinition/Version으로 저장
+7. Run Inspector를 실제 Canvas Run과 연결
+8. Reference Collection Fan-out 실행
+9. 인증·Workspace 데이터 격리·관측성 운영 설정
 
-현재 상태는 편집 가능한 Canvas와 실행 가능한 백엔드 기반을 함께 갖춘 MVP지만, Canvas의 미디어 생성·편집은 아직 Mock 실행과 실제 Provider/Worker 사이의 통합 작업이 남아 있다.
+현재 상태는 편집 가능한 Canvas와 MinIO 기반 실제 미디어 저장·재생 경로를 갖춘 MVP지만, 콘텐츠 생성·편집은 아직 deterministic 실행과 실제 Provider/Worker 사이의 통합 작업이 남아 있다.

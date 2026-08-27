@@ -14,7 +14,7 @@
 
 - PostgreSQL: 제품 상태의 기준. UI는 이 상태만 신뢰한다.
 - Temporal: 장기 실행의 내구성, 재시도, Signal/Update, Timer를 담당한다.
-- GCS: 대용량 불변 Artifact 본문을 저장한다.
+- Object Storage: 대용량 불변 Artifact 본문을 저장한다. 로컬은 MinIO, 운영은 설정에 따라 R2/S3를 사용하며 GCS 기반은 Terraform 확장 대상으로 유지한다.
 - Provider: 외부 비동기 operation을 수행하며 operation ID를 통해 재연결한다.
 
 Temporal Payload에는 Artifact 본문을 넣지 않는다. ID, URI, Hash와 작은 실행 메타데이터만 전달한다.
@@ -53,4 +53,3 @@ AuditEvent ── subject_id ──> any immutable entity
 ## Trust boundary
 
 Reference transcript, metadata와 외부 페이지 텍스트는 모두 untrusted data입니다. Prompt Compiler는 이를 명령 채널이 아니라 구분된 데이터 블록으로만 전달해야 합니다. 생성 Worker는 Reference 원본 URI를 해석하거나 읽을 권한이 없습니다.
-

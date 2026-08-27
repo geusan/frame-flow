@@ -8,7 +8,7 @@ from typing import Any, AsyncIterator
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from temporalio.client import Client
@@ -53,6 +53,7 @@ from .providers import MODEL_REGISTRY
 from .experiments import experiment_response, run_experiment
 from .temporal_runtime import TASK_QUEUE
 from .temporal_workflow import GenerationRunWorkflow, GenerationWorkflowInput
+from .storage import StorageError, get_storage, safe_upload_key, storage_location
 from .service import (
     artifact_response,
     audit,
@@ -70,6 +71,7 @@ from .service import (
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_all()
+    get_storage().initialize()
     yield
 
 
@@ -102,7 +104,7 @@ async def temporal_client() -> Client:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "frameflow-api"}
+    return {"status": "ok", "service": "frameflow-api", "storage_provider": get_storage().settings.provider}
 
 
 @app.post("/experiments", response_model=ExperimentRunResponse, status_code=201)
@@ -450,14 +452,51 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)) -> ArtifactRes
 @app.post("/artifacts/upload-url")
 def artifact_upload_url(payload: SignedUrlRequest) -> dict[str, Any]:
     upload_id = new_id("upload")
-    return {"upload_id": upload_id, "method": "PUT", "url": f"http://localhost:8000/dev-storage/upload/{upload_id}?signature=local-demo", "expires_in_seconds": 900, "headers": {"content-type": payload.content_type}}
+    storage = get_storage()
+    key = safe_upload_key(upload_id, payload.filename)
+    try:
+        target = storage.create_upload_url(bucket=storage.settings.buckets.generation, key=key, content_type=payload.content_type)
+    except StorageError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return {
+        "upload_id": upload_id,
+        "provider": target.provider,
+        "bucket": target.bucket,
+        "object_key": target.key,
+        "object_uri": target.uri,
+        "method": "PUT",
+        "url": target.url,
+        "expires_in_seconds": target.expires_in_seconds,
+        "headers": target.headers,
+    }
 
 
 @app.get("/artifacts/{artifact_id}/download-url")
 def artifact_download_url(artifact_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    if not db.get(ArtifactRecord, artifact_id):
+    artifact = db.get(ArtifactRecord, artifact_id)
+    if not artifact:
         raise HTTPException(404, "artifact not found")
-    return {"url": f"http://localhost:8000/dev-storage/download/{artifact_id}?signature=local-demo", "expires_in_seconds": 900}
+    storage = get_storage()
+    try:
+        bucket, key = storage_location(artifact.uri, artifact.metadata_json)
+        url = storage.create_download_url(bucket=bucket, key=key)
+    except StorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return {"provider": storage.settings.provider, "url": url, "expires_in_seconds": storage.settings.signed_url_ttl_seconds}
+
+
+@app.get("/artifacts/{artifact_id}/content", response_class=RedirectResponse)
+def artifact_content(artifact_id: str, db: Session = Depends(get_db)) -> RedirectResponse:
+    artifact = db.get(ArtifactRecord, artifact_id)
+    if not artifact:
+        raise HTTPException(404, "artifact not found")
+    storage = get_storage()
+    try:
+        bucket, key = storage_location(artifact.uri, artifact.metadata_json)
+        url = storage.create_download_url(bucket=bucket, key=key)
+    except StorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return RedirectResponse(url, status_code=307)
 
 
 @app.get("/models")

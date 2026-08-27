@@ -5,6 +5,7 @@ TEST_DB = Path(__file__).parent / "test_video_canvas.db"
 if TEST_DB.exists():
     TEST_DB.unlink()
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
+os.environ["STORAGE_PROVIDER"] = "memory"
 
 import pytest
 from fastapi.testclient import TestClient

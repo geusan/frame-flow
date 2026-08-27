@@ -16,6 +16,7 @@ from .compiler import DEFAULT_NODES
 from .database import ArtifactRecord, AuditEventRecord, NodeRunRecord, RunRecord, SessionLocal
 from .domain import ArtifactResponse, EventResponse, NodeRunResponse, NodeStatus, RunResponse
 from .providers import MockGoogleProvider
+from .storage import artifact_object_key, bucket_for_artifact, get_storage
 
 
 def new_id(prefix: str) -> str:
@@ -53,18 +54,54 @@ def create_artifact(
     input_artifact_ids: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
     content_seed: str | None = None,
+    content: bytes | None = None,
+    content_type: str | None = None,
+    filename: str | None = None,
 ) -> ArtifactRecord:
     artifact_id = new_id("art")
-    sha = hashlib.sha256((content_seed or artifact_id).encode()).hexdigest()
+    artifact_metadata = dict(metadata or {})
+    if content is None:
+        content_type = "application/json"
+        content = json.dumps(
+            {
+                "type": artifact_type,
+                "schema_id": schema_id,
+                "metadata": artifact_metadata,
+                "content_seed": content_seed,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        filename = filename or "artifact.json"
+    content_type = content_type or "application/octet-stream"
+    storage = get_storage()
+    bucket = bucket_for_artifact(storage.settings, artifact_type, artifact_metadata)
+    key = artifact_object_key(artifact_type, artifact_id, content_type, filename)
+    stored = storage.put_bytes(
+        bucket=bucket,
+        key=key,
+        data=content,
+        content_type=content_type,
+        metadata={"artifact-id": artifact_id, "artifact-type": artifact_type.lower()},
+    )
+    artifact_metadata["storage"] = {
+        "provider": stored.provider,
+        "bucket": stored.bucket,
+        "key": stored.key,
+        "content_type": stored.content_type,
+        "size_bytes": stored.size_bytes,
+        "etag": stored.etag,
+    }
     artifact = ArtifactRecord(
         id=artifact_id,
         type=artifact_type,
         schema_id=schema_id,
-        uri=f"gs://project-derived-formats/{artifact_type.lower()}/{artifact_id}",
-        sha256=sha,
+        uri=stored.uri,
+        sha256=stored.sha256,
         producer_node_run_id=producer_node_run_id,
         input_artifact_ids=input_artifact_ids or [],
-        metadata_json=metadata or {},
+        metadata_json=artifact_metadata,
     )
     db.add(artifact)
     return artifact
@@ -246,4 +283,3 @@ class DemoRunEngine:
 
 
 demo_engine = DemoRunEngine()
-

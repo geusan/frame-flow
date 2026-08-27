@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import hashlib
-import html
 import json
 import time
 from dataclasses import dataclass
-from urllib.parse import quote
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .database import ExperimentRunRecord
 from .domain import ExperimentRunRequest, ExperimentRunResponse, NodeStatus
+from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
 from .providers import MODEL_REGISTRY
 from .service import audit, create_artifact, new_id
+from .storage import artifact_content_url
 
 
 MODEL_COSTS = {
@@ -25,7 +25,7 @@ MODEL_COSTS = {
     "google.video.quality": 2.80,
     "google.tts.fast": 0.12,
 }
-EXECUTOR_REVISION = "deterministic-experiment.v1"
+EXECUTOR_REVISION = "deterministic.v2.storage"
 
 
 def resolve_model(model_alias: str) -> tuple[str, str]:
@@ -62,43 +62,34 @@ def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_m
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
-def _poster(prompt: str, exact_model_id: str, digest: str) -> str:
-    title = html.escape(prompt.strip()[:56] or "Untitled experiment")
-    model = html.escape(exact_model_id)
-    hue = int(digest[:4], 16) % 360
-    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 960">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="hsl({hue} 42% 20%)"/><stop offset="1" stop-color="hsl({(hue + 70) % 360} 48% 50%)"/></linearGradient></defs>
-    <rect width="720" height="960" fill="url(#g)"/><circle cx="570" cy="180" r="230" fill="#fff" opacity=".1"/>
-    <path d="M0 760 C170 610 320 760 480 570 S650 500 720 420 V960 H0Z" fill="#090b10" opacity=".48"/>
-    <text x="48" y="820" fill="#fff" font-family="Arial,sans-serif" font-size="34" font-weight="700">{title}</text>
-    <text x="50" y="872" fill="#fff" opacity=".72" font-family="Arial,sans-serif" font-size="20">{model}</text>
-    <text x="50" y="910" fill="#fff" opacity=".52" font-family="monospace" font-size="16">experiment {digest[:12]}</text>
-    </svg>'''
-    return f"data:image/svg+xml;charset=UTF-8,{quote(svg)}"
-
-
 @dataclass(frozen=True)
 class DeterministicResult:
     output: dict[str, object]
     artifact_type: str
     schema_id: str | None
     provider_request_id: str
+    content: bytes
+    content_type: str
+    filename: str
 
 
 def execute_deterministic(payload: ExperimentRunRequest, exact_model_id: str, digest: str) -> DeterministicResult:
     provider_request_id = f"local_{digest[:20]}"
     if payload.node_key == "image.generate":
-        output = {"kind": "image", "title": "Experiment image", "url": _poster(payload.prompt, exact_model_id, digest), "mimeType": "image/svg+xml"}
-        return DeterministicResult(output, "Image", "experiment.image.v1", provider_request_id)
+        output = {"kind": "image", "title": "Experiment image", "mimeType": "image/svg+xml"}
+        content = render_image_svg(payload.prompt, exact_model_id, digest)
+        return DeterministicResult(output, "Image", "experiment.image.v1", provider_request_id, content, "image/svg+xml", "preview.svg")
     if payload.node_key == "video.generate":
-        output = {"kind": "video", "title": "Experiment video", "url": _poster(payload.prompt, exact_model_id, digest), "mimeType": "image/svg+xml"}
-        return DeterministicResult(output, "Video", "experiment.video.v1", provider_request_id)
+        output = {"kind": "video", "title": "Experiment video", "mimeType": "video/mp4"}
+        content = render_video_mp4(digest)
+        return DeterministicResult(output, "Video", "experiment.video.v1", provider_request_id, content, "video/mp4", "preview.mp4")
     if payload.node_key == "tts.generate":
-        output = {"kind": "audio", "title": "Experiment voiceover", "text": f"Local deterministic preview · {exact_model_id}"}
-        return DeterministicResult(output, "Audio", "experiment.audio.v1", provider_request_id)
+        output = {"kind": "audio", "title": "Experiment voiceover", "text": f"Local deterministic preview · {exact_model_id}", "mimeType": "audio/wav"}
+        content = render_audio_wav(digest)
+        return DeterministicResult(output, "Audio", "experiment.audio.v1", provider_request_id, content, "audio/wav", "preview.wav")
     refined = f"{payload.prompt.strip()}\n\nCinematic intent preserved. Subject, action, camera motion, lighting, timing, and exclusions are explicit."
     output = {"kind": "text", "title": "Experiment text", "text": refined}
-    return DeterministicResult(output, "Text", "experiment.text.v1", provider_request_id)
+    return DeterministicResult(output, "Text", "experiment.text.v1", provider_request_id, refined.encode(), "text/plain", "result.txt")
 
 
 def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
@@ -163,7 +154,18 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     started = time.perf_counter()
     try:
         result = execute_deterministic(payload, exact_model_id, digest)
+        artifact = create_artifact(
+            db, result.artifact_type, schema_id=result.schema_id,
+            metadata={"experiment_id": record.id, "request_hash": digest, "output": result.output, "immutable": True},
+            content_seed=digest,
+            content=result.content,
+            content_type=result.content_type,
+            filename=result.filename,
+        )
+        db.flush()
     except Exception as exc:
+        db.rollback()
+        record = db.get(ExperimentRunRecord, record.id) or record
         record.status = NodeStatus.FAILED
         record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
         record.error = str(exc)
@@ -171,16 +173,13 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         db.commit()
         db.refresh(record)
         return record
-    artifact = create_artifact(
-        db, result.artifact_type, schema_id=result.schema_id,
-        metadata={"experiment_id": record.id, "request_hash": digest, "output": result.output, "immutable": True},
-        content_seed=digest,
-    )
-    db.flush()
     record.status = NodeStatus.SUCCEEDED
     record.provider_request_id = result.provider_request_id
     record.output_artifact_ids = [artifact.id]
-    record.output_payload = result.output
+    output = dict(result.output)
+    if result.output.get("kind") in {"image", "video", "audio"}:
+        output["url"] = artifact_content_url(artifact.id)
+    record.output_payload = output
     record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
     record.cost_usd = MODEL_COSTS.get(model_alias, 0)
     audit(db, "experiment.succeeded", record.id, {"request_hash": digest, "artifact_id": artifact.id})

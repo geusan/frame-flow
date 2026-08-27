@@ -18,6 +18,9 @@
 - 실행 전 그래프 확장량·비용·예산 검사
 - 불변 Artifact와 NodeRun Attempt 이력
 - Prompt·모델·입력·파라미터 Snapshot을 보존하는 단일 Experiment 실행 이력
+- MinIO에 저장되는 실제 SVG·MP4·WAV 로컬 생성 결과와 Canvas 미디어 재생
+- `memory`·`minio`·`r2`·`s3`로 교체 가능한 S3 호환 Storage Provider
+- Artifact SHA-256·Object Key·MIME·크기 보존과 Signed GET/PUT URL
 - 동일 요청 해시 캐시와 노드별 Baseline 지정
 - Retry·Regenerate·Fork·Candidate Select API
 - SSE Run Event 스트림과 사용자 선택 후 재개
@@ -31,7 +34,7 @@
 
 ## 빠른 시작
 
-필요 조건은 Node.js 22+, Python 3.11+, FFmpeg입니다.
+필요 조건은 Node.js 22+, Python 3.11+, FFmpeg, Docker입니다.
 
 ```bash
 make setup
@@ -44,6 +47,8 @@ make dev-api
 make dev-web
 ```
 
+`make dev-api`는 로컬 MinIO를 먼저 시작하고 필요한 Bucket은 API 시작 시 자동 생성합니다.
+
 Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. 시작 포트를 직접 지정하려면
 `WEB_PORT=3100 make dev-web`을 사용합니다. API 포트를 바꿔야 할 때는
 `API_PORT=8100 make dev-api`로 실행한 다음 Web도
@@ -54,6 +59,8 @@ Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. �
 - API 상태: <http://localhost:8000/health>
 
 API를 실행하지 않아도 Canvas 편집은 가능하지만 생성 노드의 단일 Experiment 실행과 실행 이력은 API가 필요합니다. API가 연결되면 상단에 `API connected`가 표시되고 Reference Metadata Inspect 및 Experiment 계약을 사용합니다.
+
+로컬 Experiment의 이미지·영상·음성은 각각 SVG, H.264 MP4, WAV 파일로 생성되어 MinIO에 저장됩니다. 이 파일은 실제 Google 생성 결과가 아니라 저장·재생 경로를 검증하기 위한 deterministic 미디어입니다.
 
 전체 로컬 서비스는 다음 명령으로 실행할 수 있습니다.
 
@@ -122,6 +129,19 @@ PostgreSQL이 사용자에게 보이는 상태의 기준입니다. `apps/api/app
 5. video operation은 제출과 완료를 분리하고 Reconciler가 operation ID로 재연결하게 합니다.
 
 Workflow에는 실제 모델 ID를 넣지 않습니다. 논리적 별칭만 사용하고 Run 생성 시점에 정확한 모델 ID를 Snapshot합니다.
+
+## Storage Provider 전환
+
+기본 로컬 Provider는 `minio`입니다. API는 시작할 때 필요한 버킷을 만들고, Artifact 본문을 저장한 뒤 DB에는 S3 URI, SHA-256, Bucket, Object Key, MIME과 크기를 기록합니다. Canvas에는 안정적인 Artifact Content URL을 전달하고, API가 요청마다 짧은 수명의 Signed GET URL로 연결합니다.
+
+지원 Provider:
+
+- `minio`: 로컬 Compose와 로컬 개발 기본값
+- `r2`: Cloudflare R2 S3 API
+- `s3`: 기타 S3 호환 저장소
+- `memory`: 자동화 테스트 전용
+
+R2로 바꿀 때는 `STORAGE_PROVIDER=r2`, `R2_ACCOUNT_ID`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`를 설정하고 버킷을 미리 생성합니다. 자세한 변수는 [`.env.example`](./.env.example)에 있습니다.
 
 ## 보안 기준
 

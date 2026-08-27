@@ -1,6 +1,12 @@
 from fastapi.testclient import TestClient
 import time
 
+from app.experiments import EXECUTOR_REVISION
+
+
+def test_executor_revision_fits_persisted_execution_mode():
+    assert len(EXECUTOR_REVISION) <= 32
+
 
 def import_reference(client: TestClient, suffix: str = "abc") -> str:
     inspect = client.post("/references/inspect", json={"urls": [f"https://youtube.com/watch?v={suffix}"]})
@@ -113,6 +119,19 @@ def test_single_experiment_snapshots_inputs_caches_and_sets_baseline(client: Tes
     assert first_run["inputs"] == payload["inputs"]
     assert first_run["cache_hit"] is False
     assert len(first_run["output_artifact_ids"]) == 1
+    assert first_run["output"]["mimeType"] == "video/mp4"
+    assert first_run["output"]["url"].endswith(f"/artifacts/{first_run['output_artifact_ids'][0]}/content")
+    artifact_id = first_run["output_artifact_ids"][0]
+    artifact = client.get(f"/artifacts/{artifact_id}").json()
+    assert artifact["uri"].startswith("memory://project-generation-assets/")
+    assert artifact["metadata"]["storage"]["content_type"] == "video/mp4"
+    assert artifact["metadata"]["storage"]["size_bytes"] > 0
+    download = client.get(f"/artifacts/{artifact_id}/download-url").json()
+    assert download["provider"] == "memory"
+    assert download["url"].startswith("memory://project-generation-assets/")
+    content = client.get(f"/artifacts/{artifact_id}/content", follow_redirects=False)
+    assert content.status_code == 307
+    assert content.headers["location"] == download["url"]
 
     second_run = client.post("/experiments", json=payload).json()
     assert second_run["id"] != first_run["id"]
