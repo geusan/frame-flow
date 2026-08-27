@@ -155,6 +155,14 @@ class ExperimentRunRecord(Timestamped, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class CanvasRecord(Timestamped, Base):
+    __tablename__ = "canvases"
+    name: Mapped[str] = mapped_column(String(255))
+    graph_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    active_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+
+
 class CanvasRunRecord(Timestamped, Base):
     __tablename__ = "canvas_runs"
     canvas_id: Mapped[str] = mapped_column(String(128), index=True)

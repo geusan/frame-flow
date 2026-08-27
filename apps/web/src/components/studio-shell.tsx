@@ -16,6 +16,7 @@ import { useStudioStore } from "@/lib/store";
 import { API_BASE, frameflowApi, type WorkspaceSummary } from "@/lib/api";
 import type { StudioView } from "@/lib/types";
 import { GenerationCanvas } from "./views/generation-canvas";
+import { CanvasLibrary } from "./views/canvas-library";
 import { AssetLibrary } from "./views/asset-library";
 import { ReferenceLibrary } from "./views/reference-library";
 import { FormatLab } from "./views/format-lab";
@@ -32,7 +33,8 @@ const navigation: Array<{ id: StudioView; label: string; icon: typeof Workflow }
 ];
 
 const titles: Record<StudioView, { eyebrow: string; title: string }> = {
-  canvas: { eyebrow: "Generation canvas", title: "Shorts Production" },
+  canvas: { eyebrow: "Workspace canvases", title: "Canvases" },
+  "canvas-editor": { eyebrow: "Canvas editor", title: "Workflow Canvas" },
   assets: { eyebrow: "Workspace media", title: "Asset Library" },
   references: { eyebrow: "Reference intelligence", title: "Reference Library" },
   formats: { eyebrow: "Reusable format system", title: "Format Lab" },
@@ -43,6 +45,8 @@ const titles: Record<StudioView, { eyebrow: string; title: string }> = {
 export function StudioShell() {
   const view = useStudioStore((state) => state.view);
   const setView = useStudioStore((state) => state.setView);
+  const selectedCanvasId = useStudioStore((state) => state.selectedCanvasId);
+  const openCanvas = useStudioStore((state) => state.openCanvas);
   const [apiStatus, setApiStatus] = useState<{ connected: boolean; googleConfigured: boolean; openaiConfigured: boolean } | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
 
@@ -59,6 +63,12 @@ export function StudioShell() {
     frameflowApi.workspaceSummary().then((summary) => { if (active) setWorkspace(summary); }).catch(() => undefined);
     return () => { active = false; };
   }, [view]);
+
+  useEffect(() => {
+    const refreshWorkspace = () => { void frameflowApi.workspaceSummary().then(setWorkspace).catch(() => undefined); };
+    window.addEventListener("frameflow:workspace-changed", refreshWorkspace);
+    return () => window.removeEventListener("frameflow:workspace-changed", refreshWorkspace);
+  }, []);
 
   return (
     <div className="studio-shell">
@@ -82,11 +92,12 @@ export function StudioShell() {
             <button
               type="button"
               key={id}
-              className={`nav-item ${view === id ? "active" : ""}`}
+              className={`nav-item ${view === id || (id === "canvas" && view === "canvas-editor") ? "active" : ""}`}
               onClick={() => setView(id)}
             >
               <Icon size={17} strokeWidth={1.9} />
               <span>{label}</span>
+              {workspace && id === "canvas" && <span className="nav-count">{workspace.canvases}</span>}
               {workspace && id === "assets" && <span className="nav-count">{workspace.images + workspace.videos}</span>}
               {workspace && id === "references" && <span className="nav-count">{workspace.references}</span>}
               {workspace && id === "formats" && <span className="nav-count">{workspace.formats}</span>}
@@ -112,7 +123,9 @@ export function StudioShell() {
         </header>
 
         <section className="view-container">
-          {view === "canvas" && <GenerationCanvas />}
+          {view === "canvas" && <CanvasLibrary onOpen={openCanvas} />}
+          {view === "canvas-editor" && selectedCanvasId && <GenerationCanvas canvasId={selectedCanvasId} onBack={() => setView("canvas")} key={selectedCanvasId} />}
+          {view === "canvas-editor" && !selectedCanvasId && <CanvasLibrary onOpen={openCanvas} />}
           {view === "assets" && <AssetLibrary />}
           {view === "references" && <ReferenceLibrary />}
           {view === "formats" && <FormatLab />}

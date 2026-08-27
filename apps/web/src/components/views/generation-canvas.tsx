@@ -26,6 +26,7 @@ import {
 } from "@xyflow/react";
 import {
   ArrowRight,
+  ArrowLeft,
   AudioWaveform,
   BadgeCheck,
   Bot,
@@ -39,7 +40,6 @@ import {
   CircleStop,
   Clapperboard,
   Copy,
-  FilePlus2,
   Film,
   Folder,
   FolderOpen,
@@ -96,7 +96,7 @@ import {
 import { StatusPill } from "@/components/ui/status-pill";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
 
-const STORAGE_KEY = "frameflow.canvas.v2";
+const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
 const SMOOTH_STEP_ROUTING_GAP = 40;
 
@@ -189,10 +189,6 @@ function invalidateDescendants(nodes: StudioFlowNode[], edges: Edge[], sourceId:
       lastExperimentId: undefined,
     },
   } : node);
-}
-
-function createCanvasId(): string {
-  return `canvas_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function providerFromModel(model?: string): ProviderName {
@@ -461,11 +457,11 @@ function NodeOutput({ output }: { output: CanvasOutput }) {
 
 const nodeTypes = { studio: WorkflowNode };
 
-export function GenerationCanvas() {
-  return <ReactFlowProvider><EditableCanvas /></ReactFlowProvider>;
+export function GenerationCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => void }) {
+  return <ReactFlowProvider><EditableCanvas canvasId={canvasId} onBack={onBack} /></ReactFlowProvider>;
 }
 
-function EditableCanvas() {
+function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => void }) {
   const [nodes, setNodes, applyNodeChanges] = useNodesState<StudioFlowNode>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const [compileOpen, setCompileOpen] = useState(false);
@@ -504,7 +500,6 @@ function EditableCanvas() {
   const toastTimerRef = useRef<number | null>(null);
   const cancelRunRef = useRef(false);
   const canvasRunEventsRef = useRef<EventSource | null>(null);
-  const canvasIdRef = useRef(createCanvasId());
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
 
@@ -525,14 +520,23 @@ function EditableCanvas() {
   }, []);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
+    let active = true;
+    const backupKey = `${BACKUP_STORAGE_PREFIX}.${canvasId}`;
+    frameflowApi.getCanvas(canvasId).then((document) => {
+      if (!active) return;
+      const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id });
+      setNodes(migrated.nodes);
+      setEdges(migrated.edges);
+      setCanvasName(document.name);
+      setActiveCanvasRunId(document.active_run_id ?? null);
+      loadedRef.current = true;
+    }).catch(() => {
       try {
-        const stored = window.localStorage.getItem(STORAGE_KEY);
+        const stored = window.localStorage.getItem(backupKey);
         if (stored) {
           const graph = JSON.parse(stored) as GraphSnapshot;
           if (Array.isArray(graph.nodes) && Array.isArray(graph.edges)) {
             const migrated = migrateStoredGraph(graph);
-            canvasIdRef.current = migrated.id ?? canvasIdRef.current;
             setNodes(migrated.nodes);
             setEdges(migrated.edges);
             if (migrated.name) setCanvasName(migrated.name);
@@ -540,12 +544,12 @@ function EditableCanvas() {
           }
         }
       } catch {
-        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.removeItem(backupKey);
       }
       loadedRef.current = true;
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [setEdges, setNodes]);
+    return () => { active = false; };
+  }, [canvasId, setEdges, setNodes]);
 
   useEffect(() => {
     let active = true;
@@ -557,13 +561,31 @@ function EditableCanvas() {
     if (!loadedRef.current || saveState === "Saved") return;
     const timer = window.setTimeout(() => {
       setSaveState("Saving");
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cloneGraph(nodes, edges), id: canvasIdRef.current, name: canvasName, activeRunId: activeCanvasRunId }));
-      setSaveState("Saved");
+      const backup = { ...cloneGraph(nodes, edges), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
+      window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
+      frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined })
+        .then(() => setSaveState("Saved"))
+        .catch((saveError) => { setSaveState("Unsaved"); notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error"); });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [activeCanvasRunId, canvasName, edges, nodes, saveState]);
+  }, [activeCanvasRunId, canvasId, canvasName, edges, nodes, notify, saveState]);
 
   const markUnsaved = useCallback(() => setSaveState("Unsaved"), []);
+
+  const saveNow = useCallback(async () => {
+    setSaveState("Saving");
+    const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
+    window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
+    try {
+      await frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined });
+      setSaveState("Saved");
+      return true;
+    } catch (saveError) {
+      setSaveState("Unsaved");
+      notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error");
+      return false;
+    }
+  }, [activeCanvasRunId, canvasId, canvasName, notify]);
 
   const pushHistory = useCallback((snapshot?: GraphSnapshot) => {
     setHistory((current) => [...current, snapshot ?? cloneGraph(nodesRef.current, edgesRef.current)].slice(-40));
@@ -931,7 +953,7 @@ function EditableCanvas() {
     });
     try {
       const experiment = await frameflowApi.createExperiment({
-        canvas_id: canvasIdRef.current,
+        canvas_id: canvasId,
         node_id: node.id,
         node_key: node.data.key,
         prompt,
@@ -968,7 +990,7 @@ function EditableCanvas() {
       notify(message, "error");
       return false;
     }
-  }, [completeExperimentNode, markUnsaved, notify, selectedNodeId, setNodes]);
+  }, [canvasId, completeExperimentNode, markUnsaved, notify, selectedNodeId, setNodes]);
 
   const validateAndOpen = useCallback(() => {
     const errors = validateGraph(nodesRef.current, edgesRef.current);
@@ -1056,7 +1078,7 @@ function EditableCanvas() {
     setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus, output: undefined, preview: undefined, outputArtifactIds: undefined } }));
     try {
       const run = await frameflowApi.createCanvasRun({
-        canvas_id: canvasIdRef.current,
+        canvas_id: canvasId,
         name: canvasName,
         nodes: nodesRef.current.map((node) => ({ ...node, data: { ...node.data, output: node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output } })) as Array<Record<string, unknown>>,
         edges: edgesRef.current as Array<Record<string, unknown>>,
@@ -1070,7 +1092,7 @@ function EditableCanvas() {
       setGraphRunning(false);
       notify(error instanceof Error ? error.message : "Canvas Run 시작에 실패했습니다.", "error");
     }
-  }, [applyCanvasRunUpdate, canvasName, notify, setNodes, subscribeCanvasRun]);
+  }, [applyCanvasRunUpdate, canvasId, canvasName, notify, setNodes, subscribeCanvasRun]);
 
   const stopGraph = async () => {
     cancelRunRef.current = true;
@@ -1144,21 +1166,6 @@ function EditableCanvas() {
     notify("Canvas의 모든 노드를 지웠습니다.", "success");
   };
 
-  const newCanvas = () => {
-    pushHistory();
-    canvasIdRef.current = createCanvasId();
-    setNodes([]);
-    setEdges([]);
-    setExperimentHistory([]);
-    setCanvasName("Untitled canvas");
-    selectNode(null);
-    setPaletteOpen(false);
-    setPickerOpen(true);
-    setPickerInsertPosition(null);
-    markUnsaved();
-    notify("새 빈 Canvas를 만들었습니다. + 버튼으로 첫 Step을 추가하세요.", "success");
-  };
-
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
   const selectedProvider = selectedNode ? selectedNode.data.provider ?? providerFromModel(selectedNode.data.model) : "google";
@@ -1172,11 +1179,11 @@ function EditableCanvas() {
   useEffect(() => {
     if (!selectedNodeId || selectedNode?.data.executable === false || selectedNode?.data.key === "candidate.select") return;
     let active = true;
-    frameflowApi.listExperiments(canvasIdRef.current, selectedNodeId)
+    frameflowApi.listExperiments(canvasId, selectedNodeId)
       .then((items) => { if (active) { setExperimentHistory(items); setExperimentHistoryNodeId(selectedNodeId); setExperimentHistoryError(null); } })
       .catch((error) => { if (active) { setExperimentHistoryNodeId(selectedNodeId); setExperimentHistoryError(error instanceof Error ? error.message : "Experiment history failed"); } });
     return () => { active = false; };
-  }, [selectedNode?.data.executable, selectedNode?.data.key, selectedNodeId]);
+  }, [canvasId, selectedNode?.data.executable, selectedNode?.data.key, selectedNodeId]);
   const visibleExperimentHistory = experimentHistoryNodeId === selectedNodeId ? experimentHistory : [];
 
   const markExperimentBaseline = async (experimentId: string) => {
@@ -1210,12 +1217,12 @@ function EditableCanvas() {
     <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${inspectorOpen && selectedNode ? "with-inspector" : ""}`}>
       <div className="canvas-toolbar">
         <div className="workflow-switcher canvas-name-field"><span className="workflow-glyph"><Workflow size={16} /></span><span><small>Canvas</small><input value={canvasName} onChange={(event) => { setCanvasName(event.target.value); markUnsaved(); }} aria-label="Canvas name" /></span></div>
-        <button className="secondary-button new-canvas-button" type="button" onClick={newCanvas} disabled={graphRunning}><FilePlus2 size={15} /> New</button>
+        <button className="secondary-button new-canvas-button" type="button" onClick={() => { void saveNow().then((saved) => { if (saved) onBack(); }); }} disabled={graphRunning || saveState === "Saving"}><ArrowLeft size={15} /> Canvases</button>
         <span className="canvas-divider" />
         <button className="tool-icon" type="button" onClick={undo} disabled={!history.length} aria-label="Undo"><Undo2 size={16} /></button>
         <button className="tool-icon" type="button" onClick={redo} disabled={!future.length} aria-label="Redo"><Redo2 size={16} /></button>
         <span className="canvas-divider" />
-        <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cloneGraph(nodes, edges), id: canvasIdRef.current, name: canvasName, activeRunId: activeCanvasRunId })); setSaveState("Saved"); }}><Save size={13} /> {saveState}</button>
+        <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => void saveNow()} disabled={saveState === "Saving"}><Save size={13} /> {saveState}</button>
         <button className="tool-icon reset-canvas" type="button" onClick={clearCanvas} disabled={graphRunning || !nodes.length} aria-label="Clear canvas"><Trash2 size={15} /></button>
         <div className="canvas-toolbar-spacer" />
         <button className="secondary-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</button>

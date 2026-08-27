@@ -104,7 +104,7 @@ Image Generator, Video Generator, Voiceover, LLM Assistant와 Script Generator�
 
 ### 4.5 저장과 복구
 
-Canvas 그래프는 브라우저 `localStorage`에 자동 저장된다.
+Canvas 목록과 그래프는 PostgreSQL의 `canvases` 테이블에 자동 저장된다. 브라우저 `localStorage`는 API 저장 실패에 대비한 Canvas별 로컬 백업에만 사용한다. 이전 단일 `frameflow.canvas.v2` 데이터는 실제 사용자 그래프인 경우 첫 Canvas 목록 진입 시 DB로 한 번 이관되며, 과거 샘플 그래프는 이관하지 않는다.
 
 - 노드 위치
 - 노드 설정

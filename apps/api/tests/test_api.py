@@ -689,3 +689,47 @@ def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: Te
     assert image_model["usage_count"] == 1
     assert image_model["last_used_at"] is not None
     assert image_model["configuration"]
+
+
+def test_canvas_documents_list_save_open_and_track_latest_run(client: TestClient):
+    created = client.post("/canvases", json={"name": "Saved Canvas", "nodes": [], "edges": []})
+    assert created.status_code == 201
+    canvas = created.json()
+    assert canvas["node_count"] == 0
+    assert client.get("/workspace/summary").json()["canvases"] == 1
+
+    saved = client.put(f"/canvases/{canvas['id']}", json={
+        "name": "Saved Canvas v2",
+        "nodes": [{
+            "id": "prompt",
+            "data": {
+                "key": "prompt.input",
+                "label": "Actual Prompt",
+                "kind": "input",
+                "executable": False,
+                "configText": "Persist this graph",
+                "outputType": "Prompt",
+            },
+        }],
+        "edges": [],
+    })
+    assert saved.status_code == 200
+    assert saved.json()["name"] == "Saved Canvas v2"
+    assert saved.json()["node_count"] == 1
+    listed = client.get("/canvases").json()
+    assert [item["id"] for item in listed] == [canvas["id"]]
+
+    run = client.post("/canvas-runs", json={
+        "canvas_id": canvas["id"],
+        "name": "Saved Canvas run",
+        "nodes": saved.json()["nodes"],
+        "edges": [],
+    })
+    assert run.status_code == 201
+    opened = client.get(f"/canvases/{canvas['id']}").json()
+    assert opened["active_run_id"] == run.json()["id"]
+    assert opened["last_run"]["id"] == run.json()["id"]
+
+    deleted = client.delete(f"/canvases/{canvas['id']}")
+    assert deleted.status_code == 204
+    assert client.get("/canvases").json() == []

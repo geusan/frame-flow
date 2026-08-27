@@ -70,6 +70,7 @@ export interface WorkspaceSummary {
   storage_provider: string;
   execution_backend: string;
   references: number;
+  canvases: number;
   formats: number;
   runs: number;
   regular_runs: number;
@@ -80,6 +81,19 @@ export interface WorkspaceSummary {
   images: number;
   videos: number;
   artifacts: number;
+}
+
+export interface CanvasDocument {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  node_count: number;
+  edge_count: number;
+  active_run_id?: string;
+  last_run?: { id: string; status: string; progress: number; created_at: string };
 }
 
 export interface WorkflowRunRecord {
@@ -277,12 +291,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(body.detail ?? `API request failed (${response.status})`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
+  listCanvases: () => request<CanvasDocument[]>("/canvases"),
+  createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
+  getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),
+  saveCanvas: (canvasId: string, payload: { name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; active_run_id?: string }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteCanvas: (canvasId: string) => request<void>(`/canvases/${canvasId}`, { method: "DELETE" }),
   inspectReferences: (urls: string[]) => request<InspectResult[]>("/references/inspect", { method: "POST", body: JSON.stringify({ urls }) }),
   listReferences: () => request<ReferenceRecord[]>("/references"),
   importReference: (metadata: InspectResult, rightsBasis: ReferenceRecord["rights_basis"] = "analysis_only") => request<{ reference_id: string; deduplicated: boolean; artifact_ids: string[] }>("/references/import", { method: "POST", body: JSON.stringify({ metadata, rights_basis: rightsBasis, allow_generation_input: ["owned", "licensed", "creative_commons"].includes(rightsBasis), allow_direct_asset_use: ["owned", "licensed"].includes(rightsBasis) }) }),

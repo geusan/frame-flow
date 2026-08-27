@@ -19,6 +19,7 @@ from temporalio.client import Client
 from .compiler import CompileError, DEFAULT_NODES, compile_generation_plan
 from .database import (
     ArtifactRecord,
+    CanvasRecord,
     CanvasRunRecord,
     DefinitionRecord,
     ExperimentRunRecord,
@@ -35,6 +36,7 @@ from .database import (
 from .domain import (
     ArtifactResponse,
     ArtifactUrlImportRequest,
+    CanvasDocumentRequest,
     CanvasRunRequest,
     CanvasRunResponse,
     CanvasSelectionRequest,
@@ -176,6 +178,7 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "storage_provider": get_storage().settings.provider,
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
         "references": int(db.scalar(select(func.count()).select_from(ReferenceRecord)) or 0),
+        "canvases": int(db.scalar(select(func.count()).select_from(CanvasRecord)) or 0),
         "formats": int(db.scalar(select(func.count()).select_from(FormatRecord)) or 0),
         "runs": regular_run_count + canvas_run_count,
         "regular_runs": regular_run_count,
@@ -187,6 +190,95 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "videos": artifact_counts.get("Video", 0) + artifact_counts.get("FinalVideo", 0),
         "artifacts": sum(artifact_counts.values()),
     }
+
+
+def canvas_document_payload(record: CanvasRecord, last_run: CanvasRunRecord | None = None) -> dict[str, Any]:
+    graph = record.graph_json or {}
+    return {
+        "id": record.id,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+        "name": record.name,
+        "nodes": graph.get("nodes") or [],
+        "edges": graph.get("edges") or [],
+        "node_count": len(graph.get("nodes") or []),
+        "edge_count": len(graph.get("edges") or []),
+        "active_run_id": record.active_run_id,
+        "last_run": ({
+            "id": last_run.id,
+            "status": last_run.status,
+            "progress": last_run.progress,
+            "created_at": last_run.created_at,
+        } if last_run else None),
+    }
+
+
+@app.get("/canvases")
+def list_canvases(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    records = db.scalars(select(CanvasRecord).order_by(CanvasRecord.updated_at.desc())).all()
+    run_rows = db.scalars(select(CanvasRunRecord).order_by(CanvasRunRecord.created_at.desc())).all()
+    last_run_by_canvas: dict[str, CanvasRunRecord] = {}
+    for run in run_rows:
+        last_run_by_canvas.setdefault(run.canvas_id, run)
+    return [canvas_document_payload(record, last_run_by_canvas.get(record.id)) for record in records]
+
+
+@app.post("/canvases", status_code=status.HTTP_201_CREATED)
+def create_canvas_document(payload: CanvasDocumentRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = CanvasRecord(
+        id=new_id("canvas"),
+        name=payload.name,
+        graph_json={"nodes": payload.nodes, "edges": payload.edges},
+        active_run_id=payload.active_run_id,
+        updated_at=utc_now(),
+    )
+    db.add(record)
+    audit(db, "canvas.created", record.id, {"name": record.name})
+    db.commit()
+    db.refresh(record)
+    return canvas_document_payload(record)
+
+
+@app.get("/canvases/{canvas_id}")
+def get_canvas_document(canvas_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = db.get(CanvasRecord, canvas_id)
+    if not record:
+        raise HTTPException(404, "canvas not found")
+    last_run = db.scalar(
+        select(CanvasRunRecord).where(CanvasRunRecord.canvas_id == canvas_id).order_by(CanvasRunRecord.created_at.desc())
+    )
+    return canvas_document_payload(record, last_run)
+
+
+@app.put("/canvases/{canvas_id}")
+def save_canvas_document(canvas_id: str, payload: CanvasDocumentRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = db.get(CanvasRecord, canvas_id)
+    created = record is None
+    if not record:
+        record = CanvasRecord(id=canvas_id, created_at=utc_now(), updated_at=utc_now(), name=payload.name, graph_json={})
+        db.add(record)
+    record.name = payload.name
+    record.graph_json = {"nodes": payload.nodes, "edges": payload.edges}
+    record.active_run_id = payload.active_run_id
+    record.updated_at = utc_now()
+    audit(db, "canvas.imported" if created else "canvas.saved", record.id, {
+        "node_count": len(payload.nodes),
+        "edge_count": len(payload.edges),
+    })
+    db.commit()
+    db.refresh(record)
+    return canvas_document_payload(record)
+
+
+@app.delete("/canvases/{canvas_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_canvas_document(canvas_id: str, db: Session = Depends(get_db)) -> Response:
+    record = db.get(CanvasRecord, canvas_id)
+    if not record:
+        raise HTTPException(404, "canvas not found")
+    db.delete(record)
+    audit(db, "canvas.deleted", canvas_id)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get("/workflow-runs")
@@ -242,6 +334,11 @@ async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_
         run = create_canvas_run(db, payload)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    canvas = db.get(CanvasRecord, payload.canvas_id)
+    if canvas:
+        canvas.active_run_id = run.id
+        canvas.updated_at = utc_now()
+        db.commit()
     if uses_temporal():
         dependencies = {str(node.get("id")): [] for node in payload.nodes}
         for edge in payload.edges:

@@ -35,7 +35,7 @@ export type PortType =
   | "QCReport"
   | "Any";
 
-export type StudioView = "canvas" | "assets" | "references" | "formats" | "runs" | "models";
+export type StudioView = "canvas" | "canvas-editor" | "assets" | "references" | "formats" | "runs" | "models";
 
 export interface FormatCore {
   schema_version: "format.core.v1";
