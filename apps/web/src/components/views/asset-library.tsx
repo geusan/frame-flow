@@ -276,6 +276,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
 function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: ArtifactListItem; onCaptured: (captured: CapturedFrameArtifact) => void; onInspect: () => void; onSearchScenes: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const duration = formatDuration(asset.duration_ms);
@@ -305,11 +306,17 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
             muted
             playsInline
             preload="metadata"
-            onLoadedMetadata={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
+            onLoadedMetadata={(event) => {
+              setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
+              setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
+            }}
             onTimeUpdate={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
             onSeeked={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
           />
-        : <div className="asset-card-image" role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
+        : <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="asset-card-image" src={asset.url} alt={asset.filename} loading="lazy" />
+          </>}
       <span className="asset-kind-badge">{isVideo(asset) ? <Film size={11} /> : <ImageIcon size={11} />}{isVideo(asset) ? "Video" : "Image"}</span>
       {duration && <span className="asset-duration">{duration}</span>}
     </div>
@@ -318,7 +325,7 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
       <span><small>{sourceLabel(asset.source)}</small><i /> <small>{formatBytes(asset.size_bytes)}</small></span>
       <time dateTime={asset.created_at}>{new Date(asset.created_at).toLocaleString("ko-KR")}</time>
       {isVideo(asset) && <div className="asset-capture-actions">
-        <span><small>Current frame</small><strong>{currentTimestamp}</strong></span>
+        <span><small>Original frame{videoDimensions ? ` · ${videoDimensions.width}×${videoDimensions.height}` : ""}</small><strong>{currentTimestamp}</strong></span>
         <div><button className="asset-scene-search-button" type="button" onClick={onSearchScenes}><Sparkles size={13} /> Prompt search</button><button className="asset-capture-button" type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button></div>
       </div>}
       {captureError && <p className="asset-capture-error">{captureError}</p>}

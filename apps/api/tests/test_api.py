@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 import json
+import subprocess
 import threading
 import time
 from types import SimpleNamespace
@@ -291,6 +292,16 @@ def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient
     content = client.get(f"/artifacts/{captured['id']}/content")
     assert content.status_code == 200
     assert content.content.startswith(b"\xff\xd8")
+    probe = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "json", "pipe:0",
+        ],
+        input=content.content,
+        check=True,
+        capture_output=True,
+    )
+    assert json.loads(probe.stdout)["streams"][0] == {"width": 360, "height": 640}
 
     artifact = client.get(f"/artifacts/{captured['id']}").json()
     assert artifact["input_artifact_ids"] == [imported["artifact_id"]]

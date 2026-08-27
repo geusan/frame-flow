@@ -85,13 +85,29 @@ def capture_video_frame(video: bytes, content_type: str, timestamp_ms: int) -> C
         ], timeout=180)
         if not output.exists() or not output.stat().st_size:
             raise MediaCaptureError("frame capture did not produce an image")
+        frame_probe = _run([
+            "ffprobe",
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "json",
+            str(output),
+        ], timeout=60)
+        try:
+            frame_stream = (json.loads(frame_probe.stdout).get("streams") or [{}])[0]
+        except json.JSONDecodeError as exc:
+            raise MediaCaptureError("ffprobe returned invalid captured frame metadata") from exc
         return CapturedVideoFrame(
             content=output.read_bytes(),
             content_type="image/jpeg",
             timestamp_ms=effective_timestamp_ms,
             source_duration_ms=duration_ms,
-            width=int(stream.get("width") or 0),
-            height=int(stream.get("height") or 0),
+            width=int(frame_stream.get("width") or 0),
+            height=int(frame_stream.get("height") or 0),
         )
 
 
