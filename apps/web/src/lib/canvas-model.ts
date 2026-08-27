@@ -3,6 +3,7 @@ import type { NodeStatus, PortType } from "./types";
 
 export type NodeKind = "input" | "logic" | "generate" | "compose" | "review";
 export type ProviderName = "google" | "openai";
+export type StickyColor = "yellow" | "pink" | "blue" | "green" | "lavender" | "gray";
 export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "text" | "sticky" | "changeVoice" | "translate";
 
 export interface CanvasOutput {
@@ -47,10 +48,10 @@ export interface StudioNodeData extends Record<string, unknown> {
   executable?: boolean;
   transition?: string;
   targetDurationSeconds?: number;
-  frameTimestampMs?: number;
   sourceLanguage?: string;
   targetLanguage?: string;
   voiceName?: string;
+  stickyColor?: StickyColor;
 }
 
 export type StudioFlowNode = Node<StudioNodeData, "studio">;
@@ -84,35 +85,34 @@ export interface NodeTemplate {
     executable?: boolean;
     transition?: string;
     targetDurationSeconds?: number;
-    frameTimestampMs?: number;
     sourceLanguage?: string;
     targetLanguage?: string;
     voiceName?: string;
+    stickyColor?: StickyColor;
   };
 }
 
 export const nodeTemplates: NodeTemplate[] = [
-  { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "다음 Step으로 전달할 Prompt", icon: "brief", kind: "input", outputType: "Prompt", configText: "", executable: false } },
-  { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "Prompt 필수 · Asset은 선택", icon: "image", kind: "generate", inputTypes: ["Prompt", "ReferenceAsset"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
-  { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "Prompt 필수 · 여러 이미지는 선택", icon: "video", kind: "generate", inputTypes: ["Prompt", "Image", "ReferenceAsset"], requiredInputTypes: ["Prompt"], multiInputTypes: ["Image"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
+  { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "텍스트와 연결된 이미지들을 다음 Step으로 전달", icon: "brief", kind: "input", inputTypes: ["Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
+  { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
+  { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "voice", label: "Voiceover", group: "Quick", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
   { id: "assistant", label: "LLM Assistant", group: "Quick", data: { key: "llm.assistant", label: "LLM assistant", description: "연결된 Prompt를 분석·변환", icon: "assistant", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Text", provider: "google", model: "text.quality", cost: "$0.03" } },
   { id: "folder", label: "Folders", group: "Advanced", visible: false, data: { key: "folder.group", label: "Folder", description: "Canvas 노드를 시각적으로 정리", icon: "folder", kind: "input", configText: "New folder", executable: false } },
 
-  { id: "upload", label: "Asset", group: "References", data: { key: "asset.upload", label: "Asset", description: "로컬 이미지·영상·오디오 업로드", icon: "upload", kind: "input", outputType: "ReferenceAsset", executable: false } },
+  { id: "upload", label: "Upload", group: "References", data: { key: "asset.upload", label: "Upload", description: "로컬 이미지·영상·오디오 업로드", icon: "upload", kind: "input", outputType: "ReferenceAsset", executable: false } },
   { id: "assets", label: "Assets", group: "References", data: { key: "asset.select", label: "Assets", description: "저장된 이미지·비디오를 Popover에서 선택", icon: "assets", kind: "input", outputType: "ReferenceAsset", configText: "", executable: false } },
 
-  { id: "image-category", label: "Image Generator", group: "Image", data: { key: "image.generate", label: "Image generator", description: "Prompt 필수 · Asset은 선택", icon: "image", kind: "generate", inputTypes: ["Prompt", "ReferenceAsset"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
-  { id: "video-category", label: "Video Generator", group: "Video", data: { key: "video.generate", label: "Video generator", description: "Prompt 필수 · 여러 이미지는 선택", icon: "video", kind: "generate", inputTypes: ["Prompt", "Image", "ReferenceAsset"], requiredInputTypes: ["Prompt"], multiInputTypes: ["Image"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
+  { id: "image-category", label: "Image Generator", group: "Image", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
+  { id: "video-category", label: "Video Generator", group: "Video", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video-editor", label: "Video Editor", group: "Video", data: { key: "video.edit", label: "Video editor", description: "여러 Video를 연결 순서대로 합성하고 트랜지션·길이를 적용", icon: "timeline", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00", resolution: "1080p", aspectRatio: "9:16", transition: "hard_cut", targetDurationSeconds: 30 } },
-  { id: "frame-extract", label: "Frame Extract", group: "Video", data: { key: "video.frame_extract", label: "Frame extract", description: "Video의 지정 타임스탬프를 Image Artifact로 캡처", icon: "image", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "Image", model: "local.ffmpeg", cost: "$0.00", frameTimestampMs: 0 } },
 
   { id: "voice-category", label: "Voiceover", group: "Audio", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
   { id: "change-voice", label: "Replace Audio", group: "Audio", data: { key: "video.change_voice", label: "Replace video audio", description: "Video의 기존 오디오를 연결된 Audio로 실제 교체", icon: "changeVoice", kind: "compose", inputTypes: ["Video", "Audio"], requiredInputTypes: ["Video", "Audio"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },
   { id: "translate", label: "Translate Video", group: "Audio", data: { key: "video.translate", label: "Translate video", description: "Chirp 3 음성인식·Gemini 번역·Gemini TTS로 영상 현지화", icon: "translate", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "Video", model: "google.localization.pipeline", cost: "$0.35", sourceLanguage: "auto", targetLanguage: "ko-KR", voiceName: "Kore" } },
 
-  { id: "text", label: "Text", group: "Utilities", data: { key: "utility.text", label: "Text", description: "Canvas 메모 또는 텍스트 전달", icon: "text", kind: "input", outputType: "Text", configText: "", executable: false } },
-  { id: "sticky", label: "Sticky Note", group: "Utilities", data: { key: "utility.sticky", label: "Sticky note", description: "실행과 무관한 Canvas 메모", icon: "sticky", kind: "input", configText: "", executable: false } },
+  { id: "text", label: "Text", group: "Utilities", visible: false, data: { key: "utility.text", label: "Text", description: "Legacy text note", icon: "text", kind: "input", outputType: "Text", configText: "", executable: false } },
+  { id: "sticky", label: "Sticky Note", group: "Utilities", data: { key: "utility.sticky", label: "Sticky note", description: "실행과 무관한 Canvas 메모", icon: "sticky", kind: "input", configText: "", stickyColor: "yellow", executable: false } },
 
   { id: "brief", label: "Generation brief", group: "Advanced", visible: false, data: { key: "generation.brief", label: "Generation brief", description: "주제, 메시지, 시청자와 목표 길이", icon: "brief", kind: "input", outputType: "Text", configText: "", executable: false } },
   { id: "format", label: "Format profile", group: "Advanced", visible: false, data: { key: "format.profile", label: "Format profile", description: "생성에 사용할 FormatCoreV1", icon: "format", kind: "input", outputType: "FormatProfile", preview: "Select a format", executable: false } },
@@ -225,9 +225,10 @@ export function stepInputError(node: StudioFlowNode, nodes: StudioFlowNode[], ed
 
 export function refreshReadyStatuses(nodes: StudioFlowNode[], edges: Edge[]): StudioFlowNode[] {
   return nodes.map((node) => {
-    if (["prompt.input", "asset.select", "utility.text"].includes(node.data.key)) {
+    if (["prompt.input", "asset.select", "utility.sticky"].includes(node.data.key)) {
       return { ...node, data: { ...node.data, status: node.data.configText?.trim() ? "SUCCEEDED" : "READY" } };
     }
+    if (node.data.status === "STALE" && (node.data.output || node.data.outputArtifactIds?.length)) return node;
     if (["RUNNING", "SUCCEEDED", "WAITING_INPUT", "FAILED"].includes(node.data.status)) return node;
     const ready = !stepInputError(node, nodes, edges);
     return { ...node, data: { ...node.data, status: ready ? "READY" : "BLOCKED" } };

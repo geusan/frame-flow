@@ -29,6 +29,11 @@ MODEL_REGISTRY = {
     "google.stt.default": "chirp_3",
 }
 
+GEMINI_API_MODEL_OVERRIDES = {
+    "google.video.fast": "veo-3.1-fast-generate-preview",
+    "google.video.quality": "veo-3.1-generate-preview",
+}
+
 OPENAI_MODEL_REGISTRY = {
     "openai.text.fast": "gpt-5.6-luna",
     "openai.text.quality": "gpt-5.6-terra",
@@ -38,3 +43,9 @@ OPENAI_MODEL_REGISTRY = {
 }
 
 ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY}
+
+
+def model_id_for_alias(logical_alias: str, *, gemini_api: bool = False) -> str | None:
+    if gemini_api and logical_alias in GEMINI_API_MODEL_OVERRIDES:
+        return GEMINI_API_MODEL_OVERRIDES[logical_alias]
+    return ALL_MODEL_REGISTRY.get(logical_alias)

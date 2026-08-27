@@ -3,10 +3,12 @@ import json
 
 import pytest
 
-from app.providers_google import GoogleProviderConfig, GoogleTextProvider, GoogleVideoProvider
+from app.providers_google import GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleVideoProvider
 from app.providers_localization import get_localization_services
 from app.format_extraction import FormatSource, GeminiFormatExtractor
 from app.providers_openai import OpenAIProviderConfig
+from app.providers import ProviderSubmission
+from app.experiments import resolve_model
 
 
 class FakeModels:
@@ -53,6 +55,80 @@ def test_veo_submission_snapshots_operation_and_request_hash():
     assert client.models.last["model"] == "veo-3.1-fast-generate-001"
     assert client.models.last["config"].aspect_ratio == "9:16"
     assert client.models.last["config"].number_of_videos == 2
+    assert client.models.last["config"].generate_audio is True
+    assert client.models.last["config"].enhance_prompt is True
+
+
+def test_image_generation_sends_reference_image_with_prompt():
+    client = FakeClient()
+    client.models.generate_content = lambda **kwargs: (
+        setattr(client.models, "last", kwargs)
+        or SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(inline_data=SimpleNamespace(data=b"result", mime_type="image/png"))]))])
+    )
+    result = GoogleImageProvider(GoogleProviderConfig("demo"), client=client).generate(
+        prompt="Change the background to blue",
+        reference_images=[(b"source-image", "image/png")],
+    )
+    assert result[0].data == b"result"
+    assert client.models.last["contents"][0] == "Change the background to blue"
+    assert client.models.last["contents"][1].inline_data.data == b"source-image"
+
+
+def test_gemini_api_key_selects_developer_api_and_preview_veo_model(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.setattr("app.providers_google.genai.Client", lambda **kwargs: captured.update(kwargs) or FakeClient())
+    config = GoogleProviderConfig.from_env()
+    provider = GoogleVideoProvider(config)
+    assert config.api_key == "gemini-test-key"
+    assert config.project is None
+    assert captured == {"api_key": "gemini-test-key"}
+    assert provider.exact_model("google.video.fast") == "veo-3.1-fast-generate-preview"
+    assert resolve_model("video.fast", "video.generate") == ("google.video.fast", "veo-3.1-fast-generate-preview")
+    provider.submit(prompt="Animate this image", duration_seconds=4)
+    config = provider.client.models.last["config"]
+    assert config.generate_audio is None
+    assert config.enhance_prompt is None
+    assert config.output_gcs_uri is None
+    provider.submit(prompt="Animate this image", duration_seconds=6, resolution="1080p", image_data=b"source", image_mime_type="image/png")
+    config = provider.client.models.last["config"]
+    assert config.duration_seconds == 8
+    assert config.resolution == "1080p"
+    provider.submit(
+        prompt="Use both people as visual references",
+        duration_seconds=6,
+        resolution="720p",
+        reference_images=[(b"image-one", "image/png"), (b"image-two", "image/jpeg")],
+    )
+    config = provider.client.models.last["config"]
+    assert config.duration_seconds == 8
+    assert len(config.reference_images) == 2
+    assert config.reference_images[0].reference_type.value == "ASSET"
+    assert provider.client.models.last["source"].image is None
+
+
+def test_gemini_api_video_download_uses_files_api():
+    class FakeFiles:
+        def __init__(self):
+            self.file = None
+
+        def download(self, *, file):
+            self.file = file
+            return b"browser-video"
+
+    video = SimpleNamespace(video_bytes=None, uri="https://generativelanguage.googleapis.com/download/video", mime_type="video/mp4")
+    operation = SimpleNamespace(done=True, error=None, response=SimpleNamespace(generated_videos=[SimpleNamespace(video=video)]), result=None)
+    client = FakeClient()
+    client.operations = SimpleNamespace(get=lambda _: operation)
+    client.files = FakeFiles()
+    provider = GoogleVideoProvider(GoogleProviderConfig(api_key="gemini-test-key"), client=client)
+    results = provider.wait_for_generated(
+        ProviderSubmission("google_request", "operations/video-1", "request-hash"),
+        poll_interval_seconds=0,
+    )
+    assert results[0].data == b"browser-video"
+    assert client.files.file is video
 
 
 def test_localization_requires_live_google_project_without_mock_fallback(monkeypatch):

@@ -250,6 +250,13 @@ class CanvasSelectionRequest(BaseModel):
     artifact_id: str = Field(min_length=1, max_length=128)
 
 
+class ProviderSettingsUpdateRequest(BaseModel):
+    enabled: bool
+    auth_method: str | None = Field(default=None, min_length=1, max_length=64)
+    values: dict[str, str] = Field(default_factory=dict)
+    clear_fields: list[str] = Field(default_factory=list)
+
+
 class ApiRecord(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

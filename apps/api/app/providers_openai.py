@@ -79,15 +79,19 @@ class OpenAIGenerationServices:
         if payload.node_key == "image.generate":
             count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
             size = _image_size(str(payload.parameters.get("aspect_ratio") or "9:16"))
-            response = self.client.images.generate(
-                model=exact_model,
-                prompt=payload.prompt,
-                n=count,
-                size=size,
-                quality=str(payload.parameters.get("quality") or "medium"),
-                output_format="png",
-                response_format="b64_json",
-            )
+            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
+            common = {
+                "model": exact_model,
+                "prompt": payload.prompt,
+                "n": count,
+                "size": size,
+                "quality": str(payload.parameters.get("quality") or "medium"),
+                "output_format": "png",
+            }
+            response = self.client.images.edit(
+                image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(image_inputs, start=1)],
+                **common,
+            ) if image_inputs else self.client.images.generate(**common)
             images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
             if not images:
                 raise RuntimeError("OpenAI Images API returned no image")

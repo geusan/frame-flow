@@ -64,6 +64,42 @@ export interface ModelRecord {
   last_used_at?: string;
 }
 
+export interface ProviderSettingField {
+  key: string;
+  label: string;
+  env_var: string;
+  value: string;
+  secret: boolean;
+  required: boolean;
+  has_value: boolean;
+  placeholder: string;
+  help_text: string;
+  auth_methods: string[];
+}
+
+export interface ProviderAuthMethod {
+  key: string;
+  label: string;
+  description: string;
+  kind: "api_key" | "oauth" | "setup_token" | "cloud";
+  external: boolean;
+  required_fields: string[];
+}
+
+export interface ProviderSetting {
+  provider: "openai" | "google" | "veo3" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax";
+  label: string;
+  description: string;
+  enabled: boolean;
+  configured: boolean;
+  auth_method: string;
+  auth_methods: ProviderAuthMethod[];
+  source: "default" | "environment" | "database";
+  created_at: string;
+  updated_at: string;
+  fields: ProviderSettingField[];
+}
+
 export interface WorkspaceSummary {
   service: string;
   environment: string;
@@ -313,9 +349,12 @@ export const frameflowApi = {
   listRuns: () => request<RunRecord[]>("/runs"),
   listWorkflowRuns: () => request<WorkflowRunRecord[]>("/workflow-runs"),
   listModels: () => request<ModelRecord[]>("/models"),
+  listProviderSettings: () => request<ProviderSetting[]>("/settings/providers"),
+  updateProviderSettings: (provider: ProviderSetting["provider"], payload: { enabled: boolean; auth_method?: string; values: Record<string, string>; clear_fields?: string[] }) => request<ProviderSetting>(`/settings/providers/${provider}`, { method: "PUT", body: JSON.stringify(payload) }),
   createExperiment: (payload: CreateExperimentInput) => request<ExperimentRun>("/experiments", { method: "POST", body: JSON.stringify(payload) }),
-  listExperiments: (canvasId: string, nodeId: string, limit = 20) => {
-    const query = new URLSearchParams({ canvas_id: canvasId, node_id: nodeId, limit: String(limit) });
+  listExperiments: (canvasId: string, nodeId?: string, limit = 20) => {
+    const query = new URLSearchParams({ canvas_id: canvasId, limit: String(limit) });
+    if (nodeId) query.set("node_id", nodeId);
     return request<ExperimentRun[]>(`/experiments?${query}`);
   },
   setExperimentBaseline: (experimentId: string) => request<ExperimentRun>(`/experiments/${experimentId}/baseline`, { method: "POST" }),

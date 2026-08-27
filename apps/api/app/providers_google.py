@@ -10,7 +10,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
-from .providers import MODEL_REGISTRY, ProviderSubmission
+from .providers import MODEL_REGISTRY, ProviderSubmission, model_id_for_alias
 
 
 class GoogleProviderError(RuntimeError):
@@ -19,16 +19,20 @@ class GoogleProviderError(RuntimeError):
 
 @dataclass(frozen=True)
 class GoogleProviderConfig:
-    project: str
+    project: str | None = None
     location: str = "global"
     api_version: str = "v1"
+    api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "GoogleProviderConfig":
-        project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-        if not project:
-            raise GoogleProviderError("GOOGLE_CLOUD_PROJECT is required for live Google providers")
-        return cls(project=project, location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"))
+        api_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
+        project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+        if api_key:
+            return cls(api_key=api_key, location="global", api_version="v1beta")
+        if project:
+            return cls(project=project, location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"), api_version="v1")
+        raise GoogleProviderError("GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT is required for live Google providers")
 
 
 @dataclass(frozen=True)
@@ -51,19 +55,22 @@ def _request_id(value: str) -> str:
 class GoogleProviderBase:
     def __init__(self, config: GoogleProviderConfig | None = None, client: Any | None = None) -> None:
         self.config = config or GoogleProviderConfig.from_env()
-        self.client = client or genai.Client(
-            vertexai=True,
-            project=self.config.project,
-            location=self.config.location,
-            http_options=types.HttpOptions(api_version=self.config.api_version),
+        self.client = client or (
+            genai.Client(api_key=self.config.api_key)
+            if self.config.api_key
+            else genai.Client(
+                vertexai=True,
+                project=self.config.project,
+                location=self.config.location,
+                http_options=types.HttpOptions(api_version=self.config.api_version),
+            )
         )
 
-    @staticmethod
-    def exact_model(logical_model: str) -> str:
-        try:
-            return MODEL_REGISTRY[logical_model]
-        except KeyError as exc:
-            raise GoogleProviderError(f"logical model is not registered: {logical_model}") from exc
+    def exact_model(self, logical_model: str) -> str:
+        exact_model = model_id_for_alias(logical_model, gemini_api=bool(self.config.api_key))
+        if not exact_model or logical_model not in MODEL_REGISTRY:
+            raise GoogleProviderError(f"logical model is not registered: {logical_model}")
+        return exact_model
 
 
 class GoogleTextProvider(GoogleProviderBase):
@@ -147,15 +154,17 @@ class GoogleImageProvider(GoogleProviderBase):
         candidate_count: int = 1,
         aspect_ratio: str = "9:16",
         seed: int | None = None,
+        reference_images: list[tuple[bytes, str]] | None = None,
     ) -> list[GeneratedBinary]:
         if not 1 <= candidate_count <= 4:
             raise GoogleProviderError("candidate_count must be between 1 and 4")
         exact_model = self.exact_model(logical_model)
-        payload = {"model": exact_model, "prompt": prompt, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed}
+        references = reference_images or []
+        payload = {"model": exact_model, "prompt": prompt, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "reference_hashes": [hashlib.sha256(data).hexdigest() for data, _ in references]}
         digest = request_hash(logical_model, payload)
         response = self.client.models.generate_content(
             model=exact_model,
-            contents=prompt,
+            contents=[prompt, *(types.Part.from_bytes(data=data, mime_type=mime_type) for data, mime_type in references)] if references else prompt,
             config=types.GenerateContentConfig(
                 candidate_count=candidate_count,
                 response_modalities=[types.Modality.TEXT, types.Modality.IMAGE],
@@ -186,31 +195,43 @@ class GoogleVideoProvider(GoogleProviderBase):
         output_gcs_uri: str | None = None,
         image_data: bytes | None = None,
         image_mime_type: str = "image/png",
+        reference_images: list[tuple[bytes, str]] | None = None,
         resolution: str = "720p",
     ) -> ProviderSubmission:
+        references = (reference_images or [])[:3]
+        if self.config.api_key and (image_data is not None or references or resolution in {"1080p", "4k"}):
+            duration_seconds = 8
         if duration_seconds not in {4, 6, 8}:
             raise GoogleProviderError("Veo shot duration must be 4, 6, or 8 seconds")
         if not 1 <= candidate_count <= 4:
             raise GoogleProviderError("Veo candidate_count must be between 1 and 4")
         exact_model = self.exact_model(logical_model)
-        payload = {"model": exact_model, "prompt": prompt, "duration_seconds": duration_seconds, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "output_gcs_uri": output_gcs_uri, "has_image": image_data is not None, "resolution": resolution}
+        payload = {"model": exact_model, "prompt": prompt, "duration_seconds": duration_seconds, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "output_gcs_uri": output_gcs_uri, "has_image": image_data is not None, "reference_hashes": [hashlib.sha256(data).hexdigest() for data, _ in references], "resolution": resolution}
         digest = request_hash(logical_model, payload)
+        config_values: dict[str, Any] = {
+            "duration_seconds": duration_seconds,
+            "number_of_videos": candidate_count,
+            "aspect_ratio": aspect_ratio,
+            "seed": seed,
+            "resolution": resolution,
+        }
+        if not self.config.api_key:
+            config_values.update(generate_audio=True, enhance_prompt=True, output_gcs_uri=output_gcs_uri)
+        if references:
+            config_values["reference_images"] = [
+                types.VideoGenerationReferenceImage(
+                    image=types.Image(image_bytes=data, mime_type=mime_type),
+                    reference_type=types.VideoGenerationReferenceType.ASSET,
+                )
+                for data, mime_type in references
+            ]
         operation = self.client.models.generate_videos(
             model=exact_model,
             source=types.GenerateVideosSource(
                 prompt=prompt,
-                image=types.Image(image_bytes=image_data, mime_type=image_mime_type) if image_data else None,
+                image=types.Image(image_bytes=image_data, mime_type=image_mime_type) if image_data and not references else None,
             ),
-            config=types.GenerateVideosConfig(
-                duration_seconds=duration_seconds,
-                number_of_videos=candidate_count,
-                aspect_ratio=aspect_ratio,
-                generate_audio=True,
-                enhance_prompt=True,
-                seed=seed,
-                output_gcs_uri=output_gcs_uri,
-                resolution=resolution,
-            ),
+            config=types.GenerateVideosConfig(**config_values),
         )
         if not operation.name:
             raise GoogleProviderError("Google video provider did not return an operation ID")
@@ -258,7 +279,7 @@ class GoogleVideoProvider(GoogleProviderBase):
             data = getattr(video, "video_bytes", None)
             mime_type = getattr(video, "mime_type", None) or "video/mp4"
             if not data and getattr(video, "uri", None):
-                data = self._download_gcs(video.uri)
+                data = self._download_gcs(video.uri) if video.uri.startswith("gs://") else self.client.files.download(file=video)
             if data:
                 generated_results.append(GeneratedBinary(data, mime_type, self.exact_model(logical_model), submission.provider_request_id))
         if not generated_results:

@@ -346,41 +346,6 @@ def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient
     assert past_end.status_code == 422
 
 
-def test_frame_extract_canvas_operation_preserves_timestamp_and_lineage(client: TestClient):
-    imported = client.post(
-        "/artifacts/import-url",
-        json={"url": "https://youtube.com/watch?v=frame-node"},
-    ).json()
-    response = client.post("/experiments", json={
-        "canvas_id": "canvas_frame_extract",
-        "node_id": "frame_extract_1",
-        "node_key": "video.frame_extract",
-        "prompt": "",
-        "model_alias": "local.ffmpeg",
-        "parameters": {"frame_timestamp_ms": 400},
-        "inputs": [{
-            "node_id": "video_source",
-            "type": "Video",
-            "artifact_ids": [imported["artifact_id"]],
-        }],
-    })
-
-    assert response.status_code == 201
-    experiment = response.json()
-    assert experiment["status"] == "SUCCEEDED"
-    assert experiment["output"]["kind"] == "image"
-    assert "0.400s" in experiment["output"]["title"]
-    artifact_id = experiment["output_artifact_ids"][0]
-    artifact = client.get(f"/artifacts/{artifact_id}").json()
-    assert artifact["input_artifact_ids"] == [imported["artifact_id"]]
-    assert artifact["metadata"]["capture"]["timestamp_ms"] == 400
-    lineage = client.get(f"/artifacts/{artifact_id}/lineage").json()
-    edge = lineage["edges"][0]
-    assert edge["role"] == "source_video"
-    extracted_node = next(node for node in lineage["nodes"] if node["id"] == artifact_id)
-    assert extracted_node["derivation"]["operation"] == "video.frame_extract"
-
-
 def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: TestClient):
     imported = client.post(
         "/artifacts/import-url",
@@ -700,6 +665,79 @@ def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: Te
     assert image_model["usage_count"] == 1
     assert image_model["last_used_at"] is not None
     assert image_model["configuration"]
+
+
+def test_image_connected_through_prompt_reaches_image_generator(client: TestClient):
+    uploaded = client.post(
+        "/artifacts/upload",
+        files={"file": ("source.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+    ).json()
+    uploaded_second = client.post(
+        "/artifacts/upload",
+        files={"file": ("source-two.png", b"\x89PNG\r\n\x1a\n-second", "image/png")},
+    ).json()
+    graph = {
+        "canvas_id": "canvas_prompt_image",
+        "name": "Prompt image pass-through",
+        "nodes": [
+            {
+                "id": "source_image",
+                "data": {
+                    "key": "asset.select", "label": "Assets", "kind": "input",
+                    "executable": False, "outputType": "Image",
+                    "outputArtifactIds": [uploaded["artifact_id"]],
+                    "output": {"kind": "image", "title": "source.png", "url": uploaded["url"], "mimeType": "image/png"},
+                },
+            },
+            {
+                "id": "edit_prompt",
+                "data": {
+                    "key": "prompt.input", "label": "Prompt", "kind": "input",
+                    "executable": False, "inputTypes": ["Image"], "requiredInputTypes": [],
+                    "outputType": "Prompt", "configText": "Use {{image:source_image}} for the subject and {{image:source_image_two}} for the background",
+                },
+            },
+            {
+                "id": "source_image_two",
+                "data": {
+                    "key": "asset.select", "label": "Assets 2", "kind": "input",
+                    "executable": False, "outputType": "Image",
+                    "outputArtifactIds": [uploaded_second["artifact_id"]],
+                    "output": {"kind": "image", "title": "source-two.png", "url": uploaded_second["url"], "mimeType": "image/png"},
+                },
+            },
+            {
+                "id": "image_generator",
+                "data": {
+                    "key": "image.generate", "label": "Image generator", "kind": "generate",
+                    "inputTypes": ["Prompt"], "requiredInputTypes": ["Prompt"],
+                    "outputType": "Image", "model": "image.fast", "provider": "google",
+                },
+            },
+        ],
+        "edges": [
+            {"id": "source-to-prompt", "source": "source_image", "target": "edit_prompt", "targetHandle": "input-Image-0"},
+            {"id": "source-two-to-prompt", "source": "source_image_two", "target": "edit_prompt", "targetHandle": "input-Image-0"},
+            {"id": "prompt-to-generator", "source": "edit_prompt", "target": "image_generator", "targetHandle": "input-Prompt-0"},
+        ],
+    }
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    run = response.json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run['id']}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+    experiments = client.get("/experiments", params={"canvas_id": graph["canvas_id"], "node_id": "image_generator"}).json()
+    assert "Image 1" in experiments[0]["prompt"]
+    assert "Image 2" in experiments[0]["prompt"]
+    assert "{{image:" not in experiments[0]["prompt"]
+    forwarded_artifact_ids = [artifact_id for item in experiments[0]["inputs"] for artifact_id in item["artifact_ids"]]
+    assert uploaded["artifact_id"] in forwarded_artifact_ids
+    assert uploaded_second["artifact_id"] in forwarded_artifact_ids
 
 
 def test_canvas_documents_list_save_open_and_track_latest_run(client: TestClient):

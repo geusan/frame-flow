@@ -45,13 +45,15 @@ make dev-web
 
 | 화면 | 현재 역할 |
 | --- | --- |
-| Canvas | 그래프 생성·편집·Step 실행·결과 Preview |
-| References | Reference 목록과 URL Metadata Inspect |
-| Format Lab | FormatCore, Evidence, Beat, Diff 시각화 |
-| Runs | Run 상태·비용·진행률 목록 |
-| Models | 논리적 모델 별칭과 실제 모델 ID 표시 |
+| `/workflows` | DB에 저장된 Canvas 목록과 새 Canvas 생성 |
+| `/workflows/{id}` | 그래프 편집·Step 실행·결과 Preview |
+| `/asset/images` | Image Artifact 목록과 lineage |
+| `/asset/videos` | Video Artifact 목록·장면 검색·프레임 캡처 |
+| `/runs` | Run 상태·비용·진행률 목록 |
+| `/settings` | Google/OpenAI Provider 연결 정보 관리 |
+| `/settings/models` | 논리적 모델 별칭과 실제 모델 ID 표시 |
 
-References의 Metadata Inspect를 제외한 일부 목록·필터·설정 UI는 아직 데모 데이터 기반이다.
+References와 Format Lab의 독립 화면은 제거되었으며 관련 분석 계약은 기존 Backend 호환을 위해 유지한다. Provider 설정은 최초 시작 시 `.env` 값을 DB로 자동 이관한 뒤 DB를 기준으로 동작한다.
 
 ## 4. Canvas 기본 사용법
 
@@ -163,7 +165,6 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | Image Generator | `Prompt`, 선택 `ReferenceAsset` | `Image` | 단일 이미지 생성 |
 | Video Generator | `Prompt`, 선택 `Image × N`, 선택 `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
-| Frame Extract | `Video` | `Image` | 지정한 millisecond 타임스탬프의 프레임을 JPEG Artifact로 추출 |
 
 Video Editor 설정:
 

@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Film,
   GitBranch,
-  HardDrive,
   Image as ImageIcon,
   Play,
   RefreshCw,
@@ -17,6 +16,10 @@ import {
 } from "lucide-react";
 
 import { VideoPlayer, type VideoPlayerHandle } from "@/components/ui/video-player";
+import { SearchField } from "@/components/shared/search-field";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { frameflowApi, type ArtifactLineageGraph, type ArtifactListItem, type CapturedFrameArtifact, type SceneSearchCandidate, type SceneSearchResult } from "@/lib/api";
 
 type AssetTab = "images" | "videos";
@@ -99,7 +102,7 @@ function ComparisonMedia({ node, label, seekMs = 0 }: { node: ArtifactLineageGra
     <span>{label}</span>
     <div className="asset-compare-media">
       {isVideo(node)
-        ? <VideoPlayer ref={videoRef} src={node.url} title={node.filename} compact onMetadata={() => videoRef.current?.seek(seekMs / 1000)} />
+        ? <VideoPlayer ref={videoRef} src={node.url} mimeType={node.content_type} title={node.filename} compact onMetadata={() => videoRef.current?.seek(seekMs / 1000)} />
         : <div role="img" aria-label={node.filename} style={{ backgroundImage: `url(${node.url})` }} />}
     </div>
     <strong title={node.filename}>{node.filename}</strong>
@@ -126,12 +129,13 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
   const comparableTypes = new Set(["Image", "Video", "FinalVideo"]);
   const canCompare = Boolean(rootNode && parentNode && comparableTypes.has(rootNode.type) && comparableTypes.has(parentNode.type));
   const captureMetadata = (rootNode?.metadata.capture ?? {}) as { timestamp_ms?: number };
-  return <div className="asset-detail-backdrop" role="presentation" onMouseDown={onClose}>
-    <aside className="asset-detail-drawer" role="dialog" aria-modal="true" aria-label={`Asset details for ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="asset-detail-head"><span><small>Artifact lineage</small><strong title={asset.filename}>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close asset details"><X size={16} /></button></div>
+  return <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <SheetContent className="asset-detail-drawer" overlayClassName="asset-detail-backdrop">
+      <SheetDescription className="sr-only">Artifact lineage and derivation details for {asset.filename}</SheetDescription>
+      <div className="asset-detail-head"><span><small>Artifact lineage</small><SheetTitle asChild><strong title={asset.filename}>{asset.filename}</strong></SheetTitle></span><SheetClose asChild><button type="button" aria-label="Close asset details"><X size={16} /></button></SheetClose></div>
       <div className="asset-detail-scroll">
         <div className={`asset-detail-preview ${isVideo(asset) ? "video" : "image"}`}>
-          {isVideo(asset) ? <VideoPlayer src={asset.url} title={asset.filename} /> : <div role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
+          {isVideo(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} /> : <div role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
         </div>
         <div className="asset-detail-summary">
           <div><small>Type</small><strong>{isVideo(asset) ? "Video" : "Image"}</strong></div>
@@ -183,8 +187,8 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
         </section>
       </div>
       <div className="asset-detail-foot"><code>{asset.id}</code><button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")}><ExternalLink size={13} /> Open original</button></div>
-    </aside>
-  </div>;
+    </SheetContent>
+  </Sheet>;
 }
 
 function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactListItem; onClose: () => void; onCaptured: (captured: CapturedFrameArtifact) => void }) {
@@ -280,12 +284,13 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
     }
   };
 
-  return <div className="scene-search-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="scene-search-dialog video-asset-dialog" role="dialog" aria-modal="true" aria-label={`Play and search ${asset.filename}`} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="scene-search-head"><span><small>Video asset</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close video"><X size={16} /></button></div>
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DialogContent className="scene-search-dialog video-asset-dialog z-[111] max-w-[calc(100vw-18px)]" overlayClassName="scene-search-backdrop">
+      <DialogDescription className="sr-only">Play this video, search its scenes, and capture frames.</DialogDescription>
+      <div className="scene-search-head"><span><small>Video asset</small><DialogTitle asChild><strong>{asset.filename}</strong></DialogTitle></span><DialogClose asChild><button type="button" aria-label="Close video"><X size={16} /></button></DialogClose></div>
       <div className="scene-search-body">
         <div className="scene-search-source" ref={videoStageRef}>
-          <VideoPlayer ref={videoRef} src={asset.url} title={asset.filename} autoPlay style={{ aspectRatio: videoDimensions ? `${videoDimensions.width} / ${videoDimensions.height}` : "auto", width: playerSize?.width, height: playerSize?.height }} onMetadata={(metadata) => {
+          <VideoPlayer ref={videoRef} src={asset.url} mimeType={asset.content_type} title={asset.filename} autoPlay style={{ aspectRatio: videoDimensions ? `${videoDimensions.width} / ${videoDimensions.height}` : "auto", width: playerSize?.width, height: playerSize?.height }} onMetadata={(metadata) => {
             setVideoDimensions({ width: metadata.width, height: metadata.height });
             if (selected) videoRef.current?.seek(selected.timestamp_ms / 1000);
           }} onTimeUpdate={(seconds) => setCurrentTimestampMs(Math.round(seconds * 1000))} />
@@ -301,7 +306,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
             <div><span><Sparkles size={14} /> Prompt scene search</span><small>Describe a visual moment</small></div>
             <form onSubmit={(event) => { event.preventDefault(); void searchScenes(); }}>
               <label><Search size={14} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 인물이 카메라를 바라보는 장면" autoFocus /></label>
-              <button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search"}</button>
+              <Button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search"}</Button>
             </form>
             <div className="scene-search-model-settings">
               <label><span>Provider</span><select value={provider} onChange={(event) => { const nextProvider = event.target.value as SceneSearchProvider; setProvider(nextProvider); setModelAlias(sceneSearchModels[nextProvider][0].value); setResult(null); setSelected(null); }}><option value="google">Google</option><option value="openai">OpenAI</option></select></label>
@@ -322,8 +327,8 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
         </aside>
       </div>
       <div className="scene-search-foot"><span>{selected ? `Selected · ${formatPlaybackTimestamp(selected.timestamp_ms)} · ${Math.round(selected.score * 100)}%` : `Current · ${formatPlaybackTimestamp(currentTimestampMs)}`}</span><div><button type="button" onClick={() => void captureCurrent()} disabled={capturing}><Camera size={14} /> Capture current frame</button><button type="button" onClick={() => void captureSelected()} disabled={!selected || capturing}><Sparkles size={14} /> Capture searched frame</button></div></div>
-    </section>
-  </div>;
+    </DialogContent>
+  </Dialog>;
 }
 
 function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem; onInspect: () => void; onOpenVideo: () => void }) {
@@ -338,7 +343,7 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
   return <article className={`asset-card ${isVideo(asset) ? "video" : "image"}`} style={galleryStyle}>
     <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`} role={isVideo(asset) ? "button" : undefined} tabIndex={isVideo(asset) ? 0 : undefined} aria-label={isVideo(asset) ? `Play ${asset.filename}` : undefined} onClick={() => { if (isVideo(asset)) onOpenVideo(); }} onKeyDown={(event) => { if (isVideo(asset) && ["Enter", " "].includes(event.key)) { event.preventDefault(); onOpenVideo(); } }}>
       {isVideo(asset)
-        ? <VideoPlayer src={asset.url} title={asset.filename} controls={false} onMetadata={(metadata) => {
+        ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} onMetadata={(metadata) => {
             setVideoDimensions({ width: metadata.width, height: metadata.height });
             if (metadata.width && metadata.height) setAspectRatio(metadata.width / metadata.height);
           }} />
@@ -366,7 +371,7 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
   </article>;
 }
 
-export function AssetLibrary({ tab, onChangeTab }: { tab: AssetTab; onChangeTab: (tab: AssetTab) => void }) {
+export function AssetLibrary({ tab, onOpenImages }: { tab: AssetTab; onOpenImages?: () => void }) {
   const [assets, setAssets] = useState<ArtifactListItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -400,8 +405,6 @@ export function AssetLibrary({ tab, onChangeTab }: { tab: AssetTab; onChangeTab:
     return () => { active = false; };
   }, []);
 
-  const imageCount = assets.filter((asset) => asset.type === "Image").length;
-  const videoCount = assets.filter(isVideo).length;
   const visibleAssets = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return assets.filter((asset) => {
@@ -417,37 +420,14 @@ export function AssetLibrary({ tab, onChangeTab }: { tab: AssetTab; onChangeTab:
 
   return (
     <div className="view-page asset-page">
-      <div className="view-heading">
-        <div>
-          <h2>Asset Library</h2>
-          <p>업로드하거나 생성한 이미지와 비디오를 한곳에서 확인하고 Canvas에서 다시 사용할 수 있습니다.</p>
-        </div>
-        <button type="button" className="secondary-button" onClick={() => void loadAssets()} disabled={loading}>
+      <div className="asset-toolbar asset-toolbar-simple">
+        <SearchField className="asset-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${tab}…`} />
+        <Button type="button" variant="secondary" onClick={() => void loadAssets()} disabled={loading}>
           <RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh
-        </button>
+        </Button>
       </div>
 
-      <div className="asset-summary">
-        <button type="button" className={tab === "images" ? "active" : ""} onClick={() => onChangeTab("images")}>
-          <span className="asset-summary-icon image"><ImageIcon size={17} /></span>
-          <span><small>Images</small><strong>{imageCount}</strong></span>
-        </button>
-        <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => onChangeTab("videos")}>
-          <span className="asset-summary-icon video"><Film size={17} /></span>
-          <span><small>Videos</small><strong>{videoCount}</strong></span>
-        </button>
-        <div className="asset-storage-note"><HardDrive size={16} /><span><strong>{imageCount + videoCount} media assets</strong><small>Newest assets are shown first</small></span></div>
-      </div>
-
-      <div className="asset-toolbar">
-        <div className="asset-tabs" role="tablist" aria-label="Asset type">
-          <button type="button" role="tab" aria-selected={tab === "images"} className={tab === "images" ? "active" : ""} onClick={() => onChangeTab("images")}><ImageIcon size={14} /> Images <span>{imageCount}</span></button>
-          <button type="button" role="tab" aria-selected={tab === "videos"} className={tab === "videos" ? "active" : ""} onClick={() => onChangeTab("videos")}><Film size={14} /> Videos <span>{videoCount}</span></button>
-        </div>
-        <label className="input-shell asset-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${tab}…`} /></label>
-      </div>
-
-      {capturedAsset && <div className="asset-capture-notice"><CircleCheck size={16} /><span><strong>Frame saved as an image asset</strong><small>{capturedAsset.filename}</small></span><button type="button" onClick={() => { onChangeTab("images"); setCapturedAsset(null); }}>View image</button><button type="button" className="close" onClick={() => setCapturedAsset(null)} aria-label="Dismiss capture notice">×</button></div>}
+      {capturedAsset && <div className="asset-capture-notice"><CircleCheck size={16} /><span><strong>Frame saved as an image asset</strong><small>{capturedAsset.filename}</small></span>{onOpenImages && <button type="button" onClick={() => { onOpenImages(); setCapturedAsset(null); }}>View image</button>}<button type="button" className="close" onClick={() => setCapturedAsset(null)} aria-label="Dismiss capture notice">×</button></div>}
 
       {error && <div className="asset-library-state error">{error}</div>}
       {!error && loading && <div className="asset-library-state"><RefreshCw size={18} className="spin" /> Loading assets…</div>}

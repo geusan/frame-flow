@@ -2,6 +2,7 @@ import base64
 from types import SimpleNamespace
 
 from app.domain import ExperimentRunRequest
+from app.providers_generation import InputMedia
 from app.providers_openai import OpenAIGenerationServices, OpenAIProviderConfig
 
 
@@ -22,6 +23,11 @@ class FakeImages:
         self.last = kwargs
         encoded = base64.b64encode(b"\x89PNG\r\n\x1a\n").decode()
         return SimpleNamespace(created=1, data=[SimpleNamespace(b64_json=encoded)])
+
+    def edit(self, **kwargs):
+        self.last = kwargs
+        encoded = base64.b64encode(b"\x89PNG\r\n\x1a\n-edited").decode()
+        return SimpleNamespace(created=2, data=[SimpleNamespace(b64_json=encoded)])
 
 
 class FakeSpeech:
@@ -64,6 +70,20 @@ def test_openai_image_provider_maps_vertical_size_and_decodes_png():
     assert result.content.startswith(b"\x89PNG")
     assert client.images.last["model"] == "gpt-image-2"
     assert client.images.last["size"] == "1024x1536"
+    assert "response_format" not in client.images.last
+
+
+def test_openai_image_provider_edits_connected_image():
+    client = FakeOpenAIClient()
+    service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)
+    result = service.execute(
+        payload("image.generate", "openai.image.default"),
+        [InputMedia("art_source", "Image", b"source-png", "image/png")],
+    )
+    assert result.content.endswith(b"-edited")
+    assert client.images.last["image"][0][1] == b"source-png"
+    assert "response_format" not in client.images.last
+    assert "input_fidelity" not in client.images.last
 
 
 def test_openai_speech_provider_requests_wav():

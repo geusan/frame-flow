@@ -231,17 +231,17 @@ local_canvas_engine = LocalCanvasRunEngine()
 
 def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRecord, data: dict[str, Any]) -> ExperimentRunRequest:
     inputs: list[dict[str, Any]] = []
+    seen_input_ids: set[str] = set()
     prompt = str(data.get("configText") or data.get("description") or "")
     node_by_canvas_id = {item.canvas_node_id: item for item in run.node_runs}
     graph_nodes = {str(item.get("id")): dict(item.get("data") or {}) for item in (run.graph_snapshot or {}).get("nodes", [])}
-    for edge in (run.graph_snapshot or {}).get("edges", []):
-        if str(edge.get("target")) != node.canvas_node_id:
-            continue
-        source_id = str(edge.get("source"))
+
+    def append_input(source_id: str) -> None:
+        if source_id in seen_input_ids:
+            return
+        seen_input_ids.add(source_id)
         source = node_by_canvas_id[source_id]
         source_data = graph_nodes[source_id]
-        if source_data.get("key") == "prompt.input":
-            prompt = str(source_data.get("configText") or "")
         inputs.append({
             "node_id": source_id,
             "node_key": source.node_key,
@@ -254,12 +254,23 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
             "mime_type": (source.output_payload or {}).get("mimeType"),
             "artifact_ids": source.output_artifact_ids or [],
         })
+
+    for edge in (run.graph_snapshot or {}).get("edges", []):
+        if str(edge.get("target")) != node.canvas_node_id:
+            continue
+        source_id = str(edge.get("source"))
+        source_data = graph_nodes[source_id]
+        if source_data.get("key") == "prompt.input":
+            prompt = str(source_data.get("configText") or "")
+            for prompt_edge in (run.graph_snapshot or {}).get("edges", []):
+                if str(prompt_edge.get("target")) == source_id:
+                    append_input(str(prompt_edge.get("source")))
+        append_input(source_id)
     parameters = dict(data.get("parameters") or {})
     parameters.setdefault("resolution", data.get("resolution"))
     parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
     parameters.setdefault("transition", data.get("transition"))
     parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
-    parameters.setdefault("frame_timestamp_ms", data.get("frameTimestampMs"))
     parameters.setdefault("source_language", data.get("sourceLanguage"))
     parameters.setdefault("target_language", data.get("targetLanguage"))
     parameters.setdefault("voice_name", data.get("voiceName"))

@@ -22,6 +22,7 @@ import {
   VolumeSlider,
   useMediaState,
   type MediaPlayerInstance,
+  type VideoMimeType,
 } from "@vidstack/react";
 import {
   LoaderCircle,
@@ -49,6 +50,7 @@ export interface VideoPlayerHandle {
 
 interface VideoPlayerProps {
   src: string;
+  mimeType?: string;
   title?: string;
   className?: string;
   style?: CSSProperties;
@@ -139,6 +141,7 @@ function PlayerControls({ compact }: { compact: boolean }) {
 
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(function VideoPlayer({
   src,
+  mimeType,
   title = "Video",
   className = "",
   style,
@@ -171,7 +174,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   return <MediaPlayer
     ref={playerRef}
     className={`ff-video-player ${compact ? "compact" : ""} ${controls ? "with-controls" : "preview-only"} ${className}`.trim()}
-    src={src}
+    src={mimeType ? { src, type: mimeType as VideoMimeType } : src}
     title={title}
     autoPlay={autoPlay}
     muted={muted}

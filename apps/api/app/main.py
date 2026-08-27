@@ -26,6 +26,7 @@ from .database import (
     FormatRecord,
     GenerationBriefRecord,
     NodeRunRecord,
+    ProviderSettingRecord,
     ReferenceRecord,
     ReferenceSetRecord,
     RunRecord,
@@ -40,6 +41,7 @@ from .domain import (
     CanvasRunRequest,
     CanvasRunResponse,
     CanvasSelectionRequest,
+    ProviderSettingsUpdateRequest,
     ExperimentRunRequest,
     ExperimentRunResponse,
     ExtractionRecipeRequest,
@@ -66,7 +68,17 @@ from .artifact_lineage import artifact_lineage_graph
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
 from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
-from .providers import MODEL_REGISTRY, OPENAI_MODEL_REGISTRY
+from .media_compat import BrowserVideoError
+from .providers import MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
+from .provider_settings import (
+    PROVIDER_DEFINITIONS,
+    apply_provider_settings_to_environment,
+    ensure_provider_settings,
+    get_provider_record,
+    provider_is_configured,
+    provider_settings_payload,
+    update_provider_settings,
+)
 from .reference_ingest import ReferenceIngestError, get_reference_provider, render_proxy
 from .scene_search import SceneSearchError, search_video_scenes
 from .experiments import experiment_response, run_experiment
@@ -74,6 +86,7 @@ from .temporal_runtime import TASK_QUEUE
 from .temporal_workflow import GenerationRunWorkflow, GenerationWorkflowInput
 from .storage import StorageError, artifact_content_url, extension_for, get_storage, safe_upload_key, storage_location
 from .video_downloaders import configured_video_downloader_name, get_video_downloader
+from .video_playback import ensure_video_playback_artifact
 from .service import (
     artifact_response,
     audit,
@@ -94,6 +107,8 @@ CANVAS_ARTIFACT_MAX_BYTES = 250 * 1024 * 1024
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_all()
+    with SessionLocal() as settings_db:
+        apply_provider_settings_to_environment(ensure_provider_settings(settings_db))
     get_storage().initialize()
     with SessionLocal() as lineage_db:
         if backfill_artifact_edges(lineage_db):
@@ -141,7 +156,8 @@ async def temporal_client() -> Client:
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(db: Session = Depends(get_db)) -> dict[str, Any]:
+    settings = {row.provider: row for row in db.scalars(select(ProviderSettingRecord)).all()}
     return {
         "status": "ok",
         "service": "frameflow-api",
@@ -151,8 +167,8 @@ def health() -> dict[str, Any]:
         "video_downloader_provider": configured_video_downloader_name(),
         "scene_search_provider_mode": os.getenv("SCENE_SEARCH_PROVIDER_MODE", "live"),
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
-        "google_configured": bool(os.getenv("GOOGLE_CLOUD_PROJECT")),
-        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "google_configured": bool(settings.get("google") and provider_is_configured(settings["google"])),
+        "openai_configured": bool(settings.get("openai") and provider_is_configured(settings["openai"])),
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
     }
 
@@ -862,17 +878,21 @@ def list_artifacts(
     rows = db.scalars(
         select(ArtifactRecord).where(ArtifactRecord.type.in_(requested)).order_by(ArtifactRecord.created_at.desc()).offset(offset).limit(limit)
     ).all()
-    return [{
-        "id": row.id,
-        "created_at": row.created_at,
-        "type": row.type,
-        "content_type": str((row.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream"),
-        "size_bytes": int((row.metadata_json.get("storage") or {}).get("size_bytes") or 0),
-        "filename": str(row.metadata_json.get("filename") or row.metadata_json.get("output", {}).get("title") or f"{row.type} · {row.id[:10]}"),
-        "source": str(row.metadata_json.get("source") or ("generated" if row.producer_node_run_id or row.metadata_json.get("experiment_id") else "artifact")),
-        "duration_ms": int(row.metadata_json.get("duration_ms") or 0),
-        "url": artifact_content_url(row.id),
-    } for row in rows]
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        playback_id = str(row.metadata_json.get("playback_artifact_id") or row.id)
+        result.append({
+            "id": row.id,
+            "created_at": row.created_at,
+            "type": row.type,
+            "content_type": str((row.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream"),
+            "size_bytes": int((row.metadata_json.get("storage") or {}).get("size_bytes") or 0),
+            "filename": str(row.metadata_json.get("filename") or row.metadata_json.get("output", {}).get("title") or f"{row.type} · {row.id[:10]}"),
+            "source": str(row.metadata_json.get("source") or ("generated" if row.producer_node_run_id or row.metadata_json.get("experiment_id") else "artifact")),
+            "duration_ms": int(row.metadata_json.get("duration_ms") or 0),
+            "url": artifact_content_url(playback_id),
+        })
+    return result
 
 
 @app.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
@@ -1104,6 +1124,17 @@ def import_artifact_url(payload: ArtifactUrlImportRequest, db: Session = Depends
         },
     )
     db.flush()
+    try:
+        playback_artifact = ensure_video_playback_artifact(
+            db,
+            artifact,
+            content=downloaded.video,
+            content_type=content_type,
+            filename=filename,
+        )
+    except BrowserVideoError as exc:
+        db.rollback()
+        raise HTTPException(422, str(exc)) from exc
     audit(db, "artifact.canvas_url_imported", artifact.id, {
         "source_url": inspected.canonical_url,
         "downloader_provider": provider.provider_name,
@@ -1119,7 +1150,7 @@ def import_artifact_url(payload: ArtifactUrlImportRequest, db: Session = Depends
         "filename": filename,
         "source_url": inspected.canonical_url,
         "downloader_provider": provider.provider_name,
-        "url": artifact_content_url(artifact.id),
+        "url": artifact_content_url(playback_artifact.id),
     }
 
 
@@ -1151,6 +1182,19 @@ async def upload_artifact(file: UploadFile = File(...), db: Session = Depends(ge
         metadata={"source": "canvas_upload", "filename": file.filename or "upload.bin", "immutable": True},
     )
     db.flush()
+    playback_artifact = artifact
+    if artifact_type == "Video":
+        try:
+            playback_artifact = ensure_video_playback_artifact(
+                db,
+                artifact,
+                content=content,
+                content_type=content_type,
+                filename=file.filename or "upload.mp4",
+            )
+        except BrowserVideoError as exc:
+            db.rollback()
+            raise HTTPException(422, str(exc)) from exc
     audit(db, "artifact.canvas_uploaded", artifact.id, {"content_type": content_type, "size_bytes": len(content)})
     db.commit()
     return {
@@ -1159,7 +1203,7 @@ async def upload_artifact(file: UploadFile = File(...), db: Session = Depends(ge
         "content_type": content_type,
         "size_bytes": len(content),
         "filename": file.filename or "upload.bin",
-        "url": artifact_content_url(artifact.id),
+        "url": artifact_content_url(playback_artifact.id),
     }
 
 
@@ -1219,6 +1263,48 @@ def artifact_content(artifact_id: str, request: Request, db: Session = Depends(g
     return RedirectResponse(url, status_code=307)
 
 
+@app.get("/settings/providers")
+def list_provider_settings(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    return [provider_settings_payload(record) for record in ensure_provider_settings(db)]
+
+
+@app.put("/settings/providers/{provider}")
+def save_provider_settings(
+    provider: str,
+    payload: ProviderSettingsUpdateRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    normalized_provider = provider.strip().lower()
+    if normalized_provider not in PROVIDER_DEFINITIONS:
+        raise HTTPException(404, "provider not found")
+    record = get_provider_record(db, normalized_provider)
+    if not record:
+        ensure_provider_settings(db)
+        record = get_provider_record(db, normalized_provider)
+    if not record:
+        raise HTTPException(404, "provider not found")
+    try:
+        updated = update_provider_settings(
+            db,
+            record,
+            enabled=payload.enabled,
+            auth_method=payload.auth_method,
+            values=payload.values,
+            clear_fields=payload.clear_fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    audit(db, "provider.settings.updated", updated.id, {
+        "provider": normalized_provider,
+        "enabled": updated.enabled,
+        "auth_method": payload.auth_method,
+        "updated_fields": sorted(payload.values),
+        "cleared_fields": sorted(payload.clear_fields),
+    })
+    db.commit()
+    return provider_settings_payload(updated)
+
+
 @app.get("/models")
 def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     usage = {
@@ -1236,18 +1322,23 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
             ).group_by(ExperimentRunRecord.model_alias)
         ).all()
     }
-    configured = bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
-    google_project = os.getenv("GOOGLE_CLOUD_PROJECT") or None
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
+    google_settings = get_provider_record(db, "google")
+    google_configuration = dict(google_settings.configuration or {}) if google_settings else {}
+    configured = bool(google_settings and provider_is_configured(google_settings))
+    google_project = google_configuration.get("project_id") or None
+    google_auth_method = str(google_configuration.get("_auth_method") or "vertex")
+    using_gemini_api = google_auth_method == "api_key"
+    location = "Gemini API" if using_gemini_api else str(google_configuration.get("location") or "global")
+    speech_location = str(google_configuration.get("speech_location") or "global")
     rows = [{
         "logical_alias": alias,
-        "exact_model_id": model_id,
+        "exact_model_id": model_id_for_alias(alias, gemini_api=using_gemini_api) or model_id,
         "provider": "Google",
         "modality": alias.split(".")[1],
-        "region": os.getenv("GOOGLE_SPEECH_LOCATION", "global") if ".stt." in alias else location,
+        "region": speech_location if ".stt." in alias else location,
         "status": "active" if configured else "disabled",
         "configured": configured,
-        "configuration": google_project or "GOOGLE_CLOUD_PROJECT is not set",
+        "configuration": "Gemini API key configured" if using_gemini_api and configured else google_project or "Google credentials are not configured",
         **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in MODEL_REGISTRY.items()]
     rows.append({
@@ -1255,13 +1346,14 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         "exact_model_id": "chirp_3 + gemini-2.5-pro + gemini-2.5-flash-tts",
         "provider": "Google",
         "modality": "video",
-        "region": f"{os.getenv('GOOGLE_SPEECH_LOCATION', 'global')} / {location}",
+        "region": f"{speech_location} / {location}",
         "status": "active" if configured else "disabled",
         "configured": configured,
-        "configuration": google_project or "GOOGLE_CLOUD_PROJECT is not set",
+        "configuration": "Gemini API key configured" if using_gemini_api and configured else google_project or "Google credentials are not configured",
         **usage.get("google.localization.pipeline", {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     })
-    openai_configured = bool(os.getenv("OPENAI_API_KEY"))
+    openai_settings = get_provider_record(db, "openai")
+    openai_configured = bool(openai_settings and provider_is_configured(openai_settings))
     rows.extend({
         "logical_alias": alias,
         "exact_model_id": model_id,

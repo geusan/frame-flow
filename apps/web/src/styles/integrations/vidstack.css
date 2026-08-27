@@ -1,0 +1,36 @@
+/* Vidstack player skin */
+.ff-video-player { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; background: #111310; color: #fff; isolation: isolate; }
+.ff-video-player [data-media-provider] { width: 100%; height: 100%; aspect-ratio: inherit; background: #111310; }
+.ff-video-player [data-media-provider] video { width: 100%; height: 100%; aspect-ratio: inherit; object-fit: var(--ff-video-fit,contain); }
+.ff-video-player:focus-visible { outline: 2px solid #aaa4f6; outline-offset: 2px; }
+.ff-video-gesture { position: absolute; z-index: 2; inset: 0; }
+.ff-video-controls { position: absolute; z-index: 5; inset: 0; display: flex; flex-direction: column; opacity: 0; pointer-events: none; transition: opacity .18s ease; }
+.ff-video-controls[data-visible], .ff-video-player[data-paused] .ff-video-controls { opacity: 1; }
+.ff-video-controls-gradient { position: absolute; inset: 0; background: linear-gradient(180deg,rgba(0,0,0,.18),transparent 30%,transparent 55%,rgba(0,0,0,.78)); pointer-events: none; }
+.ff-video-controls-bottom { position: relative; z-index: 2; margin-top: auto; padding: 0 12px 9px; display: flex; flex-direction: column; gap: 5px; pointer-events: auto; }
+.ff-video-timeline-row, .ff-video-control-row { width: 100%; display: flex; align-items: center; }
+.ff-video-control-row { min-height: 30px; gap: 5px; }
+.ff-video-control-button { width: 30px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; }
+.ff-video-control-button:hover, .ff-video-control-button[data-focus] { background: rgba(255,255,255,.16); }
+.ff-video-control-spacer { flex: 1; }
+.ff-video-time { display: inline-flex; align-items: center; gap: 4px; color: rgba(255,255,255,.94); font: 650 11px ui-monospace,monospace; }
+.ff-video-time i { color: rgba(255,255,255,.48); font-style: normal; }
+.ff-video-time-slider, .ff-video-volume-slider { position: relative; height: 16px; display: flex; align-items: center; cursor: pointer; touch-action: none; user-select: none; }
+.ff-video-time-slider { width: 100%; }
+.ff-video-volume-slider { width: 70px; }
+.ff-video-slider-track { position: relative; width: 100%; height: 4px; overflow: hidden; border-radius: 4px; background: rgba(255,255,255,.25); }
+.ff-video-slider-progress, .ff-video-slider-fill { position: absolute; inset: 0; transform-origin: left center; }
+.ff-video-slider-progress { width: var(--slider-progress,0%); background: rgba(255,255,255,.32); }
+.ff-video-slider-fill { width: var(--slider-fill,0%); background: var(--brand); }
+.ff-video-slider-thumb { position: absolute; left: var(--slider-fill,0%); top: 50%; width: 11px; height: 11px; border: 2px solid #fff; border-radius: 50%; background: var(--brand); box-shadow: 0 1px 5px rgba(0,0,0,.35); transform: translate(-50%,-50%) scale(.72); transition: transform .12s; }
+.ff-video-time-slider[data-active] .ff-video-slider-thumb, .ff-video-volume-slider[data-active] .ff-video-slider-thumb { transform: translate(-50%,-50%) scale(1); }
+.ff-video-center-play { position: absolute; z-index: 4; left: 50%; top: 50%; width: 58px; height: 58px; padding: 0; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; background: rgba(12,14,12,.6); color: #fff; display: grid; place-items: center; opacity: 0; transform: translate(-50%,-50%) scale(.9); cursor: pointer; pointer-events: none; backdrop-filter: blur(8px); transition: opacity .16s,transform .16s,background .16s; }
+.ff-video-player[data-paused] .ff-video-center-play { opacity: 1; transform: translate(-50%,-50%) scale(1); pointer-events: auto; }
+.ff-video-center-play:hover { background: var(--brand); }
+.ff-video-buffering { position: absolute; z-index: 6; left: 50%; top: 50%; width: 48px; height: 48px; border-radius: 50%; background: rgba(12,14,12,.58); display: grid; place-items: center; transform: translate(-50%,-50%); pointer-events: none; backdrop-filter: blur(7px); }
+.ff-video-player.compact .ff-video-controls-bottom { padding: 0 7px 5px; gap: 2px; }
+.ff-video-player.compact .ff-video-control-row { min-height: 25px; }
+.ff-video-player.compact .ff-video-control-button { width: 25px; height: 25px; }
+.ff-video-player.compact .ff-video-center-play { width: 42px; height: 42px; }
+.ff-video-player.preview-only { pointer-events: none; }
+.ff-video-player.preview-only .ff-video-center-play, .ff-video-player.preview-only .ff-video-controls { display: none; }

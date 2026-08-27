@@ -71,12 +71,14 @@ class GoogleGenerationServices:
 
         if payload.node_key == "image.generate":
             candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
+            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
             generated_images = self.image.generate(
                 prompt=payload.prompt,
                 logical_model=logical_model,
                 candidate_count=candidate_count,
                 aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
                 seed=seed_value,
+                reference_images=[(item.data, item.content_type) for item in image_inputs],
             )
             generated = generated_images[0]
             extension = ".png" if "png" in generated.mime_type else ".jpg"
@@ -88,7 +90,7 @@ class GoogleGenerationServices:
             )
 
         if payload.node_key == "video.generate":
-            image_input = next((item for item in inputs if item.artifact_type == "Image"), None)
+            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
             duration = int(payload.parameters.get("duration_seconds") or 6)
             resolution = str(payload.parameters.get("resolution") or "720p").lower()
             if resolution not in {"720p", "1080p"}:
@@ -102,8 +104,7 @@ class GoogleGenerationServices:
                 aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
                 seed=seed_value,
                 output_gcs_uri=os.getenv("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
-                image_data=image_input.data if image_input else None,
-                image_mime_type=image_input.content_type if image_input else "image/png",
+                reference_images=[(item.data, item.content_type) for item in image_inputs],
                 resolution=resolution,
             )
             generated_videos = self.video.wait_for_generated(

@@ -1,6 +1,5 @@
-import { StudioShell } from "@/components/studio-shell";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <StudioShell />;
+  redirect("/workflows");
 }
-

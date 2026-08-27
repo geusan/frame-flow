@@ -9,6 +9,7 @@ from temporalio import activity
 
 from .database import NodeRunRecord, RunRecord, SessionLocal
 from .domain import NodeStatus
+from .provider_settings import refresh_provider_environment
 from .service import audit, create_artifact
 from .workflow_execution import execute_workflow_node
 
@@ -28,6 +29,7 @@ def _get_node(run_id: str, node_key: str) -> tuple[RunRecord, NodeRunRecord]:
 
 @activity.defn(name="execute_node")
 async def execute_node(run_id: str, node_key: str) -> dict[str, Any]:
+    refresh_provider_environment()
     _get_node(run_id, node_key)
     task = asyncio.create_task(asyncio.to_thread(execute_workflow_node, run_id, node_key))
     while not task.done():

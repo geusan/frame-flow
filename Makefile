@@ -1,5 +1,10 @@
 .PHONY: setup dev-storage dev-web dev-api test build check
 
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
+
 API_PORT ?= 8000
 MINIO_PORT ?= 9000
 

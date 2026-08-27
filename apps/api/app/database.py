@@ -194,6 +194,16 @@ class CanvasNodeRunRecord(Timestamped, Base):
     run: Mapped[CanvasRunRecord] = relationship(back_populates="node_runs")
 
 
+class ProviderSettingRecord(Timestamped, Base):
+    __tablename__ = "provider_settings"
+    provider: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    secrets: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(32), default="default")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class AuditEventRecord(Timestamped, Base):
     __tablename__ = "audit_events"
     action: Mapped[str] = mapped_column(String(128), index=True)

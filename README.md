@@ -9,8 +9,8 @@
 ## 현재 구현
 
 - React Flow 기반 Generation Canvas
-- Reference Library와 Metadata Inspect API 연동
-- Format Lab, Evidence, Core/Extensions JSON, 비교 시각화
+- URL 기반 분리 화면: Canvas·Image/Video Assets·Runs·Settings·Model Registry
+- Settings의 Google/OpenAI Provider 연결 정보 DB 관리와 `.env` 최초 자동 이관
 - Run 목록, Model Registry, Candidate Compare
 - Workspace 카운트·통합 Run·모델 사용량·Format evidence를 실제 저장 데이터로 표시하는 UI
 - PostgreSQL 기반 Canvas 문서 목록·자동 저장·localStorage 데이터 1회 이관
@@ -25,7 +25,7 @@
 - `curl_cffi` Chrome impersonation, 제한 재시도, 성공한 메타데이터 재사용을 이용한 TikTok TLS/JS 챌린지 대응
 - Asset Library 비디오 seek·현재 프레임 캡처와 원본 Video → Image Artifact lineage
 - 정규화된 `artifact_edges`, 양방향 Lineage API·그래프·Before/After·생성 Prompt/모델 상세
-- Google/OpenAI 모델 선택형 Prompt 장면 검색·후보 seek/캡처와 Canvas Frame Extract 노드
+- Google/OpenAI 모델 선택형 Prompt 장면 검색·후보 seek/캡처
 - `memory`·`minio`·`r2`·`s3`로 교체 가능한 S3 호환 Storage Provider
 - Artifact SHA-256·Object Key·MIME·크기 보존과 Signed GET/PUT URL
 - 동일 요청 해시 캐시와 노드별 Baseline 지정
@@ -67,6 +67,9 @@ Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. �
 - Web: 실행 로그에 표시되는 URL (기본값 <http://localhost:3000>)
 - API 문서: <http://localhost:8000/docs>
 - API 상태: <http://localhost:8000/health>
+
+Web 화면 경로는 `/workflows`, `/workflows/{id}`, `/asset/images`,
+`/asset/videos`, `/runs`, `/settings`, `/settings/models`로 분리되어 있습니다.
 
 API를 실행하지 않아도 Canvas 그래프 편집은 가능하지만 생성·미디어 편집 노드 실행, 업로드 Artifact, 실행 이력은 API가 필요합니다. API가 연결되면 상단에 `API connected`가 표시되고 Reference Metadata Inspect 및 Experiment 계약을 사용합니다.
 
@@ -137,12 +140,12 @@ Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 �
 Canvas의 Image, Voiceover, LLM Assistant와 Script 노드는 모델 선택에서 OpenAI를 선택할 수 있습니다. `OPENAI_API_KEY`를 설정하면 Responses API의 GPT-5.6/ChatGPT Latest, GPT Image 2와 GPT-4o Mini TTS가 활성화됩니다. Video Generator는 Veo를 사용합니다.
 
 1. `.env.example`을 `.env`로 복사합니다.
-2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다.
+2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다. API 최초 시작 시 Google/OpenAI 연결 값이 `provider_settings` 테이블로 자동 이관됩니다.
 3. `GENERATION_PROVIDER_MODE`, `REFERENCE_PROVIDER_MODE`, `FORMAT_PROVIDER_MODE`, `SUBTITLE_ALIGNMENT_MODE`가 `live`인지 확인하고 `VIDEO_DOWNLOADER_PROVIDER=yt-dlp`를 설정합니다.
 4. Provider 결과를 반환하기 전에 `provider_request_id`, `provider_operation_id`, `request_hash`를 NodeRun에 저장합니다.
 5. video operation은 제출과 완료를 분리하고 Reconciler가 operation ID로 재연결하게 합니다.
 
-OpenAI Provider는 `.env`의 `OPENAI_API_KEY`를 설정합니다. 필요하면 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`도 지정할 수 있습니다.
+이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다.
 
 Workflow에는 실제 모델 ID를 넣지 않습니다. 논리적 별칭만 사용하고 Run 생성 시점에 정확한 모델 ID를 Snapshot합니다.
 

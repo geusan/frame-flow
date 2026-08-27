@@ -1,11 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
-  Handle,
   MiniMap,
   Position,
   ReactFlow,
@@ -19,17 +18,13 @@ import {
   type EdgeChange,
   type EdgeProps,
   type NodeChange,
-  type NodeProps,
   useEdgesState,
   useNodesState,
   useReactFlow,
 } from "@xyflow/react";
 import {
-  ArrowRight,
   ArrowLeft,
-  AudioWaveform,
   BadgeCheck,
-  Bot,
   Braces,
   ChevronDown,
   ChevronRight,
@@ -38,44 +33,26 @@ import {
   CircleDollarSign,
   CircleGauge,
   CircleStop,
-  Clapperboard,
   Copy,
-  Film,
-  Folder,
-  FolderOpen,
   GitFork,
   GripVertical,
   Hand,
-  Image as ImageIcon,
-  Languages,
   Layers3,
-  Link2,
   ListRestart,
   LockKeyhole,
-  MessageSquareText,
-  Mic2,
   MousePointer2,
   PanelRightClose,
   Play,
   Plus,
   Redo2,
   RefreshCw,
-  Rocket,
   Save,
   Search,
-  ScrollText,
-  ShieldCheck,
   Sparkles,
-  Subtitles,
-  StickyNote,
   Trash2,
-  Type,
   Undo2,
-  Upload,
-  Video,
   Workflow,
   X,
-  Zap,
 } from "lucide-react";
 import { useStudioStore } from "@/lib/store";
 import type { NodeStatus, PortType } from "@/lib/types";
@@ -91,51 +68,21 @@ import {
   type CanvasOutput,
   type IconName,
   type ProviderName,
+  type StickyColor,
   type StudioFlowNode,
 } from "@/lib/canvas-model";
-import { StatusPill } from "@/components/ui/status-pill";
-import { VideoPlayer } from "@/components/ui/video-player";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
+import { SearchField } from "@/components/shared/search-field";
+import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
+import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type NodeActions } from "@/features/workflows/components/workflow-node";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
 const SMOOTH_STEP_ROUTING_GAP = 40;
-
-const icons: Record<IconName, typeof Sparkles> = {
-  brief: MessageSquareText,
-  format: Braces,
-  reference: Layers3,
-  resolve: Workflow,
-  script: ScrollText,
-  shot: Clapperboard,
-  image: ImageIcon,
-  video: Video,
-  voice: Mic2,
-  select: BadgeCheck,
-  subtitle: Subtitles,
-  timeline: Layers3,
-  render: Film,
-  qc: ShieldCheck,
-  upload: Upload,
-  assets: FolderOpen,
-  folder: Folder,
-  assistant: Bot,
-  text: Type,
-  sticky: StickyNote,
-  changeVoice: AudioWaveform,
-  translate: Languages,
-};
-
-interface NodeActions {
-  runStep: (nodeId: string) => void;
-  updateConfig: (nodeId: string, value: string) => void;
-  uploadAsset: (nodeId: string, file: File) => void;
-  importAssetUrl: (nodeId: string, url: string) => void;
-  selectAsset: (nodeId: string, artifactId: string) => void;
-  assetOptions: ArtifactListItem[];
-}
-
-const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, assetOptions: [] });
 
 function AdaptiveEdge(props: EdgeProps) {
   const horizontalGap = props.targetX - props.sourceX;
@@ -155,13 +102,6 @@ interface GraphSnapshot {
   edges: Edge[];
   name?: string;
   activeRunId?: string;
-}
-
-interface CandidateOption {
-  id: string;
-  label: string;
-  output: CanvasOutput;
-  artifactIds: string[];
 }
 
 function cloneGraph(nodes: StudioFlowNode[], edges: Edge[]): GraphSnapshot {
@@ -184,10 +124,6 @@ function invalidateDescendants(nodes: StudioFlowNode[], edges: Edge[], sourceId:
     data: {
       ...node.data,
       status: "STALE" as NodeStatus,
-      preview: undefined,
-      output: undefined,
-      outputArtifactIds: undefined,
-      lastExperimentId: undefined,
     },
   } : node);
 }
@@ -211,19 +147,26 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
   const isLegacyMockGraph = graph.nodes.some((node) => node.id === "brief" && node.data.description.includes("로마 도로"))
     || graph.nodes.some((node) => node.id === "format" && node.data.label === "Contrarian History");
   if (isLegacyMockGraph) return { ...graph, nodes: [], edges: [], activeRunId: undefined };
-  const migratedNodes = graph.nodes.map((node) => {
-    const template = nodeTemplates.find((item) => item.data.key === node.data.key);
+  const migratedNodes = graph.nodes.filter((node) => node.data.key !== "video.frame_extract").map((node) => {
+    const completedUploadArtifactId = node.data.key === "asset.upload" ? node.data.outputArtifactIds?.[0] : undefined;
+    const legacyTextNote = node.data.key === "utility.text";
+    const migratedKey = completedUploadArtifactId ? "asset.select" : legacyTextNote ? "utility.sticky" : node.data.key;
+    const template = nodeTemplates.find((item) => item.data.key === migratedKey);
     if (!template) return node;
     return {
       ...node,
       data: {
         ...node.data,
-        label: node.data.key === "asset.upload" && node.data.label === "Upload" ? "Asset" : node.data.label,
+        key: migratedKey,
+        label: completedUploadArtifactId || legacyTextNote ? template.data.label : node.data.key === "asset.upload" ? "Upload" : node.data.label,
+        description: completedUploadArtifactId || legacyTextNote ? template.data.description : node.data.description,
+        icon: completedUploadArtifactId || legacyTextNote ? template.data.icon : node.data.icon,
+        kind: template.data.kind,
         inputTypes: template.data.inputTypes,
         requiredInputTypes: template.data.requiredInputTypes,
         multiInputTypes: template.data.multiInputTypes,
         inputsRequired: template.data.inputsRequired,
-        outputType: ["asset.upload", "asset.select"].includes(node.data.key) ? node.data.outputType ?? template.data.outputType : template.data.outputType,
+        outputType: ["asset.upload", "asset.select"].includes(migratedKey) ? node.data.outputType ?? template.data.outputType : template.data.outputType,
         provider: node.data.kind === "generate" ? node.data.provider ?? providerFromModel(node.data.model ?? template.data.model) : node.data.provider,
         model: template.data.model?.startsWith("local.") || node.data.key === "video.translate" ? template.data.model : node.data.model ?? template.data.model,
         resolution: node.data.resolution ?? template.data.resolution,
@@ -232,12 +175,12 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         executable: template.data.executable,
         transition: node.data.transition ?? template.data.transition,
         targetDurationSeconds: node.data.targetDurationSeconds ?? template.data.targetDurationSeconds,
-        frameTimestampMs: node.data.frameTimestampMs ?? template.data.frameTimestampMs,
         sourceLanguage: node.data.sourceLanguage ?? template.data.sourceLanguage,
         targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
         voiceName: node.data.voiceName ?? template.data.voiceName,
-        configText: template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText,
-        output: node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output,
+        stickyColor: node.data.stickyColor ?? template.data.stickyColor,
+        configText: completedUploadArtifactId ?? (template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText),
+        output: legacyTextNote || node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output,
       },
     };
   });
@@ -252,6 +195,54 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
   return { ...graph, nodes: refreshReadyStatuses(migratedNodes, migratedEdges), edges: migratedEdges };
 }
 
+function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experiments: ExperimentRun[]): { nodes: StudioFlowNode[]; changed: boolean } {
+  const latestByNode = new Map<string, ExperimentRun>();
+  for (const experiment of experiments) {
+    if (!latestByNode.has(experiment.node_id)) latestByNode.set(experiment.node_id, experiment);
+  }
+  let changed = false;
+  const reconciled = nodes.map((node) => {
+    const experiment = latestByNode.get(node.id);
+    if (!experiment || node.data.executable === false) return node;
+    const deliberatelyStale = node.data.status === "STALE" && node.data.lastExperimentId === experiment.id;
+    if (deliberatelyStale && node.data.output && node.data.outputArtifactIds?.length) return node;
+    const status = experiment.status as NodeStatus;
+    const output = experiment.status === "SUCCEEDED" ? experiment.output : undefined;
+    const outputArtifactIds = experiment.status === "SUCCEEDED" ? experiment.output_artifact_ids : undefined;
+    const alreadyCurrent = node.data.lastExperimentId === experiment.id
+      && node.data.status === status
+      && JSON.stringify(node.data.outputArtifactIds ?? []) === JSON.stringify(outputArtifactIds ?? [])
+      && JSON.stringify(node.data.output ?? {}) === JSON.stringify(output ?? {});
+    if (alreadyCurrent) return node;
+    changed = true;
+    const logMarker = `Experiment ${experiment.id}`;
+    const logs = node.data.logs ?? [];
+    const recoveryLog = experiment.status === "SUCCEEDED"
+      ? `${new Date(experiment.created_at).toLocaleTimeString("ko-KR")} · ${logMarker} restored · succeeded`
+      : experiment.status === "FAILED"
+        ? `${new Date(experiment.created_at).toLocaleTimeString("ko-KR")} · ${logMarker} restored · ${experiment.error ?? "failed"}`
+        : `${new Date(experiment.created_at).toLocaleTimeString("ko-KR")} · ${logMarker} restored · ${experiment.status}`;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        status: deliberatelyStale ? "STALE" as NodeStatus : status,
+        preview: output?.title,
+        output,
+        outputArtifactIds,
+        duration: experiment.duration_ms ? `${experiment.duration_ms}ms` : node.data.duration,
+        lastRunAt: experiment.created_at,
+        lastExperimentId: experiment.id,
+        lastRequestHash: experiment.request_hash,
+        executionMode: experiment.execution_mode,
+        lastCostUsd: experiment.cost_usd,
+        logs: logs.some((entry) => entry.includes(logMarker)) ? logs : [...logs, recoveryLog],
+      },
+    };
+  });
+  return { nodes: refreshReadyStatuses(reconciled, edges), changed };
+}
+
 function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): CanvasOutput {
   const kind: CanvasOutput["kind"] = artifact.type === "Image" ? "image" : artifact.type === "Video" ? "video" : artifact.type === "Audio" ? "audio" : "text";
   return {
@@ -262,218 +253,6 @@ function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): C
     mimeType: artifact.content_type,
   };
 }
-
-function isImmutableUploadArtifact(data: StudioFlowNode["data"]): boolean {
-  return data.key === "asset.upload" && Boolean(data.output && data.outputArtifactIds?.length);
-}
-
-function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
-  if (!isImmutableUploadArtifact(data)) return <StatusPill status={data.status} compact={compact} />;
-  return <span className={`status-pill status-asset ${compact ? "compact" : ""}`}>
-    <LockKeyhole size={compact ? 11 : 12} />
-    {!compact && "Asset"}
-  </span>;
-}
-
-function httpUrl(value: string): string | null {
-  try {
-    const parsed = new URL(value.trim());
-    return ["http:", "https:"].includes(parsed.protocol) ? value.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-function AssetUploadControl({ nodeId, busy }: { nodeId: string; busy: boolean }) {
-  const actions = useContext(NodeActionsContext);
-  const [url, setUrl] = useState("");
-  const submitUrl = (value: string) => {
-    const sourceUrl = httpUrl(value);
-    if (!sourceUrl || busy) return;
-    setUrl(sourceUrl);
-    actions.importAssetUrl(nodeId, sourceUrl);
-  };
-  return <div className="node-upload-control nodrag nopan">
-    <label className="node-upload-drop">
-      <Upload size={18} />
-      <span><strong>Choose a file</strong><small>Image, video or audio</small></span>
-      <input type="file" accept="image/*,video/*,audio/*" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) actions.uploadAsset(nodeId, file); }} />
-    </label>
-    <span className="node-upload-divider">or paste a video URL</span>
-    <form className="node-url-import" onSubmit={(event) => { event.preventDefault(); submitUrl(url); }}>
-      <Link2 size={13} />
-      <input
-        value={url}
-        type="url"
-        inputMode="url"
-        placeholder="https://youtube.com/watch?v=…"
-        aria-label="Video URL"
-        disabled={busy}
-        onChange={(event) => setUrl(event.target.value)}
-        onKeyDown={(event) => event.stopPropagation()}
-        onPaste={(event) => {
-          const pastedUrl = httpUrl(event.clipboardData.getData("text/plain"));
-          if (!pastedUrl) return;
-          event.preventDefault();
-          submitUrl(pastedUrl);
-        }}
-      />
-      <button type="submit" aria-label="Import video URL" disabled={busy || !httpUrl(url)}><ArrowRight size={13} /></button>
-    </form>
-  </div>;
-}
-
-function isVideoAsset(asset: ArtifactListItem): boolean {
-  return asset.type === "Video" || asset.type === "FinalVideo";
-}
-
-function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }) {
-  const actions = useContext(NodeActionsContext);
-  const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"images" | "videos">("images");
-  const [query, setQuery] = useState("");
-  const rootRef = useRef<HTMLDivElement>(null);
-  const selected = actions.assetOptions.find((asset) => asset.id === value);
-  const imageCount = actions.assetOptions.filter((asset) => asset.type === "Image").length;
-  const videoCount = actions.assetOptions.filter(isVideoAsset).length;
-  const visibleAssets = actions.assetOptions.filter((asset) => {
-    const matchesType = tab === "images" ? asset.type === "Image" : isVideoAsset(asset);
-    return matchesType && (!query.trim() || asset.filename.toLowerCase().includes(query.trim().toLowerCase()));
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [open]);
-
-  const openPicker = () => {
-    if (selected) setTab(isVideoAsset(selected) ? "videos" : "images");
-    else if (!imageCount && videoCount) setTab("videos");
-    setOpen((current) => !current);
-  };
-
-  return <div className="node-asset-picker nodrag nopan" ref={rootRef}>
-    <button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button" onClick={openPicker} aria-expanded={open}>
-      <span className={`node-asset-trigger-thumb ${selected && isVideoAsset(selected) ? "video" : "image"}`}>
-        {selected
-          ? isVideoAsset(selected)
-            ? <VideoPlayer src={selected.url} title={selected.filename} controls={false} />
-            : <i style={{ backgroundImage: `url(${selected.url})` }} />
-          : <FolderOpen size={16} />}
-      </span>
-      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos`}</small></span>
-      <ChevronDown size={14} />
-    </button>
-
-    {open && <section className="node-asset-popover" aria-label="Choose an asset">
-      <div className="node-asset-popover-head"><span><strong>Assets</strong><small>Select one for this node</small></span><button type="button" onClick={() => setOpen(false)} aria-label="Close asset picker"><X size={13} /></button></div>
-      <div className="node-asset-popover-tabs">
-        <button type="button" className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}><ImageIcon size={12} /> Images <span>{imageCount}</span></button>
-        <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}><Film size={12} /> Videos <span>{videoCount}</span></button>
-      </div>
-      <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder={`Search ${tab}…`} /></label>
-      <div className="node-asset-popover-grid nowheel">
-        {visibleAssets.map((asset) => <button type="button" className={asset.id === value ? "selected" : ""} key={asset.id} onClick={() => { actions.selectAsset(nodeId, asset.id); setOpen(false); }} title={asset.filename}>
-          <span className="node-asset-popover-media">
-            {isVideoAsset(asset) ? <VideoPlayer src={asset.url} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
-            {isVideoAsset(asset) && <Film size={13} />}
-            {asset.id === value && <b><CircleCheck size={13} /></b>}
-          </span>
-          <strong>{asset.filename}</strong>
-        </button>)}
-        {!visibleAssets.length && <div className="node-asset-popover-empty">No {tab} found</div>}
-      </div>
-      <div className="node-asset-popover-foot"><span>{visibleAssets.length} assets</span>{selected && <button type="button" onClick={() => { actions.selectAsset(nodeId, ""); setOpen(false); }}>Clear selection</button>}</div>
-    </section>}
-  </div>;
-}
-
-function WorkflowNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
-  const Icon = icons[data.icon];
-  const inputs = data.inputTypes ?? [];
-  const actions = useContext(NodeActionsContext);
-  const immutableArtifact = isImmutableUploadArtifact(data);
-  return (
-    <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
-      {inputs.map((type, index) => (
-        <Handle
-          key={`${type}-${index}`}
-          type="target"
-          position={Position.Left}
-          id={inputHandleId(type, index)}
-          className={`typed-handle type-${type.toLowerCase()}`}
-          style={{ top: `${((index + 1) / (inputs.length + 1)) * 100}%` }}
-        >
-          <span>{type}</span>
-        </Handle>
-      ))}
-      <div className="node-head">
-        <span className="node-icon"><Icon size={16} /></span>
-        <span className="node-title"><small>{data.key}</small><strong>{data.label}</strong></span>
-        <CanvasNodeStatus data={data} compact />
-      </div>
-      <p className="node-description">{data.description}</p>
-      {data.key === "asset.upload" && !immutableArtifact && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
-      {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
-      {data.configText !== undefined && !["asset.select", "asset.upload"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
-      {data.output ? <NodeOutput output={data.output} /> : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
-      <div className="node-meta">
-        {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
-        {data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
-        {!!data.attemptCount && <span><RefreshCw size={10} /> {data.attemptCount}</span>}
-        {data.cost && <span className="node-cost">{data.cost}</span>}
-        {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={data.status === "RUNNING" || data.status === "BLOCKED"}>{data.status === "RUNNING" ? <RefreshCw className="spin" size={13} /> : <Play size={12} fill="currentColor" />} Run</button>}
-      </div>
-      {data.outputType && (
-        <Handle type="source" position={Position.Right} id="output" className={`typed-handle type-${data.outputType.toLowerCase()}`}>
-          <span>{data.outputType}</span>
-        </Handle>
-      )}
-    </article>
-  );
-}
-
-function NodePromptEditor({ nodeId, value, onCommit }: { nodeId: string; value: string; onCommit: (nodeId: string, value: string) => void }) {
-  const [draft, setDraft] = useState(value);
-  const composingRef = useRef(false);
-
-  return <textarea
-    className="node-inline-prompt nodrag nopan nowheel"
-    value={draft}
-    placeholder="Describe what to generate…"
-    onKeyDown={(event) => event.stopPropagation()}
-    onCompositionStart={() => { composingRef.current = true; }}
-    onCompositionEnd={(event) => {
-      composingRef.current = false;
-      const completed = event.currentTarget.value;
-      setDraft(completed);
-      onCommit(nodeId, completed);
-    }}
-    onChange={(event) => {
-      const nextValue = event.target.value;
-      setDraft(nextValue);
-      if (!composingRef.current) onCommit(nodeId, nextValue);
-    }}
-    onBlur={(event) => onCommit(nodeId, event.target.value)}
-  />;
-}
-
-function NodeOutput({ output }: { output: CanvasOutput }) {
-  if (output.kind === "image") return <div className="node-output node-output-image"><div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} /><span>{output.title}</span></div>;
-  if (output.kind === "video") {
-    const playable = output.mimeType?.startsWith("video/");
-    return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <VideoPlayer className="nodrag nowheel" src={output.url ?? ""} title={output.title} compact /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}</div>;
-  }
-  if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span></div>;
-  if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p></div>;
-  return <div className="node-output node-output-json"><small>{output.title}</small><pre>{output.text}</pre></div>;
-}
-
-const nodeTypes = { studio: WorkflowNode };
 
 export function GenerationCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => void }) {
   return <ReactFlowProvider><EditableCanvas canvasId={canvasId} onBack={onBack} /></ReactFlowProvider>;
@@ -540,14 +319,19 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   useEffect(() => {
     let active = true;
     const backupKey = `${BACKUP_STORAGE_PREFIX}.${canvasId}`;
-    frameflowApi.getCanvas(canvasId).then((document) => {
+    Promise.all([
+      frameflowApi.getCanvas(canvasId),
+      frameflowApi.listExperiments(canvasId, undefined, 100).catch(() => []),
+    ]).then(([document, experiments]) => {
       if (!active) return;
       const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id });
-      setNodes(migrated.nodes);
+      const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments);
+      setNodes(reconciled.nodes);
       setEdges(migrated.edges);
       setCanvasName(document.name);
       setActiveCanvasRunId(document.active_run_id ?? null);
       loadedRef.current = true;
+      if (reconciled.changed || migrated.nodes.length !== document.nodes.length || migrated.edges.length !== document.edges.length) setSaveState("Unsaved");
     }).catch(() => {
       try {
         const stored = window.localStorage.getItem(backupKey);
@@ -570,10 +354,44 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   }, [canvasId, setEdges, setNodes]);
 
   useEffect(() => {
+    if (!loadedRef.current || !nodes.some((node) => node.data.executable !== false && node.data.status === "RUNNING")) return;
+    let active = true;
+    const refreshRunningExperiments = () => {
+      void frameflowApi.listExperiments(canvasId, undefined, 100).then((experiments) => {
+        if (!active) return;
+        setNodes((current) => {
+          const reconciled = reconcileExperimentState(current, edgesRef.current, experiments);
+          if (reconciled.changed) setSaveState("Unsaved");
+          return reconciled.nodes;
+        });
+      }).catch(() => undefined);
+    };
+    const timer = window.setInterval(refreshRunningExperiments, 3000);
+    refreshRunningExperiments();
+    return () => { active = false; window.clearInterval(timer); };
+  }, [canvasId, nodes, setNodes]);
+
+  useEffect(() => {
     let active = true;
     frameflowApi.listAllArtifacts().then((items) => { if (active) setAssetOptions(items); }).catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!assetOptions.length) return;
+    const byId = new Map(assetOptions.map((asset) => [asset.id, asset]));
+    const needsHydration = nodes.some((node) => {
+      const asset = node.data.key === "asset.select" ? byId.get(node.data.configText ?? "") : undefined;
+      return Boolean(asset && (node.data.output?.url !== asset.url || node.data.output?.mimeType !== asset.content_type));
+    });
+    if (!needsHydration) return;
+    setNodes((current) => current.map((node) => {
+      const asset = node.data.key === "asset.select" ? byId.get(node.data.configText ?? "") : undefined;
+      if (!asset) return node;
+      const { outputType, output } = storedAssetOutput(asset);
+      return { ...node, data: { ...node.data, outputType, output, preview: asset.filename, outputArtifactIds: [asset.id] } };
+    }));
+  }, [assetOptions, nodes, setNodes]);
 
   useEffect(() => {
     if (!loadedRef.current || saveState === "Saved") return;
@@ -688,12 +506,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     pushHistory();
     setNodes((current) => [...current, node]);
     selectNode(node.id);
+    if (node.data.key === "utility.sticky") setInspectorOpen(false);
     setPickerOpen(false);
     setPickerQuery("");
     setPickerInsertPosition(null);
     markUnsaved();
     notify(`${node.data.label} 노드를 추가했습니다.`, "success");
-  }, [markUnsaved, notify, pickerInsertPosition, pushHistory, screenToFlowPosition, selectNode, setNodes]);
+  }, [markUnsaved, notify, pickerInsertPosition, pushHistory, screenToFlowPosition, selectNode, setInspectorOpen, setNodes]);
 
   const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -742,7 +561,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "frameTimestampMs", "sourceLanguage", "targetLanguage", "voiceName"]);
+    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -750,7 +569,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
         data: {
           ...node.data,
           ...dataPatch,
-          ...(invalidatesOutput && node.data.status === "SUCCEEDED" ? { status: "STALE" as NodeStatus, output: undefined, preview: undefined, outputArtifactIds: undefined } : {}),
+          ...(invalidatesOutput && node.data.status === "SUCCEEDED" ? { status: "STALE" as NodeStatus } : {}),
         },
       } : node);
       return invalidatesOutput ? refreshReadyStatuses(invalidateDescendants(updated, edgesRef.current, selectedNodeId), edgesRef.current) : updated;
@@ -762,7 +581,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     setNodes((current) => {
       const updated = current.map((node) => {
         if (node.id === nodeId) {
-          const immediateSource = ["prompt.input", "asset.select", "utility.text"].includes(node.data.key);
+          const immediateSource = ["prompt.input", "asset.select", "utility.sticky"].includes(node.data.key);
           const promptStatus: NodeStatus = immediateSource ? (value.trim() ? "SUCCEEDED" : "READY") : node.data.status === "SUCCEEDED" ? "STALE" : node.data.status;
           const selectedAssetOutput: CanvasOutput | undefined = node.data.key === "asset.select" && value.trim() ? { kind: "json", title: "Selected asset", text: JSON.stringify({ asset: value, reference_mode: "single" }, null, 2) } : undefined;
           return { ...node, data: { ...node.data, configText: value, status: promptStatus, output: selectedAssetOutput, preview: node.data.key === "asset.select" && value ? value : undefined } };
@@ -771,6 +590,11 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       });
       return refreshReadyStatuses(invalidateDescendants(updated, edgesRef.current, nodeId), edgesRef.current);
     });
+    markUnsaved();
+  }, [markUnsaved, setNodes]);
+
+  const updateStickyColor = useCallback((nodeId: string, stickyColor: StickyColor) => {
+    setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, stickyColor } } : node));
     markUnsaved();
   }, [markUnsaved, setNodes]);
 
@@ -785,9 +609,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           ...node,
           data: {
             ...node.data,
+            key: "asset.select",
+            label: "Assets",
+            description: "저장된 이미지·비디오를 Popover에서 선택",
+            icon: "assets" as IconName,
             status: "SUCCEEDED" as NodeStatus,
-            configText: file.name,
-            preview: `${file.name} · ${(artifact.size_bytes / 1_000_000).toFixed(1)} MB`,
+            configText: artifact.artifact_id,
+            preview: file.name || artifact.filename,
             output,
             outputType: artifact.type as PortType,
             outputArtifactIds: [artifact.artifact_id],
@@ -819,9 +647,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           ...node,
           data: {
             ...node.data,
+            key: "asset.select",
+            label: "Assets",
+            description: "저장된 이미지·비디오를 Popover에서 선택",
+            icon: "assets" as IconName,
             status: "SUCCEEDED" as NodeStatus,
-            configText: artifact.source_url ?? sourceUrl,
-            preview: `${artifact.filename} · ${(artifact.size_bytes / 1_000_000).toFixed(1)} MB`,
+            configText: artifact.artifact_id,
+            preview: artifact.filename,
             output,
             outputType: artifact.type as PortType,
             outputArtifactIds: [artifact.artifact_id],
@@ -846,9 +678,8 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       const updated = invalidated.map((node) => {
         if (node.id !== nodeId) return node;
         if (!artifact) return { ...node, data: { ...node.data, status: "READY" as NodeStatus, configText: "", output: undefined, preview: undefined, outputArtifactIds: undefined, outputType: "ReferenceAsset" as PortType } };
-        const outputType = (artifact.type === "FinalVideo" ? "Video" : artifact.type) as PortType;
-        const kind: CanvasOutput["kind"] = outputType === "Image" ? "image" : outputType === "Video" ? "video" : outputType === "Text" ? "text" : "audio";
-        return { ...node, data: { ...node.data, status: "SUCCEEDED" as NodeStatus, configText: artifact.id, preview: artifact.filename, outputType, outputArtifactIds: [artifact.id], output: { kind, title: artifact.filename, url: artifact.url, mimeType: artifact.content_type } } };
+        const { outputType, output } = storedAssetOutput(artifact);
+        return { ...node, data: { ...node.data, status: "SUCCEEDED" as NodeStatus, configText: artifact.id, preview: artifact.filename, outputType, outputArtifactIds: [artifact.id], output } };
       });
       return refreshReadyStatuses(updated, edgesRef.current);
     });
@@ -964,13 +795,20 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     const prompt = nodesRef.current.find((candidate) => candidate.id === promptEdge?.source)?.data.configText?.trim()
       || node.data.configText?.trim()
       || node.data.description;
-    const inputSnapshots = edgesRef.current.filter((edge) => edge.target === nodeId).map((edge) => {
+    const directInputEdges = edgesRef.current.filter((edge) => edge.target === nodeId);
+    const inputSourceIds = directInputEdges.flatMap((edge) => {
       const source = nodesRef.current.find((candidate) => candidate.id === edge.source);
+      if (source?.data.key !== "prompt.input") return [edge.source];
+      const promptInputIds = edgesRef.current.filter((candidate) => candidate.target === source.id).map((candidate) => candidate.source);
+      return [edge.source, ...promptInputIds];
+    });
+    const inputSnapshots = [...new Set(inputSourceIds)].map((sourceId) => {
+      const source = nodesRef.current.find((candidate) => candidate.id === sourceId);
       return {
-        node_id: source?.id ?? edge.source,
+        node_id: source?.id ?? sourceId,
         node_key: source?.data.key ?? "unknown",
         type: source?.data.outputType ?? "Any",
-        label: source?.data.label ?? edge.source,
+        label: source?.data.label ?? sourceId,
         description: source?.data.description,
         config_text: source?.data.configText,
         output_title: source?.data.output?.title,
@@ -992,7 +830,6 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           output_count: 1,
           transition: node.data.transition,
           target_duration_seconds: node.data.targetDurationSeconds,
-          frame_timestamp_ms: node.data.frameTimestampMs,
           source_language: node.data.sourceLanguage,
           target_language: node.data.targetLanguage,
           voice_name: node.data.voiceName,
@@ -1103,7 +940,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     setGraphRunning(true);
     setGraphProgress(0);
     cancelRunRef.current = false;
-    setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus, output: undefined, preview: undefined, outputArtifactIds: undefined } }));
+    setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus } }));
     try {
       const run = await frameflowApi.createCanvasRun({
         canvas_id: canvasId,
@@ -1239,13 +1076,27 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   }, [pickerQuery]);
   const cost = graphCost(nodes);
   const successfulCount = nodes.filter((node) => node.data.status === "SUCCEEDED").length;
-  const nodeActions = useMemo<NodeActions>(() => ({ runStep: (nodeId) => void runStep(nodeId), updateConfig: updateNodeConfig, uploadAsset: uploadNodeAsset, importAssetUrl: importNodeAssetUrl, selectAsset: selectStoredAsset, assetOptions }), [assetOptions, importNodeAssetUrl, runStep, selectStoredAsset, updateNodeConfig, uploadNodeAsset]);
+  const showInspector = Boolean(inspectorOpen && selectedNode && selectedNode.data.key !== "utility.sticky");
+  const nodeActions = useMemo<NodeActions>(() => ({
+    runStep: (nodeId) => void runStep(nodeId),
+    updateConfig: updateNodeConfig,
+    updateStickyColor,
+    getPromptImages: (nodeId) => edges
+      .filter((edge) => edge.target === nodeId)
+      .map((edge) => nodes.find((node) => node.id === edge.source))
+      .filter((node): node is StudioFlowNode => Boolean(node?.data.outputType === "Image"))
+      .map((node) => ({ id: node.id, title: node.data.output?.title ?? node.data.label, url: node.data.output?.url, outdated: node.data.status !== "SUCCEEDED" })),
+    uploadAsset: uploadNodeAsset,
+    importAssetUrl: importNodeAssetUrl,
+    selectAsset: selectStoredAsset,
+    assetOptions,
+  }), [assetOptions, edges, importNodeAssetUrl, nodes, runStep, selectStoredAsset, updateNodeConfig, updateStickyColor, uploadNodeAsset]);
 
   return (
-    <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${inspectorOpen && selectedNode ? "with-inspector" : ""}`}>
+    <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${showInspector ? "with-inspector" : ""}`}>
       <div className="canvas-toolbar">
         <div className="workflow-switcher canvas-name-field"><span className="workflow-glyph"><Workflow size={16} /></span><span><small>Canvas</small><input value={canvasName} onChange={(event) => { setCanvasName(event.target.value); markUnsaved(); }} aria-label="Canvas name" /></span></div>
-        <button className="secondary-button new-canvas-button" type="button" onClick={() => { void saveNow().then((saved) => { if (saved) onBack(); }); }} disabled={graphRunning || saveState === "Saving"}><ArrowLeft size={15} /> Canvases</button>
+        <Button className="new-canvas-button" variant="secondary" type="button" onClick={() => { void saveNow().then((saved) => { if (saved) onBack(); }); }} disabled={graphRunning || saveState === "Saving"}><ArrowLeft size={15} /> Canvases</Button>
         <span className="canvas-divider" />
         <button className="tool-icon" type="button" onClick={undo} disabled={!history.length} aria-label="Undo"><Undo2 size={16} /></button>
         <button className="tool-icon" type="button" onClick={redo} disabled={!future.length} aria-label="Redo"><Redo2 size={16} /></button>
@@ -1253,17 +1104,17 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
         <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => void saveNow()} disabled={saveState === "Saving"}><Save size={13} /> {saveState}</button>
         <button className="tool-icon reset-canvas" type="button" onClick={clearCanvas} disabled={graphRunning || !nodes.length} aria-label="Clear canvas"><Trash2 size={15} /></button>
         <div className="canvas-toolbar-spacer" />
-        <button className="secondary-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</button>
+        <Button variant="secondary" className="canvas-validate-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</Button>
         <div className="cost-estimate"><span><CircleDollarSign size={13} /> Est. ${cost.toFixed(2)}</span><small>{nodes.length} steps · {edges.length} connections</small></div>
-        {graphRunning && <button className="secondary-button run-stop" type="button" onClick={stopGraph}><CircleStop size={15} /> Stop</button>}
-        <button className="primary-button run-button" type="button" onClick={validateAndOpen} disabled={graphRunning}>
+        {graphRunning && <Button variant="secondary" className="run-stop" type="button" onClick={stopGraph}><CircleStop size={15} /> Stop</Button>}
+        <Button className="run-button" type="button" onClick={validateAndOpen} disabled={graphRunning}>
           {graphRunning ? <><RefreshCw className="spin" size={15} /> Running {graphProgress}%</> : <><Play size={14} fill="currentColor" /> Run workflow</>}
-        </button>
+        </Button>
       </div>
 
       {paletteOpen && <aside className="node-palette">
         <div className="palette-title"><div><span className="subtle-label">Node library</span><strong>Add a step</strong></div><span className="node-count">{nodeTemplates.filter((item) => item.visible !== false).length}</span></div>
-        <label className="input-shell palette-search"><Sparkles size={14} /><input value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} placeholder="Find node…" /></label>
+        <SearchField className="palette-search" icon={<Sparkles size={14} />} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} placeholder="Find node…" />
         <div className="palette-groups">
           {paletteGroups.map((section) => <div className="palette-group" key={section.group}>
             {section.group !== "Quick" && <div className="palette-group-title"><ChevronDown size={12} />{section.group}</div>}
@@ -1291,7 +1142,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           isValidConnection={isValidConnection}
           onDrop={handleDrop}
           onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
-          onNodeClick={(_, node) => selectNode(node.id)}
+          onNodeClick={(_, node) => { selectNode(node.id); if (node.data.key === "utility.sticky") setInspectorOpen(false); }}
           onNodeDoubleClick={(_, node) => void runStep(node.id)}
           onNodeDragStart={() => { dragStartRef.current = cloneGraph(nodesRef.current, edgesRef.current); }}
           onNodeDragStop={() => { if (dragStartRef.current) pushHistory(dragStartRef.current); dragStartRef.current = null; markUnsaved(); }}
@@ -1308,59 +1159,54 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           defaultEdgeOptions={{ type: EDGE_TYPE }}
         >
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#c9cbc4" />
-          <Controls position="bottom-center" showInteractive={false} />
+          <Controls position="bottom-right" showInteractive={false} />
           <MiniMap position="bottom-right" pannable zoomable nodeColor={(node) => node.id === selectedNodeId ? "#675cf6" : node.data.status === "SUCCEEDED" ? "#79b9a0" : "#d3d4ce"} maskColor="rgba(246,246,243,.7)" />
           <div className="canvas-legend"><span><i className="port-format" /> Format</span><span><i className="port-media" /> Media</span><span><i className="port-data" /> Data</span><span>Double-click: Run step</span></div>
         </ReactFlow></NodeActionsContext.Provider>
-        {!nodes.length && <div className="canvas-empty-state"><span className="empty-spark"><Sparkles size={22} /></span><h2>Start with a blank canvas</h2><p>저장된 실제 Asset과 Prompt 노드를 추가해 Workflow를 구성하세요.</p><div><button className="primary-button" type="button" onClick={() => setPickerOpen(true)}><Plus size={15} /> Add first step</button></div></div>}
+        {!nodes.length && <div className="canvas-empty-state"><span className="empty-spark"><Sparkles size={22} /></span><h2>Start with a blank canvas</h2><p>저장된 실제 Asset과 Prompt 노드를 추가해 Workflow를 구성하세요.</p><div><Button type="button" onClick={() => setPickerOpen(true)}><Plus size={15} /> Add first step</Button></div></div>}
       </div>
 
-      {inspectorOpen && selectedNode && (
+      {showInspector && selectedNode && (
         <aside className="node-inspector">
-          <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><button className="icon-button tiny" type="button" onClick={() => setInspectorOpen(false)}><PanelRightClose size={16} /></button></div>
+          <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><Button variant="ghost" size="icon-sm" className="size-[25px] min-h-[25px]" type="button" onClick={() => setInspectorOpen(false)} aria-label="Close node inspector"><PanelRightClose size={16} /></Button></div>
           <div className="inspector-status"><CanvasNodeStatus data={selectedNode.data} /><span>{selectedNode.data.key}</span></div>
           <div className="inspector-tabs"><span className="active">Settings</span></div>
           <div className="inspector-content">
-            {selectedNode.data.executable !== false && <button className="primary-button step-run-button" type="button" onClick={() => void runStep(selectedNode.id)} disabled={selectedNode.data.status === "RUNNING" || graphRunning || !!selectedInputError}>
+            {selectedNode.data.executable !== false && <Button className="step-run-button" type="button" onClick={() => void runStep(selectedNode.id)} disabled={selectedNode.data.status === "RUNNING" || graphRunning || !!selectedInputError}>
               {selectedNode.data.status === "RUNNING" ? <><RefreshCw className="spin" size={15} /> Running step…</> : <><Play size={14} fill="currentColor" /> Run this step</>}
-            </button>}
+            </Button>}
             <p className={`step-run-help ${selectedInputError ? "has-error" : ""}`}>{selectedNode.data.executable === false ? "입력 또는 Canvas 정리용 노드입니다." : selectedInputError ?? "이 Step만 실행합니다. 연결된 입력을 사용합니다."}</p>
-            {isImmutableUploadArtifact(selectedNode.data) && <div className="inspector-asset-lock"><LockKeyhole size={15} /><span><strong>Locked Asset</strong><small>원본은 수정하거나 교체할 수 없습니다. 다른 입력은 새 Asset 노드를 사용하세요.</small></span></div>}
             {selectedNode.data.kind === "generate" && <div className="generator-settings">
               <div className={`connected-prompt-preview ${selectedPromptText ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || "Prompt 노드를 연결하고 내용을 입력하세요."}</p></div>
               <div className="generator-setting-grid provider-model-selectors">
-                <label><span>Provider</span><select value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
-                <label><span>Model</span><select value={selectedNode.data.model ?? selectedModelOptions[0]?.value ?? ""} onChange={(event) => updateSelectedData({ model: event.target.value })}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label>
+                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
+                <label><span>Model</span><NativeSelect value={selectedNode.data.model ?? selectedModelOptions[0]?.value ?? ""} onChange={(event) => updateSelectedData({ model: event.target.value })}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
               </div>
               {selectedNode.data.resolution && <div className="generator-setting-grid">
-                <label><span>Resolution</span><select value={selectedNode.data.resolution ?? "1080p"} onChange={(event) => updateSelectedData({ resolution: event.target.value })}><option>1080p</option><option>2K</option><option>4K</option><option>24kHz</option></select></label>
-                <label><span>Aspect ratio</span><select value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option><option>Audio</option></select></label>
+                <label><span>Resolution</span><NativeSelect value={selectedNode.data.resolution ?? "1080p"} onChange={(event) => updateSelectedData({ resolution: event.target.value })}><option>1080p</option><option>2K</option><option>4K</option><option>24kHz</option></NativeSelect></label>
+                <label><span>Aspect ratio</span><NativeSelect value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option><option>Audio</option></NativeSelect></label>
               </div>}
               {selectedNode.data.batchSize && <div className="batch-setting single-output-setting"><span><small>Output count</small><strong>Canvas Step은 단일 결과를 출력합니다.</strong></span><b>1</b></div>}
             </div>}
             {selectedNode.data.key === "video.edit" && <div className="video-editor-settings">
               <div className={`editor-input-count ${selectedVideoInputCount ? "connected" : "missing"}`}><span>Connected videos</span><strong>{selectedVideoInputCount}</strong><small>{selectedVideoInputCount ? "여러 입력은 연결 순서대로 편집됩니다." : "Video 출력들을 왼쪽 입력 포트에 연결하세요."}</small></div>
-              <label className="field-label"><span>Transition</span><select value={selectedNode.data.transition ?? "hard_cut"} onChange={(event) => updateSelectedData({ transition: event.target.value })}><option value="hard_cut">Hard cut</option><option value="crossfade">Crossfade</option><option value="dip_to_black">Dip to black</option></select></label>
+              <label className="field-label"><span>Transition</span><NativeSelect value={selectedNode.data.transition ?? "hard_cut"} onChange={(event) => updateSelectedData({ transition: event.target.value })}><option value="hard_cut">Hard cut</option><option value="crossfade">Crossfade</option><option value="dip_to_black">Dip to black</option></NativeSelect></label>
               <div className="generator-setting-grid">
-                <label><span>Output ratio</span><select value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option></select></label>
-                <label><span>Target length</span><select value={String(selectedNode.data.targetDurationSeconds ?? 30)} onChange={(event) => updateSelectedData({ targetDurationSeconds: Number(event.target.value) })}><option value="15">15s</option><option value="30">30s</option><option value="45">45s</option><option value="60">60s</option></select></label>
+                <label><span>Output ratio</span><NativeSelect value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option></NativeSelect></label>
+                <label><span>Target length</span><NativeSelect value={String(selectedNode.data.targetDurationSeconds ?? 30)} onChange={(event) => updateSelectedData({ targetDurationSeconds: Number(event.target.value) })}><option value="15">15s</option><option value="30">30s</option><option value="45">45s</option><option value="60">60s</option></NativeSelect></label>
               </div>
-            </div>}
-            {selectedNode.data.key === "video.frame_extract" && <div className="video-editor-settings frame-extract-settings">
-              <div className="editor-input-count connected"><span>Frame output</span><strong>1</strong><small>연결된 Video에서 지정 시점의 JPEG를 추출합니다.</small></div>
-              <label className="field-label"><span>Timestamp (seconds)</span><input type="number" min="0" step="0.1" value={(selectedNode.data.frameTimestampMs ?? 0) / 1000} onChange={(event) => updateSelectedData({ frameTimestampMs: Math.max(0, Math.round(Number(event.target.value || 0) * 1000)) })} /><small>정확한 프레임 탐색을 위해 millisecond로 실행 이력에 저장됩니다.</small></label>
             </div>}
             {selectedNode.data.key === "video.translate" && <div className="video-editor-settings">
               <div className="editor-input-count connected"><span>Live pipeline</span><strong>3</strong><small>Chirp 3 STT → Gemini translation → Gemini TTS</small></div>
               <div className="generator-setting-grid">
-                <label><span>Source language</span><select value={selectedNode.data.sourceLanguage ?? "auto"} onChange={(event) => updateSelectedData({ sourceLanguage: event.target.value })}><option value="auto">Auto detect</option><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></select></label>
-                <label><span>Target language</span><select value={selectedNode.data.targetLanguage ?? "ko-KR"} onChange={(event) => updateSelectedData({ targetLanguage: event.target.value })}><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></select></label>
+                <label><span>Source language</span><NativeSelect value={selectedNode.data.sourceLanguage ?? "auto"} onChange={(event) => updateSelectedData({ sourceLanguage: event.target.value })}><option value="auto">Auto detect</option><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
+                <label><span>Target language</span><NativeSelect value={selectedNode.data.targetLanguage ?? "ko-KR"} onChange={(event) => updateSelectedData({ targetLanguage: event.target.value })}><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
               </div>
-              <label className="field-label"><span>Gemini voice</span><select value={selectedNode.data.voiceName ?? "Kore"} onChange={(event) => updateSelectedData({ voiceName: event.target.value })}><option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Charon">Charon</option><option value="Puck">Puck</option></select><small>Google Cloud ADC와 Speech-to-Text·Vertex AI 권한이 필요합니다.</small></label>
+              <label className="field-label"><span>Gemini voice</span><NativeSelect value={selectedNode.data.voiceName ?? "Kore"} onChange={(event) => updateSelectedData({ voiceName: event.target.value })}><option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Charon">Charon</option><option value="Puck">Puck</option></NativeSelect><small>Google Cloud ADC와 Speech-to-Text·Vertex AI 권한이 필요합니다.</small></label>
             </div>}
-            <label className="field-label"><span>Node name</span><input value={selectedNode.data.label} onChange={(event) => updateSelectedData({ label: event.target.value })} /></label>
-            <label className="field-label"><span>Description</span><textarea value={selectedNode.data.description} onChange={(event) => updateSelectedData({ description: event.target.value })} /></label>
-            {selectedNode.data.model && selectedNode.data.kind !== "generate" && <label className="field-label"><span>Runtime engine</span><input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
+            <label className="field-label"><span>Node name</span><Input value={selectedNode.data.label} onChange={(event) => updateSelectedData({ label: event.target.value })} /></label>
+            <label className="field-label"><span>Description</span><Textarea value={selectedNode.data.description} onChange={(event) => updateSelectedData({ description: event.target.value })} /></label>
+            {selectedNode.data.model && selectedNode.data.kind !== "generate" && <label className="field-label"><span>Runtime engine</span><Input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
             <div className="inspector-section-title"><span>Input contracts</span><Braces size={14} /></div>
             {(selectedNode.data.inputTypes?.length ? selectedNode.data.inputTypes : ["Source node"]).map((type, index) => {
               const connectionCount = type === "Source node" ? 0 : edges.filter((edge) => edge.target === selectedNode.id && edge.targetHandle === inputHandleId(type as PortType, index)).length;
@@ -1386,12 +1232,12 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
             {selectedNode.data.preview && <div className="step-output-preview"><span>Latest output</span><strong>{selectedNode.data.preview}</strong></div>}
             {selectedNode.data.key === "candidate.select" && <button className="candidate-preview-button" type="button" onClick={() => { setCandidateNodeId(selectedNode.id); setSelectedCandidate(0); setCandidateOpen(true); }}><span className="candidate-stack"><i /><i /><i /></span><span><strong>Open candidate grid</strong><small>Compare connected video outputs</small></span><ChevronRight size={16} /></button>}
           </div>
-          <div className="inspector-edit-actions"><button className="secondary-button" type="button" onClick={duplicateSelected}><Copy size={14} /> Duplicate</button><button className="danger-button" type="button" onClick={deleteSelected}><Trash2 size={14} /> Delete</button></div>
-          {selectedNode.data.executable !== false && <div className="inspector-actions"><button className="secondary-button" type="button" onClick={() => void runStep(selectedNode.id)} disabled={!!selectedInputError}><ListRestart size={13} /> Retry</button><button className="secondary-button" type="button" disabled={!!selectedInputError} onClick={() => { updateSelectedData({ status: selectedNode.data.requiredInputTypes?.length || (selectedNode.data.inputTypes?.length && selectedNode.data.inputsRequired !== false) ? "BLOCKED" : "READY", preview: undefined, output: undefined }); window.setTimeout(() => void runStep(selectedNode.id), 0); }}><RefreshCw size={13} /> Regenerate</button><button className="secondary-button" type="button" onClick={duplicateSelected}><GitFork size={13} /> Fork</button></div>}
+          <div className="inspector-edit-actions"><Button variant="secondary" type="button" onClick={duplicateSelected}><Copy size={14} /> Duplicate</Button><Button variant="danger" type="button" onClick={deleteSelected}><Trash2 size={14} /> Delete</Button></div>
+          {selectedNode.data.executable !== false && <div className="inspector-actions"><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={() => void runStep(selectedNode.id)} disabled={!!selectedInputError}><ListRestart size={13} /> Retry</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" disabled={!!selectedInputError} onClick={() => { updateSelectedData({ status: selectedNode.data.requiredInputTypes?.length || (selectedNode.data.inputTypes?.length && selectedNode.data.inputsRequired !== false) ? "BLOCKED" : "READY" }); window.setTimeout(() => void runStep(selectedNode.id), 0); }}><RefreshCw size={13} /> Regenerate</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={duplicateSelected}><GitFork size={13} /> Fork</Button></div>}
         </aside>
       )}
 
-      {!inspectorOpen && selectedNode && <button className="open-inspector" type="button" onClick={() => setInspectorOpen(true)}><ChevronRight size={16} /></button>}
+      {!inspectorOpen && selectedNode && selectedNode.data.key !== "utility.sticky" && <button className="open-inspector" type="button" onClick={() => setInspectorOpen(true)}><ChevronRight size={16} /></button>}
 
       {graphRunning && <div className="run-progress-toast running"><span className="run-pulse"><i /></span><span><strong>Workflow is running</strong><small>{graphProgress}% · {successfulCount}/{nodes.length} steps · ${cost.toFixed(2)}</small></span><div className="toast-progress"><i style={{ width: `${graphProgress}%` }} /></div></div>}
       {toast && <div className={`canvas-toast toast-${toast.tone}`}>{toast.tone === "success" ? <CircleCheck size={16} /> : toast.tone === "error" ? <CircleAlert size={16} /> : <Sparkles size={16} />}<span>{toast.message}</span></div>}
@@ -1413,25 +1259,4 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       {candidateOpen && <CandidateDialog candidates={candidateOptions} selected={selectedCandidate} setSelected={setSelectedCandidate} onClose={() => setCandidateOpen(false)} onApprove={() => void approveCandidates()} />}
     </div>
   );
-}
-
-function CompileDialog({ errors, nodeCount, edgeCount, estimatedCost, onClose, onRun }: { errors: string[]; nodeCount: number; edgeCount: number; estimatedCost: number; onClose: () => void; onRun: () => void }) {
-  const valid = errors.length === 0;
-  return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal-card compile-modal" onMouseDown={(event) => event.stopPropagation()}>
-    <div className="modal-heading"><div><span className="subtle-label">Graph validation</span><h2>{valid ? "Ready to run" : "Graph needs attention"}</h2><p>{valid ? "모든 Step과 포트 연결을 확인했습니다." : "실행 전에 아래 문제를 해결하세요."}</p></div><button className="icon-button" type="button" onClick={onClose}><X size={17} /></button></div>
-    {valid ? <div className="compile-checks"><div><BadgeCheck size={17} /><span><strong>Graph contracts valid</strong><small>{nodeCount} nodes · {edgeCount} typed connections · no cycles</small></span></div><div><ShieldCheck size={17} /><span><strong>Reference isolation enforced</strong><small>Generation steps receive structured Format only</small></span></div><div><Zap size={17} /><span><strong>Ready for step execution</strong><small>Steps run in dependency order</small></span></div></div> : <div className="validation-errors">{errors.map((error) => <div key={error}><CircleAlert size={15} /><span>{error}</span></div>)}</div>}
-    <div className="compile-summary"><div><small>Steps</small><strong>{nodeCount}</strong></div><div><small>Connections</small><strong>{edgeCount}</strong></div><div><small>Estimated cost</small><strong>${estimatedCost.toFixed(2)}</strong></div><div><small>Execution</small><strong>Dependency DAG</strong></div></div>
-    <div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Back to edit</button>{valid && <button className="primary-button" type="button" onClick={onRun}><Rocket size={15} /> Run {nodeCount} steps</button>}</div>
-  </section></div>;
-}
-
-function CandidateDialog({ candidates, selected, setSelected, onClose, onApprove }: { candidates: CandidateOption[]; selected: number; setSelected: (value: number) => void; onClose: () => void; onApprove: () => void }) {
-  const active = candidates[selected];
-  return <div className="modal-backdrop candidate-backdrop" onMouseDown={onClose}><section className="candidate-dialog" onMouseDown={(event) => event.stopPropagation()}>
-    <div className="candidate-dialog-head"><div><span className="subtle-label">Human review · Candidate Select step</span><h2>Choose a connected video</h2><p>연결된 실제 Video Artifact 중 다음 Step으로 전달할 결과를 선택합니다.</p></div><button className="icon-button" type="button" onClick={onClose}><X size={17} /></button></div>
-    <div className="candidate-grid">{candidates.map((candidate, index) => <button type="button" key={candidate.id} onClick={() => setSelected(index)} className={`candidate-card ${selected === index ? "selected" : ""}`}><div className="candidate-video"><VideoPlayer src={candidate.output.url ?? ""} title={candidate.output.title} controls={false} autoPlay loop />{selected === index && <i className="selected-check"><BadgeCheck size={18} /></i>}</div><div><span><strong>{candidate.label}</strong><small>{candidate.output.title}</small></span><span className="ai-score"><Film size={11} /> Artifact</span></div></button>)}</div>
-    {!candidates.length && <div className="candidate-details"><div><span className="subtle-label">No runnable candidates</span><p>Artifact가 저장된 Video 출력 노드를 하나 이상 연결한 뒤 다시 실행하세요.</p></div></div>}
-    {active && <div className="candidate-details"><div><span className="subtle-label">Selected output</span><p>{active.output.title} · {active.artifactIds.join(", ")}</p></div></div>}
-    <div className="candidate-footer"><span>{active ? <><BadgeCheck size={16} /> {active.label} selected · original Artifact remains immutable</> : "Video Artifact connection required"}</span><div><button className="primary-button" type="button" onClick={onApprove} disabled={!active}>Use candidate & complete step <ArrowRight size={15} /></button></div></div>
-  </section></div>;
 }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -18,7 +19,7 @@ from .canvas_operations import (
 )
 from .domain import ExperimentRunRequest, ExperimentRunResponse, NodeStatus
 from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
-from .providers import ALL_MODEL_REGISTRY
+from .providers import model_id_for_alias
 from .providers_generation import LIVE_GENERATION_REVISION, InputMedia, get_google_generation_services
 from .providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
 from .service import audit, create_artifact, new_id
@@ -35,6 +36,32 @@ MODEL_COSTS = {
     "google.tts.fast": 0.12,
 }
 FIXTURE_EXECUTOR_REVISION = "fixture-media.v2"
+IMAGE_VARIABLE_PATTERN = re.compile(r"\{\{image:([^}]+)}}")
+
+
+def resolve_prompt_image_variables(payload: ExperimentRunRequest) -> ExperimentRunRequest:
+    referenced_source_ids = IMAGE_VARIABLE_PATTERN.findall(payload.prompt)
+    if not referenced_source_ids:
+        return payload
+    image_inputs = [
+        item for item in payload.inputs
+        if str(item.get("type") or "") == "Image" and (item.get("artifact_ids") or item.get("artifact_id"))
+    ]
+    index_by_source_id = {str(item.get("node_id") or ""): index + 1 for index, item in enumerate(image_inputs)}
+    missing = [source_id for source_id in dict.fromkeys(referenced_source_ids) if source_id not in index_by_source_id]
+    if missing:
+        raise ValueError(f"Prompt references image inputs that are no longer connected: {', '.join(missing)}")
+    resolved_prompt = IMAGE_VARIABLE_PATTERN.sub(
+        lambda match: f"Image {index_by_source_id[match.group(1)]}",
+        payload.prompt,
+    )
+    mapping = "\n".join(
+        f"- Image {index}: attached image input {index}"
+        for index in range(1, len(image_inputs) + 1)
+    )
+    return payload.model_copy(update={
+        "prompt": f"Use the following image names exactly when following the instruction:\n{mapping}\n\n{resolved_prompt}",
+    })
 
 
 def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
@@ -52,7 +79,10 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
     if is_local_operation(node_key):
         return resolve_local_model(node_key)
     normalized = model_alias if model_alias.startswith(("google.", "openai.")) else f"google.{model_alias}"
-    exact = ALL_MODEL_REGISTRY.get(normalized)
+    exact = model_id_for_alias(
+        normalized,
+        gemini_api=bool(os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_CLOUD_PROJECT")),
+    )
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")
     return normalized, exact
@@ -169,6 +199,7 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
 
 
 def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRecord:
+    payload = resolve_prompt_image_variables(payload)
     model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key)
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
     if requested_provider and model_alias.startswith(("google.", "openai.")) and not model_alias.startswith(f"{requested_provider}."):
