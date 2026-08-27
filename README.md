@@ -12,6 +12,7 @@
 - Reference Library와 Metadata Inspect API 연동
 - Format Lab, Evidence, Core/Extensions JSON, 비교 시각화
 - Run 목록, Model Registry, Candidate Compare
+- Workspace 카운트·통합 Run·모델 사용량·Format evidence를 실제 저장 데이터로 표시하는 UI
 - FastAPI Reference·Format·Generation·Run·Artifact API
 - URL 정규화와 중복 감지, analysis-only 권한 강제
 - Format 추출·변형·가중 병합과 필드별 Lineage

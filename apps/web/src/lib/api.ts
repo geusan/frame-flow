@@ -33,7 +33,7 @@ export interface FormatRecord {
   name: string;
   kind: string;
   parent_ids: string[];
-  payload: { core: import("./types").FormatCore; extensions?: Record<string, unknown>; evidence?: Record<string, unknown> };
+  payload: { core: import("./types").FormatCore; extensions?: Record<string, unknown>; evidence?: import("./types").FormatProfile["evidence"] };
   lineage: Record<string, unknown>;
 }
 
@@ -58,6 +58,43 @@ export interface ModelRecord {
   region: string;
   status: "active" | "disabled";
   configured: boolean;
+  configuration: string;
+  usage_count: number;
+  recorded_cost_usd: number;
+  last_used_at?: string;
+}
+
+export interface WorkspaceSummary {
+  service: string;
+  environment: string;
+  storage_provider: string;
+  execution_backend: string;
+  references: number;
+  formats: number;
+  runs: number;
+  regular_runs: number;
+  canvas_runs: number;
+  active_runs: number;
+  experiments: number;
+  recorded_cost_usd: number;
+  images: number;
+  videos: number;
+  artifacts: number;
+}
+
+export interface WorkflowRunRecord {
+  id: string;
+  created_at: string;
+  run_type: "generation" | "canvas";
+  name: string;
+  status: string;
+  progress: number;
+  cost_usd: number;
+  estimated_cost_usd?: number;
+  nodes_done: number;
+  nodes_total: number;
+  attempt_count: number;
+  duration_ms?: number;
 }
 
 export interface CanvasNodeRunRecord {
@@ -244,7 +281,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const frameflowApi = {
-  health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string }>("/health"),
+  health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
+  workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
   inspectReferences: (urls: string[]) => request<InspectResult[]>("/references/inspect", { method: "POST", body: JSON.stringify({ urls }) }),
   listReferences: () => request<ReferenceRecord[]>("/references"),
   importReference: (metadata: InspectResult, rightsBasis: ReferenceRecord["rights_basis"] = "analysis_only") => request<{ reference_id: string; deduplicated: boolean; artifact_ids: string[] }>("/references/import", { method: "POST", body: JSON.stringify({ metadata, rights_basis: rightsBasis, allow_generation_input: ["owned", "licensed", "creative_commons"].includes(rightsBasis), allow_direct_asset_use: ["owned", "licensed"].includes(rightsBasis) }) }),
@@ -253,6 +291,7 @@ export const frameflowApi = {
   listFormats: () => request<FormatRecord[]>("/formats"),
   createFormatVariants: (formatId: string, count = 1) => request<Array<{ id: string; name: string }>>(`/formats/${formatId}/variants`, { method: "POST", body: JSON.stringify({ count, distance: "medium", variation_axes: ["visual_motion"] }) }),
   listRuns: () => request<RunRecord[]>("/runs"),
+  listWorkflowRuns: () => request<WorkflowRunRecord[]>("/workflow-runs"),
   listModels: () => request<ModelRecord[]>("/models"),
   createExperiment: (payload: CreateExperimentInput) => request<ExperimentRun>("/experiments", { method: "POST", body: JSON.stringify(payload) }),
   listExperiments: (canvasId: string, nodeId: string, limit = 20) => {

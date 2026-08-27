@@ -86,8 +86,6 @@ import {
   isConnectionCompatible,
   nodeTemplates,
   refreshReadyStatuses,
-  starterEdges,
-  starterNodes,
   stepInputError,
   validateGraph,
   type CanvasOutput,
@@ -213,6 +211,9 @@ function modelOptionsForNode(nodeKey: string, provider: ProviderName): Array<{ v
 }
 
 function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
+  const isLegacyMockGraph = graph.nodes.some((node) => node.id === "brief" && node.data.description.includes("로마 도로"))
+    || graph.nodes.some((node) => node.id === "format" && node.data.label === "Contrarian History");
+  if (isLegacyMockGraph) return { ...graph, nodes: [], edges: [], activeRunId: undefined };
   const migratedNodes = graph.nodes.map((node) => {
     const template = nodeTemplates.find((item) => item.data.key === node.data.key);
     if (!template) return node;
@@ -494,7 +495,7 @@ function EditableCanvas() {
   const selectNode = useStudioStore((state) => state.selectNode);
   const inspectorOpen = useStudioStore((state) => state.inspectorOpen);
   const setInspectorOpen = useStudioStore((state) => state.setInspectorOpen);
-  const { screenToFlowPosition, fitView } = useReactFlow<StudioFlowNode, Edge>();
+  const { screenToFlowPosition } = useReactFlow<StudioFlowNode, Edge>();
   const flowStageRef = useRef<HTMLDivElement>(null);
   const lastCanvasPointerRef = useRef<{ x: number; y: number } | null>(null);
   const loadedRef = useRef(false);
@@ -1132,15 +1133,15 @@ function EditableCanvas() {
     setCandidateNodeId(null);
   };
 
-  const resetCanvas = () => {
+  const clearCanvas = () => {
     pushHistory();
-    const graph = cloneGraph(starterNodes, starterEdges);
-    setNodes(graph.nodes);
-    setEdges(graph.edges);
-    selectNode("generation.resolve");
+    setNodes([]);
+    setEdges([]);
+    setExperimentHistory([]);
+    setActiveCanvasRunId(null);
+    selectNode(null);
     markUnsaved();
-    window.setTimeout(() => fitView({ padding: 0.12, duration: 300 }), 50);
-    notify("기본 Workflow로 초기화했습니다.", "success");
+    notify("Canvas의 모든 노드를 지웠습니다.", "success");
   };
 
   const newCanvas = () => {
@@ -1215,7 +1216,7 @@ function EditableCanvas() {
         <button className="tool-icon" type="button" onClick={redo} disabled={!future.length} aria-label="Redo"><Redo2 size={16} /></button>
         <span className="canvas-divider" />
         <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => { window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...cloneGraph(nodes, edges), id: canvasIdRef.current, name: canvasName, activeRunId: activeCanvasRunId })); setSaveState("Saved"); }}><Save size={13} /> {saveState}</button>
-        <button className="tool-icon reset-canvas" type="button" onClick={resetCanvas} disabled={graphRunning} aria-label="Reset starter workflow"><RefreshCw size={15} /></button>
+        <button className="tool-icon reset-canvas" type="button" onClick={clearCanvas} disabled={graphRunning || !nodes.length} aria-label="Clear canvas"><Trash2 size={15} /></button>
         <div className="canvas-toolbar-spacer" />
         <button className="secondary-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</button>
         <div className="cost-estimate"><span><CircleDollarSign size={13} /> Est. ${cost.toFixed(2)}</span><small>{nodes.length} steps · {edges.length} connections</small></div>
@@ -1276,7 +1277,7 @@ function EditableCanvas() {
           <MiniMap position="bottom-right" pannable zoomable nodeColor={(node) => node.id === selectedNodeId ? "#675cf6" : node.data.status === "SUCCEEDED" ? "#79b9a0" : "#d3d4ce"} maskColor="rgba(246,246,243,.7)" />
           <div className="canvas-legend"><span><i className="port-format" /> Format</span><span><i className="port-media" /> Media</span><span><i className="port-data" /> Data</span><span>Double-click: Run step</span></div>
         </ReactFlow></NodeActionsContext.Provider>
-        {!nodes.length && <div className="canvas-empty-state"><span className="empty-spark"><Sparkles size={22} /></span><h2>Start with a blank canvas</h2><p>아래 + 버튼을 눌러 Prompt, 이미지, 영상 또는 음성 Step을 추가하세요.</p><div><button className="primary-button" type="button" onClick={() => setPickerOpen(true)}><Plus size={15} /> Add first step</button><button className="secondary-button" type="button" onClick={resetCanvas}><Workflow size={15} /> Use starter workflow</button></div></div>}
+        {!nodes.length && <div className="canvas-empty-state"><span className="empty-spark"><Sparkles size={22} /></span><h2>Start with a blank canvas</h2><p>저장된 실제 Asset과 Prompt 노드를 추가해 Workflow를 구성하세요.</p><div><button className="primary-button" type="button" onClick={() => setPickerOpen(true)}><Plus size={15} /> Add first step</button></div></div>}
       </div>
 
       {inspectorOpen && selectedNode && (
@@ -1383,7 +1384,7 @@ function CompileDialog({ errors, nodeCount, edgeCount, estimatedCost, onClose, o
   return <div className="modal-backdrop" onMouseDown={onClose}><section className="modal-card compile-modal" onMouseDown={(event) => event.stopPropagation()}>
     <div className="modal-heading"><div><span className="subtle-label">Graph validation</span><h2>{valid ? "Ready to run" : "Graph needs attention"}</h2><p>{valid ? "모든 Step과 포트 연결을 확인했습니다." : "실행 전에 아래 문제를 해결하세요."}</p></div><button className="icon-button" type="button" onClick={onClose}><X size={17} /></button></div>
     {valid ? <div className="compile-checks"><div><BadgeCheck size={17} /><span><strong>Graph contracts valid</strong><small>{nodeCount} nodes · {edgeCount} typed connections · no cycles</small></span></div><div><ShieldCheck size={17} /><span><strong>Reference isolation enforced</strong><small>Generation steps receive structured Format only</small></span></div><div><Zap size={17} /><span><strong>Ready for step execution</strong><small>Steps run in dependency order</small></span></div></div> : <div className="validation-errors">{errors.map((error) => <div key={error}><CircleAlert size={15} /><span>{error}</span></div>)}</div>}
-    <div className="compile-summary"><div><small>Steps</small><strong>{nodeCount}</strong></div><div><small>Connections</small><strong>{edgeCount}</strong></div><div><small>Estimated cost</small><strong>${estimatedCost.toFixed(2)}</strong></div><div><small>Execution</small><strong>Sequential</strong></div></div>
+    <div className="compile-summary"><div><small>Steps</small><strong>{nodeCount}</strong></div><div><small>Connections</small><strong>{edgeCount}</strong></div><div><small>Estimated cost</small><strong>${estimatedCost.toFixed(2)}</strong></div><div><small>Execution</small><strong>Dependency DAG</strong></div></div>
     <div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Back to edit</button>{valid && <button className="primary-button" type="button" onClick={onRun}><Rocket size={15} /> Run {nodeCount} steps</button>}</div>
   </section></div>;
 }

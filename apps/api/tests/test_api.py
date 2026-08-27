@@ -637,3 +637,55 @@ def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(clie
     assert event_stream.status_code == 200
     assert "event: canvas.run.updated" in event_stream.text
     assert '"status":"SUCCEEDED"' in event_stream.text
+
+
+def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: TestClient):
+    initial = client.get("/workspace/summary")
+    assert initial.status_code == 200
+    assert initial.json()["runs"] == 0
+    assert initial.json()["experiments"] == 0
+
+    experiment = client.post("/experiments", json={
+        "canvas_id": "real_data_canvas",
+        "node_id": "image_1",
+        "node_key": "image.generate",
+        "prompt": "Persisted image experiment",
+        "model_alias": "image.fast",
+        "parameters": {"aspect_ratio": "1:1"},
+        "inputs": [],
+    })
+    assert experiment.status_code == 201
+    canvas_run = client.post("/canvas-runs", json={
+        "canvas_id": "real_data_canvas",
+        "name": "Persisted Canvas Run",
+        "nodes": [{
+            "id": "prompt",
+            "data": {
+                "key": "prompt.input",
+                "label": "Prompt",
+                "kind": "input",
+                "executable": False,
+                "configText": "Persisted prompt",
+                "outputType": "Prompt",
+            },
+        }],
+        "edges": [],
+    })
+    assert canvas_run.status_code == 201
+
+    summary = client.get("/workspace/summary").json()
+    assert summary["runs"] == 1
+    assert summary["canvas_runs"] == 1
+    assert summary["experiments"] == 1
+    assert summary["images"] == 1
+    assert summary["artifacts"] >= 1
+
+    runs = client.get("/workflow-runs").json()
+    assert len(runs) == 1
+    assert runs[0]["run_type"] == "canvas"
+    assert runs[0]["name"] == "Persisted Canvas Run"
+    models = client.get("/models").json()
+    image_model = next(model for model in models if model["logical_alias"] == "google.image.fast")
+    assert image_model["usage_count"] == 1
+    assert image_model["last_used_at"] is not None
+    assert image_model["configuration"]

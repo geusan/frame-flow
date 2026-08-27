@@ -13,7 +13,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { useStudioStore } from "@/lib/store";
-import { frameflowApi } from "@/lib/api";
+import { API_BASE, frameflowApi, type WorkspaceSummary } from "@/lib/api";
 import type { StudioView } from "@/lib/types";
 import { GenerationCanvas } from "./views/generation-canvas";
 import { AssetLibrary } from "./views/asset-library";
@@ -44,12 +44,21 @@ export function StudioShell() {
   const view = useStudioStore((state) => state.view);
   const setView = useStudioStore((state) => state.setView);
   const [apiStatus, setApiStatus] = useState<{ connected: boolean; googleConfigured: boolean; openaiConfigured: boolean } | null>(null);
+  const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
 
   useEffect(() => {
     let active = true;
-    frameflowApi.health().then((health) => active && setApiStatus({ connected: true, googleConfigured: health.google_configured, openaiConfigured: health.openai_configured })).catch(() => active && setApiStatus({ connected: false, googleConfigured: false, openaiConfigured: false }));
+    Promise.all([frameflowApi.health(), frameflowApi.workspaceSummary()])
+      .then(([health, summary]) => { if (active) { setApiStatus({ connected: true, googleConfigured: health.google_configured, openaiConfigured: health.openai_configured }); setWorkspace(summary); } })
+      .catch(() => { if (active) setApiStatus({ connected: false, googleConfigured: false, openaiConfigured: false }); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    frameflowApi.workspaceSummary().then((summary) => { if (active) setWorkspace(summary); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [view]);
 
   return (
     <div className="studio-shell">
@@ -60,10 +69,10 @@ export function StudioShell() {
         </div>
 
         <div className="workspace-switcher">
-          <span className="workspace-avatar">OS</span>
+          <span className="workspace-avatar">FF</span>
           <span className="workspace-copy">
-            <strong>Ocho Studio</strong>
-            <small>Production workspace</small>
+            <strong>{workspace?.service ?? "Connecting…"}</strong>
+            <small>{workspace ? `${workspace.environment} · ${workspace.storage_provider} · ${workspace.execution_backend}` : "Loading workspace state"}</small>
           </span>
         </div>
 
@@ -78,17 +87,16 @@ export function StudioShell() {
             >
               <Icon size={17} strokeWidth={1.9} />
               <span>{label}</span>
-              {id === "runs" && <span className="nav-count">3</span>}
+              {workspace && id === "assets" && <span className="nav-count">{workspace.images + workspace.videos}</span>}
+              {workspace && id === "references" && <span className="nav-count">{workspace.references}</span>}
+              {workspace && id === "formats" && <span className="nav-count">{workspace.formats}</span>}
+              {workspace && id === "runs" && <span className="nav-count">{workspace.runs}</span>}
             </button>
           ))}
         </nav>
 
         <div className="sidebar-bottom">
-          <button type="button" className="nav-item" onClick={() => window.open("http://localhost:8000/docs", "_blank", "noopener,noreferrer")}><CircleHelp size={17} /><span>API docs</span></button>
-          <div className="user-chip">
-            <span className="user-avatar">GK</span>
-            <span><strong>Geusan Kim</strong><small>Owner</small></span>
-          </div>
+          <button type="button" className="nav-item" onClick={() => window.open(`${API_BASE}/docs`, "_blank", "noopener,noreferrer")}><CircleHelp size={17} /><span>API docs</span></button>
         </div>
       </aside>
 

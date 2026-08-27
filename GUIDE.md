@@ -66,7 +66,7 @@ References의 Metadata Inspect를 제외한 일부 목록·필터·설정 UI는 
 - 왼쪽 Node Library 열기
 - 이미지 복사 후 Canvas에서 `⌘V`
 
-`Use starter workflow`를 누르면 고급 숏츠 파이프라인 예제가 배치된다.
+Canvas에는 샘플 Workflow가 자동으로 삽입되지 않는다. 저장된 실제 Asset과 Format을 선택하고 필요한 Prompt·생성·편집 노드를 추가해 구성한다.
 
 ### 4.2 Step 추가
 

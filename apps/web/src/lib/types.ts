@@ -72,17 +72,7 @@ export interface FormatProfile {
   confidence: number;
   core: FormatCore;
   extensions: Record<string, unknown>;
+  evidence: Record<string, { value?: unknown; confidence?: number; evidence?: Array<Record<string, unknown>>; manual_override?: unknown }>;
+  lineage: Record<string, unknown>;
   tags: string[];
-}
-
-export interface RunSummary {
-  id: string;
-  name: string;
-  status: NodeStatus;
-  progress: number;
-  startedAt: string;
-  duration: string;
-  cost: number;
-  nodesDone: number;
-  nodesTotal: number;
 }

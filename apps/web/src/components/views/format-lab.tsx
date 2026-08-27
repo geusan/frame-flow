@@ -6,7 +6,6 @@ import {
   ArrowRight,
   BarChart3,
   Braces,
-  Check,
   CircleDot,
   MoreHorizontal,
   Plus,
@@ -23,16 +22,33 @@ const beatColors = ["#675cf6", "#4388c7", "#d18a36", "#24876a"];
 
 function toFormatProfile(row: FormatRecord): FormatProfile {
   const confidenceValues = Object.values(row.payload.evidence ?? {}).map((value) => Number((value as { confidence?: number }).confidence ?? 0)).filter((value) => Number.isFinite(value));
+  const exactModelId = row.lineage.exact_model_id ? String(row.lineage.exact_model_id) : null;
   return {
     id: row.id,
     name: row.name,
     sourceCount: row.parent_ids.length,
     createdAt: new Date(row.created_at).toLocaleString("ko-KR"),
     confidence: confidenceValues.length ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length : 0,
-    tags: [row.kind, String(row.lineage.exact_model_id ?? "local")],
+    tags: exactModelId ? [row.kind, exactModelId] : [row.kind],
     core: row.payload.core,
     extensions: row.payload.extensions ?? {},
+    evidence: row.payload.evidence ?? {},
+    lineage: row.lineage,
   };
+}
+
+function confidenceLabel(confidence: number): string {
+  if (confidence >= 0.8) return "high confidence";
+  if (confidence >= 0.5) return "medium confidence";
+  if (confidence > 0) return "low confidence";
+  return "no scored evidence";
+}
+
+function pacingLabel(cutsPer10Seconds: number): string {
+  if (cutsPer10Seconds >= 5) return "very fast pacing";
+  if (cutsPer10Seconds >= 3) return "fast pacing";
+  if (cutsPer10Seconds >= 1.5) return "moderate pacing";
+  return "slow pacing";
 }
 
 export function FormatLab() {
@@ -42,6 +58,8 @@ export function FormatLab() {
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "profile" | "variant">("all");
   const [creatingVariant, setCreatingVariant] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const setView = useStudioStore((state) => state.setView);
 
   useEffect(() => {
@@ -49,7 +67,8 @@ export function FormatLab() {
       const mapped = rows.map(toFormatProfile);
       setFormats(mapped);
       setSelectedId((current) => current ?? mapped[0]?.id ?? null);
-    }).catch(() => setFormats([]));
+    }).catch((loadError) => setError(loadError instanceof Error ? loadError.message : "Format loading failed"))
+      .finally(() => setLoading(false));
   }, []);
   const selected = formats.find((format) => format.id === selectedId) ?? formats[0];
   const visibleFormats = useMemo(() => formats.filter((format) => format.name.toLowerCase().includes(query.toLowerCase()) && (kindFilter === "all" || format.tags.includes(kindFilter))), [formats, kindFilter, query]);
@@ -66,7 +85,7 @@ export function FormatLab() {
     }
   };
 
-  if (!selected) return <div className="format-layout"><section className="format-browser"><div className="format-browser-head"><div><span className="subtle-label">Format assets</span><strong>My formats</strong></div></div><p className="experiment-history-state">저장된 Format이 없습니다. Reference Set에서 추출을 실행하세요.</p></section></div>;
+  if (!selected) return <div className="format-layout"><section className="format-browser"><div className="format-browser-head"><div><span className="subtle-label">Format assets</span><strong>My formats</strong></div></div><p className={`experiment-history-state ${error ? "error" : ""}`}>{error ?? (loading ? "Loading stored formats…" : "저장된 Format이 없습니다. Reference Set에서 추출을 실행하세요.")}</p></section></div>;
 
   return (
     <div className="format-layout">
@@ -100,16 +119,16 @@ export function FormatLab() {
 
         <div className="format-tabs">
           {(["overview", "schema", "evidence"] as const).map((key) => <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)} type="button">{key[0].toUpperCase() + key.slice(1)}</button>)}
-          <span className="format-save-state"><Check size={11} /> All changes saved</span>
+          <span className="format-save-state">Created {selected.createdAt}</span>
         </div>
 
         {tab === "overview" && (
           <div className="format-content">
             <div className="format-metrics">
-              <div><span>Target duration</span><strong>{selected.core.duration.target_ms / 1000}<small>s</small></strong><em>± 3 seconds</em></div>
+              <div><span>Target duration</span><strong>{selected.core.duration.target_ms / 1000}<small>s</small></strong><em>stored target</em></div>
               <div><span>Shot rhythm</span><strong>{(selected.core.editing.median_shot_duration_ms / 1000).toFixed(1)}<small>s</small></strong><em>median duration</em></div>
-              <div><span>Cut density</span><strong>{selected.core.editing.cuts_per_10_seconds}<small>/10s</small></strong><em>fast pacing</em></div>
-              <div><span>Confidence</span><strong>{Math.round(selected.confidence * 100)}<small>%</small></strong><em className="positive">high evidence</em></div>
+              <div><span>Cut density</span><strong>{selected.core.editing.cuts_per_10_seconds}<small>/10s</small></strong><em>{pacingLabel(selected.core.editing.cuts_per_10_seconds)}</em></div>
+              <div><span>Confidence</span><strong>{Math.round(selected.confidence * 100)}<small>%</small></strong><em className={selected.confidence >= .8 ? "positive" : ""}>{confidenceLabel(selected.confidence)}</em></div>
             </div>
 
             <article className="format-section panel">
@@ -132,13 +151,12 @@ export function FormatLab() {
 
             <div className="format-section-grid">
               <article className="panel compact-section">
-                <div className="panel-header"><div><h3>Editing rhythm</h3><p>Shot duration distribution</p></div><BarChart3 size={15} /></div>
-                <div className="histogram" aria-label="Shot duration histogram">{[22, 42, 68, 94, 72, 54, 36, 20, 12].map((height, i) => <i key={i} style={{ height: `${height}%` }} />)}</div>
-                <div className="chart-labels"><span>0.5s</span><span>2.2s median</span><span>5.0s</span></div>
+                <div className="panel-header"><div><h3>Editing rhythm</h3><p>Stored FormatCore values</p></div><BarChart3 size={15} /></div>
+                <div className="format-data-list"><div><span>Median shot</span><strong>{selected.core.editing.median_shot_duration_ms}ms</strong></div><div><span>Cuts / 10s</span><strong>{selected.core.editing.cuts_per_10_seconds}</strong></div><div><span>Transition</span><strong>{selected.core.editing.transition_policy}</strong></div></div>
               </article>
               <article className="panel compact-section">
-                <div className="panel-header"><div><h3>Voice & music energy</h3><p>Normalized intensity curve</p></div><Activity size={15} /></div>
-                <div className="energy-chart"><svg viewBox="0 0 420 90" preserveAspectRatio="none"><path className="gridline" d="M0 22H420M0 45H420M0 68H420" /><path className="voice-line" d="M0 58 C35 20,55 18,82 39 S127 67,153 40 S199 20,225 44 S272 63,304 34 S350 27,420 12" /><path className="music-line" d="M0 72 C52 68,80 53,116 58 S168 43,210 49 S270 38,318 31 S373 26,420 40" /></svg><div><span><i className="voice" /> Voice pace</span><span><i className="music" /> Music energy</span></div></div>
+                <div className="panel-header"><div><h3>Voice & music</h3><p>Stored FormatCore values</p></div><Activity size={15} /></div>
+                <div className="format-data-list"><div><span>Voice tone</span><strong>{selected.core.voice.tone}</strong></div><div><span>Voice pace</span><strong>{selected.core.voice.pace_syllables_per_second} syllables/s</strong></div><div><span>Music BPM</span><strong>{selected.core.music.bpm_range.join("–")}</strong></div><div><span>Voice ducking</span><strong>{selected.core.music.ducking_under_voice_db}dB</strong></div></div>
               </article>
             </div>
 
@@ -157,7 +175,7 @@ export function FormatLab() {
         {tab === "schema" && <div className="format-content"><pre className="schema-viewer">{JSON.stringify({ schema_version: selected.core.schema_version, core: selected.core, extensions: selected.extensions }, null, 2)}</pre></div>}
         {tab === "evidence" && (
           <div className="format-content evidence-list">
-            {Object.keys(selected.extensions).length ? Object.keys(selected.extensions).map((field, index) => <div className="evidence-row panel" key={field}><span className="evidence-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{field}</strong><p>Provider-derived extension</p></div></div>) : <p className="experiment-history-state">이 Format에는 저장된 extension evidence가 없습니다.</p>}
+            {Object.entries(selected.evidence).length ? Object.entries(selected.evidence).map(([field, evidence], index) => <div className="evidence-row panel" key={field}><span className="evidence-index">{String(index + 1).padStart(2, "0")}</span><div><strong>{field}</strong><p>Value: {JSON.stringify(evidence.manual_override ?? evidence.value)} · Confidence: {Math.round(Number(evidence.confidence ?? 0) * 100)}% · {evidence.evidence?.length ?? 0} source spans</p></div></div>) : <p className="experiment-history-state">이 Format에는 저장된 evidence가 없습니다.</p>}
           </div>
         )}
       </section>

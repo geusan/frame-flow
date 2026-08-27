@@ -129,46 +129,6 @@ export const nodeTemplates: NodeTemplate[] = [
 
 export const inputHandleId = (type: PortType, index: number) => `input-${type}-${index}`;
 
-const edgeStyle = { stroke: "#a8aaa3", strokeWidth: 1.35 };
-
-export const starterNodes: StudioFlowNode[] = [
-  { id: "brief", type: "studio", position: { x: 0, y: 190 }, data: { ...nodeTemplates.find((item) => item.id === "brief")!.data, label: "New topic brief", description: "로마 도로는 왜 아직도 남아 있을까?", status: "SUCCEEDED", preview: "KO · 38s · 9:16", attemptCount: 1 } },
-  { id: "format", type: "studio", position: { x: 0, y: -20 }, data: { ...nodeTemplates.find((item) => item.id === "format")!.data, label: "Contrarian History", description: "Locked format · 3 references", status: "SUCCEEDED", preview: "4 beats · 4.4 cuts/10s", attemptCount: 1 } },
-  { id: "generation.resolve", type: "studio", position: { x: 320, y: 75 }, data: { ...nodeTemplates.find((item) => item.id === "resolve")!.data, status: "READY" } },
-  { id: "script-prompt", type: "studio", position: { x: 520, y: -250 }, data: { ...nodeTemplates.find((item) => item.id === "prompt")!.data, label: "Script prompt", configText: "강한 Hook과 명확한 Payoff가 있는 38초 한국어 대본", status: "SUCCEEDED" } },
-  { id: "script", type: "studio", position: { x: 640, y: -25 }, data: { ...nodeTemplates.find((item) => item.id === "script")!.data, status: "BLOCKED" } },
-  { id: "shot", type: "studio", position: { x: 960, y: -25 }, data: { ...nodeTemplates.find((item) => item.id === "shot-plan")!.data, label: "Plan 7 shots", status: "BLOCKED" } },
-  { id: "image-prompt", type: "studio", position: { x: 1120, y: -285 }, data: { ...nodeTemplates.find((item) => item.id === "prompt")!.data, label: "Image prompt", configText: "Cinematic vertical historical scene, dramatic light, no text", status: "SUCCEEDED" } },
-  { id: "image", type: "studio", position: { x: 1280, y: -115 }, data: { ...nodeTemplates.find((item) => item.id === "image")!.data, status: "BLOCKED" } },
-  { id: "video-prompt", type: "studio", position: { x: 1450, y: -360 }, data: { ...nodeTemplates.find((item) => item.id === "prompt")!.data, label: "Motion prompt", configText: "Slow cinematic push-in, subtle environmental motion, 6 seconds", status: "SUCCEEDED" } },
-  { id: "video", type: "studio", position: { x: 1600, y: -115 }, data: { ...nodeTemplates.find((item) => item.id === "video")!.data, status: "BLOCKED" } },
-  { id: "voice-prompt", type: "studio", position: { x: 1080, y: 430 }, data: { ...nodeTemplates.find((item) => item.id === "prompt")!.data, label: "Voice prompt", configText: "또렷하고 자신감 있는 한국어 내레이션", status: "SUCCEEDED" } },
-  { id: "voice", type: "studio", position: { x: 1280, y: 205 }, data: { ...nodeTemplates.find((item) => item.id === "voice")!.data, status: "BLOCKED" } },
-  { id: "candidate.select", type: "studio", position: { x: 1920, y: -80 }, data: { ...nodeTemplates.find((item) => item.id === "candidate")!.data, status: "BLOCKED" } },
-  { id: "subtitle", type: "studio", position: { x: 1600, y: 220 }, data: { ...nodeTemplates.find((item) => item.id === "subtitle")!.data, status: "BLOCKED" } },
-  { id: "timeline", type: "studio", position: { x: 2240, y: 60 }, data: { ...nodeTemplates.find((item) => item.id === "timeline")!.data, status: "BLOCKED" } },
-  { id: "render", type: "studio", position: { x: 2560, y: 60 }, data: { ...nodeTemplates.find((item) => item.id === "render")!.data, status: "BLOCKED" } },
-  { id: "qc", type: "studio", position: { x: 2880, y: 60 }, data: { ...nodeTemplates.find((item) => item.id === "qc")!.data, status: "BLOCKED" } },
-];
-
-export const starterEdges: Edge[] = [
-  { id: "format-resolve", source: "format", target: "generation.resolve", targetHandle: inputHandleId("FormatProfile", 1) },
-  { id: "brief-resolve", source: "brief", target: "generation.resolve", targetHandle: inputHandleId("Text", 0) },
-  { id: "script-prompt-script", source: "script-prompt", target: "script", targetHandle: inputHandleId("Prompt", 0) },
-  { id: "resolve-script", source: "generation.resolve", target: "script", targetHandle: inputHandleId("GenerationSpec", 1) },
-  { id: "script-shot", source: "script", target: "shot", targetHandle: inputHandleId("Script", 0) },
-  { id: "image-prompt-image", source: "image-prompt", target: "image", targetHandle: inputHandleId("Prompt", 0) },
-  { id: "video-prompt-video", source: "video-prompt", target: "video", targetHandle: inputHandleId("Prompt", 0) },
-  { id: "image-video", source: "image", target: "video", targetHandle: inputHandleId("Image", 1) },
-  { id: "voice-prompt-voice", source: "voice-prompt", target: "voice", targetHandle: inputHandleId("Prompt", 0) },
-  { id: "voice-subtitle", source: "voice", target: "subtitle", targetHandle: inputHandleId("Audio", 0) },
-  { id: "video-select", source: "video", target: "candidate.select", targetHandle: inputHandleId("Video", 0) },
-  { id: "select-timeline", source: "candidate.select", target: "timeline", targetHandle: inputHandleId("Video", 0) },
-  { id: "subtitle-timeline", source: "subtitle", target: "timeline", targetHandle: inputHandleId("Subtitle", 1) },
-  { id: "timeline-render", source: "timeline", target: "render", targetHandle: inputHandleId("Timeline", 0) },
-  { id: "render-qc", source: "render", target: "qc", targetHandle: inputHandleId("Video", 0) },
-].map((edge) => ({ ...edge, type: "adaptive", style: edgeStyle }));
-
 export function createNodeFromTemplate(templateId: string, position: XYPosition, sequence: number): StudioFlowNode | null {
   const template = nodeTemplates.find((item) => item.id === templateId);
   if (!template) return null;

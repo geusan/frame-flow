@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator, Literal
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from temporalio.client import Client
 
@@ -151,7 +151,80 @@ def health() -> dict[str, Any]:
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
         "google_configured": bool(os.getenv("GOOGLE_CLOUD_PROJECT")),
         "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
     }
+
+
+@app.get("/workspace/summary")
+def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
+    regular_run_count = int(db.scalar(select(func.count()).select_from(RunRecord)) or 0)
+    canvas_run_count = int(db.scalar(select(func.count()).select_from(CanvasRunRecord)) or 0)
+    active_statuses = [NodeStatus.READY, NodeStatus.QUEUED, NodeStatus.CLAIMED, NodeStatus.SUBMITTED, NodeStatus.RUNNING, NodeStatus.WAITING_INPUT, NodeStatus.RETRY_WAIT]
+    active_regular = int(db.scalar(select(func.count()).select_from(RunRecord).where(RunRecord.status.in_(active_statuses))) or 0)
+    active_canvas = int(db.scalar(select(func.count()).select_from(CanvasRunRecord).where(CanvasRunRecord.status.in_(active_statuses))) or 0)
+    artifact_counts = {
+        str(artifact_type): int(count)
+        for artifact_type, count in db.execute(
+            select(ArtifactRecord.type, func.count()).group_by(ArtifactRecord.type)
+        ).all()
+    }
+    experiment_count = int(db.scalar(select(func.count()).select_from(ExperimentRunRecord)) or 0)
+    recorded_cost = float(db.scalar(select(func.coalesce(func.sum(ExperimentRunRecord.cost_usd), 0.0))) or 0)
+    return {
+        "service": "frameflow-api",
+        "environment": os.getenv("APP_ENV", "development"),
+        "storage_provider": get_storage().settings.provider,
+        "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
+        "references": int(db.scalar(select(func.count()).select_from(ReferenceRecord)) or 0),
+        "formats": int(db.scalar(select(func.count()).select_from(FormatRecord)) or 0),
+        "runs": regular_run_count + canvas_run_count,
+        "regular_runs": regular_run_count,
+        "canvas_runs": canvas_run_count,
+        "active_runs": active_regular + active_canvas,
+        "experiments": experiment_count,
+        "recorded_cost_usd": recorded_cost,
+        "images": artifact_counts.get("Image", 0),
+        "videos": artifact_counts.get("Video", 0) + artifact_counts.get("FinalVideo", 0),
+        "artifacts": sum(artifact_counts.values()),
+    }
+
+
+@app.get("/workflow-runs")
+def list_workflow_runs(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    regular_runs = db.scalars(select(RunRecord).order_by(RunRecord.created_at.desc())).unique().all()
+    for run in regular_runs:
+        rows.append({
+            "id": run.id,
+            "created_at": run.created_at,
+            "run_type": "generation",
+            "name": run.name,
+            "status": run.status,
+            "progress": run.progress,
+            "cost_usd": run.actual_cost_usd,
+            "estimated_cost_usd": run.estimated_cost_usd,
+            "nodes_done": sum(node.status == NodeStatus.SUCCEEDED for node in run.node_runs),
+            "nodes_total": len(run.node_runs),
+            "attempt_count": sum(node.attempt_count for node in run.node_runs),
+            "duration_ms": None,
+        })
+    canvas_runs = db.scalars(select(CanvasRunRecord).order_by(CanvasRunRecord.created_at.desc())).unique().all()
+    for run in canvas_runs:
+        rows.append({
+            "id": run.id,
+            "created_at": run.created_at,
+            "run_type": "canvas",
+            "name": run.name,
+            "status": run.status,
+            "progress": run.progress,
+            "cost_usd": sum(node.cost_usd for node in run.node_runs),
+            "estimated_cost_usd": None,
+            "nodes_done": sum(node.status == NodeStatus.SUCCEEDED for node in run.node_runs),
+            "nodes_total": len(run.node_runs),
+            "attempt_count": sum(node.attempt_count for node in run.node_runs),
+            "duration_ms": sum(node.duration_ms for node in run.node_runs) or None,
+        })
+    return sorted(rows, key=lambda row: row["created_at"], reverse=True)
 
 
 @app.post("/experiments", response_model=ExperimentRunResponse, status_code=201)
@@ -1050,8 +1123,24 @@ def artifact_content(artifact_id: str, request: Request, db: Session = Depends(g
 
 
 @app.get("/models")
-def list_models() -> list[dict[str, Any]]:
+def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    usage = {
+        str(alias): {
+            "usage_count": int(count),
+            "recorded_cost_usd": float(cost or 0),
+            "last_used_at": last_used_at,
+        }
+        for alias, count, cost, last_used_at in db.execute(
+            select(
+                ExperimentRunRecord.model_alias,
+                func.count(),
+                func.coalesce(func.sum(ExperimentRunRecord.cost_usd), 0.0),
+                func.max(ExperimentRunRecord.created_at),
+            ).group_by(ExperimentRunRecord.model_alias)
+        ).all()
+    }
     configured = bool(os.getenv("GOOGLE_CLOUD_PROJECT"))
+    google_project = os.getenv("GOOGLE_CLOUD_PROJECT") or None
     location = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
     rows = [{
         "logical_alias": alias,
@@ -1061,6 +1150,8 @@ def list_models() -> list[dict[str, Any]]:
         "region": os.getenv("GOOGLE_SPEECH_LOCATION", "global") if ".stt." in alias else location,
         "status": "active" if configured else "disabled",
         "configured": configured,
+        "configuration": google_project or "GOOGLE_CLOUD_PROJECT is not set",
+        **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in MODEL_REGISTRY.items()]
     rows.append({
         "logical_alias": "google.localization.pipeline",
@@ -1070,6 +1161,8 @@ def list_models() -> list[dict[str, Any]]:
         "region": f"{os.getenv('GOOGLE_SPEECH_LOCATION', 'global')} / {location}",
         "status": "active" if configured else "disabled",
         "configured": configured,
+        "configuration": google_project or "GOOGLE_CLOUD_PROJECT is not set",
+        **usage.get("google.localization.pipeline", {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     })
     openai_configured = bool(os.getenv("OPENAI_API_KEY"))
     rows.extend({
@@ -1080,5 +1173,7 @@ def list_models() -> list[dict[str, Any]]:
         "region": "OpenAI API",
         "status": "active" if openai_configured else "disabled",
         "configured": openai_configured,
+        "configuration": "OPENAI_API_KEY configured" if openai_configured else "OPENAI_API_KEY is not set",
+        **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in OPENAI_MODEL_REGISTRY.items())
     return rows

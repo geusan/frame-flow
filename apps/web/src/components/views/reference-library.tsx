@@ -41,6 +41,7 @@ export function ReferenceLibrary() {
   const [extracting, setExtracting] = useState(false);
   const [inspection, setInspection] = useState<InspectResult[]>([]);
   const [inspectError, setInspectError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const filtered = useMemo(
     () => references.filter((item) => `${item.title} ${item.creator}`.toLowerCase().includes(query.toLowerCase()) && (rightsFilter === "all" || item.rights_basis === rightsFilter) && (statusFilter === "all" || item.status === statusFilter)),
     [query, references, rightsFilter, statusFilter],
@@ -52,7 +53,8 @@ export function ReferenceLibrary() {
     let active = true;
     frameflowApi.listReferences()
       .then((items) => { if (active) setReferences(items); })
-      .catch((error) => { if (active) setInspectError(error instanceof Error ? error.message : "Reference loading failed"); });
+      .catch((error) => { if (active) setInspectError(error instanceof Error ? error.message : "Reference loading failed"); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -121,7 +123,7 @@ export function ReferenceLibrary() {
 
       <div className="reference-stats">
         <div><span className="stat-icon violet"><Tv size={16} /></span><span><strong>{references.length}</strong><small>Total references</small></span></div>
-        <div><span className="stat-icon green"><CheckCircle2 size={16} /></span><span><strong>{completedCount}</strong><small>Analysis complete</small></span></div>
+        <div><span className="stat-icon green"><CheckCircle2 size={16} /></span><span><strong>{completedCount}</strong><small>Ready references</small></span></div>
         <div><span className="stat-icon amber"><Clock3 size={16} /></span><span><strong>{processingCount}</strong><small>In processing</small></span></div>
         <div><span className="stat-icon blue"><ShieldCheck size={16} /></span><span><strong>{approvedCount}</strong><small>Generation approved</small></span></div>
       </div>
@@ -143,8 +145,9 @@ export function ReferenceLibrary() {
       <div className={layout === "grid" ? "reference-grid" : "reference-list"}>
         {filtered.map((item) => (
           <article className="reference-card" key={item.id}>
-            <div className="reference-thumb" style={{ background: item.thumbnail_url ? `center / cover url(${item.thumbnail_url})` : "linear-gradient(135deg,#272d48,#887c5c,#d0aa73)" }}>
+            <div className={`reference-thumb ${item.thumbnail_url ? "" : "no-thumbnail"}`} style={item.thumbnail_url ? { background: `center / cover url(${item.thumbnail_url})` } : undefined}>
               <div className="thumb-grid" />
+              {!item.thumbnail_url && <Tv className="reference-thumb-empty" size={24} />}
               <button type="button" className="thumb-play" onClick={() => window.open(String(item.metadata.canonical_url ?? ""), "_blank", "noopener,noreferrer")}><Play size={14} fill="currentColor" /></button>
               <span className="duration-badge">{`${Math.floor(item.duration_ms / 60000).toString().padStart(2, "0")}:${Math.floor(item.duration_ms / 1000 % 60).toString().padStart(2, "0")}`}</span>
               <label className="card-check"><input type="checkbox" checked={selectedIds.includes(item.id)} onChange={(event) => setSelectedIds((current) => event.target.checked ? [...current, item.id] : current.filter((id) => id !== item.id))} /><span /></label>
@@ -165,6 +168,8 @@ export function ReferenceLibrary() {
           </article>
         ))}
       </div>
+      {loading && <p className="experiment-history-state">Loading stored references…</p>}
+      {!loading && !filtered.length && <p className="experiment-history-state">조건에 맞는 Reference가 없습니다.</p>}
 
       {showImport && (
         <div className="modal-backdrop" role="presentation" onMouseDown={() => setShowImport(false)}>
