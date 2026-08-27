@@ -21,6 +21,7 @@ interface PromptTokenEditorProps {
   value: string;
   images: PromptConnectedImage[];
   onCommit: (nodeId: string, value: string) => void;
+  onSpaceHoldStart: (request: { commit: () => void; blur: () => void; isFocused: () => boolean }) => void;
 }
 
 const imageTokenPattern = /\{\{image:([^}]+)}}/g;
@@ -91,7 +92,7 @@ function readablePrompt(value: string, images: PromptConnectedImage[]): string {
   return value.replace(imageTokenPattern, (_, sourceId: string) => labels.get(sourceId) ?? "Missing image");
 }
 
-export function PromptTokenEditor({ nodeId, value, images, onCommit }: PromptTokenEditorProps) {
+export function PromptTokenEditor({ nodeId, value, images, onCommit, onSpaceHoldStart }: PromptTokenEditorProps) {
   const [collapsed, setCollapsed] = useState(false);
   const imageSignature = useMemo(() => images.map((image) => `${image.id}:${image.outdated}`).join("|"), [images]);
   const lastImageSignatureRef = useRef(imageSignature);
@@ -106,8 +107,27 @@ export function PromptTokenEditor({ nodeId, value, images, onCommit }: PromptTok
     content: promptDocument(value, images),
     immediatelyRender: false,
     editorProps: {
-      attributes: { class: "prompt-tiptap-prosemirror nodrag nopan nowheel" },
-      handleKeyDown: (_, event) => { event.stopPropagation(); return false; },
+      // React Flow checks `.nokey` on ancestors, which also covers events whose
+      // target is a paragraph nested inside the contenteditable element.
+      attributes: { class: "prompt-tiptap-prosemirror nodrag nopan nowheel nokey" },
+      handleKeyDown: (view, event) => {
+        event.stopPropagation();
+        if (event.code !== "Space" || event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return false;
+        event.preventDefault();
+        if (!event.repeat) {
+          const { from, to } = view.state.selection;
+          onSpaceHoldStart({
+            commit: () => {
+              if (!view.dom.isConnected) return;
+              const maxPosition = view.state.doc.content.size;
+              view.dispatch(view.state.tr.insertText(" ", Math.min(from, maxPosition), Math.min(to, maxPosition)));
+            },
+            blur: () => view.dom.blur(),
+            isFocused: () => view.dom.isConnected && view.hasFocus(),
+          });
+        }
+        return true;
+      },
     },
     onUpdate: ({ editor: currentEditor }) => {
       const nextValue = serializePrompt(currentEditor.getJSON());

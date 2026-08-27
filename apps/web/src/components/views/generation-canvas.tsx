@@ -79,12 +79,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/shared/search-field";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
-import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type NodeActions } from "@/features/workflows/components/workflow-node";
+import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
 const SMOOTH_STEP_ROUTING_GAP = 40;
+const SPACE_PAN_HOLD_DELAY_MS = 600;
 
 function AdaptiveEdge(props: EdgeProps) {
   const horizontalGap = props.targetX - props.sourceX;
@@ -275,6 +276,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const [pickerInsertPosition, setPickerInsertPosition] = useState<{ x: number; y: number } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">("select");
+  const [spacePanActive, setSpacePanActive] = useState(false);
   const [canvasName, setCanvasName] = useState("Untitled canvas");
   const [saveState, setSaveState] = useState<"Saved" | "Unsaved" | "Saving">("Saved");
   const [toast, setToast] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
@@ -292,13 +294,15 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const selectNode = useStudioStore((state) => state.selectNode);
   const inspectorOpen = useStudioStore((state) => state.inspectorOpen);
   const setInspectorOpen = useStudioStore((state) => state.setInspectorOpen);
-  const { screenToFlowPosition } = useReactFlow<StudioFlowNode, Edge>();
+  const { getViewport, screenToFlowPosition, setViewport } = useReactFlow<StudioFlowNode, Edge>();
   const flowStageRef = useRef<HTMLDivElement>(null);
   const lastCanvasPointerRef = useRef<{ x: number; y: number } | null>(null);
   const loadedRef = useRef(false);
   const sequenceRef = useRef(1);
   const dragStartRef = useRef<GraphSnapshot | null>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const spaceHoldTimerRef = useRef<number | null>(null);
+  const spaceHoldRef = useRef<(CanvasSpaceHoldRequest & { activated: boolean }) | null>(null);
   const cancelRunRef = useRef(false);
   const canvasRunEventsRef = useRef<EventSource | null>(null);
   const nodesRef = useRef(nodes);
@@ -311,6 +315,88 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  const finishSpaceHold = useCallback((commitPending: boolean) => {
+    if (spaceHoldTimerRef.current !== null) {
+      window.clearTimeout(spaceHoldTimerRef.current);
+      spaceHoldTimerRef.current = null;
+    }
+    const hold = spaceHoldRef.current;
+    spaceHoldRef.current = null;
+    if (commitPending && hold && !hold.activated && hold.isFocused()) hold.commit();
+    setSpacePanActive(false);
+  }, []);
+
+  const beginSpaceHold = useCallback((request: CanvasSpaceHoldRequest) => {
+    finishSpaceHold(false);
+    spaceHoldRef.current = { ...request, activated: false };
+    spaceHoldTimerRef.current = window.setTimeout(() => {
+      spaceHoldTimerRef.current = null;
+      const hold = spaceHoldRef.current;
+      if (!hold) return;
+      if (!hold.isFocused()) {
+        spaceHoldRef.current = null;
+        return;
+      }
+      hold.activated = true;
+      hold.blur();
+      setSpacePanActive(true);
+    }, SPACE_PAN_HOLD_DELAY_MS);
+  }, [finishSpaceHold]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" && spaceHoldRef.current) finishSpaceHold(true);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") finishSpaceHold(true);
+    };
+    const handleWindowBlur = () => finishSpaceHold(false);
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("keyup", handleKeyUp, true);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("blur", handleWindowBlur);
+      if (spaceHoldTimerRef.current !== null) window.clearTimeout(spaceHoldTimerRef.current);
+      spaceHoldTimerRef.current = null;
+      spaceHoldRef.current = null;
+    };
+  }, [finishSpaceHold]);
+
+  useEffect(() => {
+    const stage = flowStageRef.current;
+    if (!stage) return;
+    let frameId: number | null = null;
+    let pendingX = 0;
+    let pendingY = 0;
+    const flushPan = () => {
+      frameId = null;
+      const x = pendingX;
+      const y = pendingY;
+      pendingX = 0;
+      pendingY = 0;
+      const viewport = getViewport();
+      void setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y });
+    };
+    const handleTrackpadScroll = (event: WheelEvent) => {
+      // macOS reports a real trackpad pinch as ctrl+wheel. Leave that event to
+      // React Flow's pinch zoom and consume every ordinary two-finger scroll as pan.
+      if (event.ctrlKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 20 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? stage.clientHeight : 1;
+      pendingX -= event.deltaX * scale;
+      pendingY -= event.deltaY * scale;
+      if (frameId === null) frameId = window.requestAnimationFrame(flushPan);
+    };
+    stage.addEventListener("wheel", handleTrackpadScroll, { capture: true, passive: false });
+    return () => {
+      stage.removeEventListener("wheel", handleTrackpadScroll, { capture: true });
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [getViewport, setViewport]);
 
   useEffect(() => () => canvasRunEventsRef.current?.close(), []);
 
@@ -1161,8 +1247,9 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     uploadAsset: uploadNodeAsset,
     importAssetUrl: importNodeAssetUrl,
     selectAsset: selectStoredAsset,
+    beginSpaceHold,
     assetOptions,
-  }), [assetOptions, edges, importNodeAssetUrl, nodes, runStep, selectStoredAsset, updateNodeConfig, updateStickyColor, uploadNodeAsset]);
+  }), [assetOptions, beginSpaceHold, edges, importNodeAssetUrl, nodes, runStep, selectStoredAsset, updateNodeConfig, updateStickyColor, uploadNodeAsset]);
 
   return (
     <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${showInspector ? "with-inspector" : ""}`}>
@@ -1222,7 +1309,9 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           deleteKeyCode={["Backspace", "Delete"]}
           multiSelectionKeyCode={["Meta", "Shift"]}
           selectionOnDrag={interactionMode === "select"}
-          panOnDrag={interactionMode === "pan"}
+          panOnDrag={interactionMode === "pan" || spacePanActive}
+          zoomOnScroll={false}
+          zoomOnPinch
           fitView
           fitViewOptions={{ padding: 0.12, minZoom: 0.42, maxZoom: 0.78 }}
           minZoom={0.2}

@@ -73,6 +73,12 @@ export const icons: Record<IconName, typeof Sparkles> = {
   translate: Languages,
 };
 
+export interface CanvasSpaceHoldRequest {
+  commit: () => void;
+  blur: () => void;
+  isFocused: () => boolean;
+}
+
 export interface NodeActions {
   runStep: (nodeId: string) => void;
   updateConfig: (nodeId: string, value: string) => void;
@@ -82,10 +88,11 @@ export interface NodeActions {
   uploadAsset: (nodeId: string, file: File) => void;
   importAssetUrl: (nodeId: string, url: string) => void;
   selectAsset: (nodeId: string, artifactId: string) => void;
+  beginSpaceHold: (request: CanvasSpaceHoldRequest) => void;
   assetOptions: ArtifactListItem[];
 }
 
-export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, assetOptions: [] });
+export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [] });
 
 export function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
   return <StatusPill status={data.status} compact={compact} />;
@@ -286,7 +293,7 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
         <CanvasNodeStatus data={data} compact />
       </div>
       <p className="node-description">{data.description}</p>
-      {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} />}
+      {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />}
       {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
       {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
       {data.configText !== undefined && !["asset.select", "asset.upload", "prompt.input"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
@@ -308,6 +315,7 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
 }
 
 function NodePromptEditor({ nodeId, value, onCommit, className = "node-inline-prompt nodrag nopan nowheel", placeholder = "Describe what to generate…", collapsible = true }: { nodeId: string; value: string; onCommit: (nodeId: string, value: string) => void; className?: string; placeholder?: string; collapsible?: boolean }) {
+  const actions = useContext(NodeActionsContext);
   const [draft, setDraft] = useState(value);
   const [collapsed, setCollapsed] = useState(false);
   const composingRef = useRef(false);
@@ -329,10 +337,28 @@ function NodePromptEditor({ nodeId, value, onCommit, className = "node-inline-pr
     id={textareaId}
     rows={1}
     hidden={collapsible && collapsed}
-    className={className}
+    className={`${className} nokey`}
     value={draft}
     placeholder={placeholder}
-    onKeyDown={(event) => event.stopPropagation()}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.code !== "Space" || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const textarea = event.currentTarget;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      actions.beginSpaceHold({
+        commit: () => {
+          if (!textarea.isConnected) return;
+          textarea.setRangeText(" ", selectionStart, selectionEnd, "end");
+          setDraft(textarea.value);
+          onCommit(nodeId, textarea.value);
+        },
+        blur: () => textarea.blur(),
+        isFocused: () => textarea.isConnected && document.activeElement === textarea,
+      });
+    }}
     onCompositionStart={() => { composingRef.current = true; }}
     onCompositionEnd={(event) => {
       composingRef.current = false;
