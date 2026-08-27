@@ -1,0 +1,90 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: frameflow
+      POSTGRES_PASSWORD: frameflow
+      POSTGRES_DB: frameflow
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frameflow -d frameflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  temporal:
+    image: temporalio/auto-setup:1.28.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: frameflow
+      POSTGRES_PWD: frameflow
+      POSTGRES_SEEDS: postgres
+    ports: ["${TEMPORAL_PORT:-7233}:7233"]
+
+  temporal-ui:
+    image: temporalio/ui:2.41.0
+    depends_on: [temporal]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:${WEB_PORT:-3001}
+    ports: ["${TEMPORAL_UI_PORT:-8081}:8080"]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: frameflow
+      MINIO_ROOT_PASSWORD: frameflow-local-secret
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes: ["minio_data:/data"]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://frameflow:frameflow@postgres:5432/frameflow
+      TEMPORAL_ADDRESS: temporal:7233
+      STORAGE_ENDPOINT: http://minio:9000
+      EXECUTION_BACKEND: temporal
+    ports: ["${API_PORT:-8000}:8000"]
+
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["python", "-m", "app.temporal_runtime"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://frameflow:frameflow@postgres:5432/frameflow
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+      TEMPORAL_TASK_QUEUE: frameflow-generation-v1
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
+    depends_on: [api]
+    ports: ["${WEB_PORT:-3001}:3000"]
+
+volumes:
+  postgres_data:
+  minio_data:

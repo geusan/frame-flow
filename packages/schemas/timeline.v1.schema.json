@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/timeline.v1.schema.json",
+  "title": "TimelineV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "width", "height", "fps", "duration_ms", "video_tracks", "audio_tracks", "caption_tracks", "effects"],
+  "properties": {
+    "version": { "const": "timeline.v1" },
+    "width": { "type": "integer", "minimum": 1 },
+    "height": { "type": "integer", "minimum": 1 },
+    "fps": { "type": "number", "exclusiveMinimum": 0 },
+    "duration_ms": { "type": "integer", "minimum": 1 },
+    "video_tracks": { "type": "array", "items": { "$ref": "#/$defs/track" } },
+    "audio_tracks": { "type": "array", "items": { "$ref": "#/$defs/track" } },
+    "caption_tracks": { "type": "array", "items": { "$ref": "#/$defs/track" } },
+    "effects": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "track": {
+      "type": "object",
+      "required": ["id", "clips"],
+      "properties": {
+        "id": { "type": "string" },
+        "clips": { "type": "array", "items": { "type": "object" } }
+      }
+    }
+  }
+}
+

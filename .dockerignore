@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+.next
+**/.next
+.venv
+.git
+.terraform
+**/__pycache__
+**/.pytest_cache
+*.db
+*.tfstate*
+docs
+

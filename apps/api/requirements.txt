@@ -1,0 +1,11 @@
+fastapi>=0.118,<1
+uvicorn[standard]>=0.36,<1
+pydantic>=2.11,<3
+sqlalchemy>=2.0,<3
+alembic>=1.16,<2
+psycopg[binary]>=3.2,<4
+python-multipart>=0.0.20,<1
+httpx>=0.28,<1
+pytest>=8.4,<9
+google-genai>=2.19,<3
+temporalio>=1.31,<2

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/generation.spec.v1.schema.json",
+  "title": "ResolvedGenerationSpecV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "brief", "format", "constraints", "compiled_prompts", "model_policy"],
+  "properties": {
+    "version": { "const": "generation.spec.v1" },
+    "brief": { "type": "object" },
+    "format": { "$ref": "format.core.v1.schema.json" },
+    "constraints": {
+      "type": "object",
+      "required": ["width", "height", "fps", "duration_ms", "budget_limit_usd"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "fps": { "type": "number", "exclusiveMinimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 1000 },
+        "budget_limit_usd": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "compiled_prompts": { "type": "object", "additionalProperties": { "type": "string" } },
+    "model_policy": { "type": "object", "additionalProperties": { "type": "string" } }
+  }
+}
+

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/format.core.v1.schema.json",
+  "title": "FormatCoreV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "duration", "narrative", "editing", "captions", "voice", "music", "visual"],
+  "properties": {
+    "schema_version": { "const": "format.core.v1" },
+    "duration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ms"],
+      "properties": { "target_ms": { "type": "integer", "minimum": 1000, "maximum": 180000 } }
+    },
+    "narrative": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["beats"],
+      "properties": {
+        "beats": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["role", "start_ratio", "end_ratio"],
+            "properties": {
+              "role": { "enum": ["hook", "context", "escalation", "payoff"] },
+              "start_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+              "end_ratio": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+              "pattern": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "editing": {
+      "type": "object",
+      "required": ["median_shot_duration_ms", "cuts_per_10_seconds", "transition_policy"],
+      "properties": {
+        "median_shot_duration_ms": { "type": "integer", "minimum": 100 },
+        "cuts_per_10_seconds": { "type": "number", "minimum": 0 },
+        "transition_policy": { "type": "string" }
+      }
+    },
+    "captions": {
+      "type": "object",
+      "required": ["position", "max_lines", "max_chars_per_line", "words_per_chunk"],
+      "properties": {
+        "position": { "type": "string" },
+        "max_lines": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "max_chars_per_line": { "type": "integer", "minimum": 1 },
+        "words_per_chunk": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "required": ["tone", "pace_syllables_per_second"],
+      "properties": {
+        "tone": { "type": "string" },
+        "pace_syllables_per_second": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "music": {
+      "type": "object",
+      "required": ["bpm_range", "ducking_under_voice_db"],
+      "properties": {
+        "bpm_range": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } },
+        "ducking_under_voice_db": { "type": "number", "maximum": 0 }
+      }
+    },
+    "visual": {
+      "type": "object",
+      "required": ["motion_intensity", "preferred_shot_types"],
+      "properties": {
+        "motion_intensity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "preferred_shot_types": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "constraints": { "type": "object" }
+  }
+}
+

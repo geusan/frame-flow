@@ -1,0 +1,28 @@
+import os
+from pathlib import Path
+
+TEST_DB = Path(__file__).parent / "test_video_canvas.db"
+if TEST_DB.exists():
+    TEST_DB.unlink()
+os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB}"
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.database import Base, engine
+from app.main import app
+
+
+@pytest.fixture()
+def client():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+def pytest_sessionfinish(session, exitstatus):
+    del session, exitstatus
+    engine.dispose()
+    if TEST_DB.exists():
+        TEST_DB.unlink()
