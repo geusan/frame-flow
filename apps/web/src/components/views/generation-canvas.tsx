@@ -261,6 +261,18 @@ function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): C
   };
 }
 
+function isImmutableUploadArtifact(data: StudioFlowNode["data"]): boolean {
+  return data.key === "asset.upload" && Boolean(data.output && data.outputArtifactIds?.length);
+}
+
+function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
+  if (!isImmutableUploadArtifact(data)) return <StatusPill status={data.status} compact={compact} />;
+  return <span className={`status-pill status-artifact ${compact ? "compact" : ""}`}>
+    <LockKeyhole size={compact ? 11 : 12} />
+    {!compact && "Artifact"}
+  </span>;
+}
+
 function httpUrl(value: string): string | null {
   try {
     const parsed = new URL(value.trim());
@@ -382,6 +394,7 @@ function WorkflowNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
   const Icon = icons[data.icon];
   const inputs = data.inputTypes ?? [];
   const actions = useContext(NodeActionsContext);
+  const immutableArtifact = isImmutableUploadArtifact(data);
   return (
     <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
       {inputs.map((type, index) => (
@@ -399,12 +412,13 @@ function WorkflowNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
       <div className="node-head">
         <span className="node-icon"><Icon size={16} /></span>
         <span className="node-title"><small>{data.key}</small><strong>{data.label}</strong></span>
-        <StatusPill status={data.status} compact />
+        <CanvasNodeStatus data={data} compact />
       </div>
       <p className="node-description">{data.description}</p>
-      {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
+      {data.key === "asset.upload" && !immutableArtifact && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
       {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
-      {data.configText !== undefined && data.key !== "asset.select" && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
+      {data.configText !== undefined && !["asset.select", "asset.upload"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
+      {immutableArtifact && <div className="node-artifact-lock"><LockKeyhole size={13} /><span><strong>Artifact</strong><small>Immutable · {data.outputArtifactIds?.[0]}</small></span></div>}
       {data.output ? <NodeOutput output={data.output} /> : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
       <div className="node-meta">
         {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
@@ -693,7 +707,17 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       id: `${source.data.key.replaceAll(".", "-")}-${Date.now()}`,
       selected: false,
       position: { x: source.position.x + 45, y: source.position.y + 45 },
-      data: { ...source.data, label: `${source.data.label} copy`, status: source.data.requiredInputTypes?.length || (source.data.inputTypes?.length && source.data.inputsRequired !== false) ? "BLOCKED" : "READY", preview: undefined, output: undefined, attemptCount: 0, logs: [] },
+      data: {
+        ...source.data,
+        label: `${source.data.label} copy`,
+        status: source.data.requiredInputTypes?.length || (source.data.inputTypes?.length && source.data.inputsRequired !== false) ? "BLOCKED" : "READY",
+        configText: source.data.key === "asset.upload" ? undefined : source.data.configText,
+        preview: undefined,
+        output: undefined,
+        outputArtifactIds: undefined,
+        attemptCount: 0,
+        logs: [],
+      },
     };
     setNodes((current) => [...current, duplicate]);
     selectNode(duplicate.id);
@@ -1290,13 +1314,14 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       {inspectorOpen && selectedNode && (
         <aside className="node-inspector">
           <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><button className="icon-button tiny" type="button" onClick={() => setInspectorOpen(false)}><PanelRightClose size={16} /></button></div>
-          <div className="inspector-status"><StatusPill status={selectedNode.data.status} /><span>{selectedNode.data.key}</span></div>
+          <div className="inspector-status"><CanvasNodeStatus data={selectedNode.data} /><span>{selectedNode.data.key}</span></div>
           <div className="inspector-tabs"><span className="active">Settings</span></div>
           <div className="inspector-content">
             {selectedNode.data.executable !== false && <button className="primary-button step-run-button" type="button" onClick={() => void runStep(selectedNode.id)} disabled={selectedNode.data.status === "RUNNING" || graphRunning || !!selectedInputError}>
               {selectedNode.data.status === "RUNNING" ? <><RefreshCw className="spin" size={15} /> Running step…</> : <><Play size={14} fill="currentColor" /> Run this step</>}
             </button>}
             <p className={`step-run-help ${selectedInputError ? "has-error" : ""}`}>{selectedNode.data.executable === false ? "입력 또는 Canvas 정리용 노드입니다." : selectedInputError ?? "이 Step만 실행합니다. 연결된 입력을 사용합니다."}</p>
+            {isImmutableUploadArtifact(selectedNode.data) && <div className="inspector-artifact-lock"><LockKeyhole size={15} /><span><strong>Immutable Artifact</strong><small>원본은 수정하거나 교체할 수 없습니다. 다른 입력은 새 Upload 노드를 사용하세요.</small></span></div>}
             {selectedNode.data.kind === "generate" && <div className="generator-settings">
               <div className={`connected-prompt-preview ${selectedPromptText ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || "Prompt 노드를 연결하고 내용을 입력하세요."}</p></div>
               <div className="generator-setting-grid provider-model-selectors">
