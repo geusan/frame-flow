@@ -1,5 +1,9 @@
+import json
+import subprocess
+
 import pytest
 
+import app.video_downloaders as video_downloaders
 from app.video_downloaders import (
     DownloadedVideo,
     InspectedVideo,
@@ -43,6 +47,81 @@ def test_yt_dlp_impersonation_can_be_disabled(monkeypatch):
     adapter = get_video_downloader()
 
     assert "--impersonate" not in adapter._base("https://www.tiktok.com/@creator/video/123")
+
+
+def test_tiktok_extraction_retries_the_whole_yt_dlp_process(monkeypatch):
+    adapter = YtDlpVideoDownloaderAdapter(impersonate_attempts=2)
+    calls = 0
+
+    def fake_run(command, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise subprocess.CalledProcessError(1, command, stderr="TikTok challenge failed")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps({"id": "123", "title": "Recovered", "duration": 1}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+
+    inspected = adapter.inspect("https://www.tiktok.com/@creator/video/123")
+
+    assert inspected.title == "Recovered"
+    assert calls == 2
+
+
+def test_download_command_does_not_use_max_downloads_exit_code(monkeypatch):
+    adapter = YtDlpVideoDownloaderAdapter(impersonate_attempts=1)
+    captured_command: list[str] = []
+
+    def fake_run(command, **kwargs):
+        captured_command.extend(command)
+        directory = kwargs["cwd"]
+        (directory / "123.mp4").write_bytes(b"video")
+        (directory / "123.jpg").write_bytes(b"thumbnail")
+        (directory / "123.info.json").write_text('{"id":"123"}')
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+
+    adapter.download("https://www.tiktok.com/@creator/video/123")
+
+    assert "--max-downloads" not in captured_command
+
+
+def test_download_reuses_successful_inspection_metadata(monkeypatch):
+    adapter = YtDlpVideoDownloaderAdapter(impersonate_attempts=1)
+    commands: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        commands.append(command)
+        if "--dump-single-json" in command:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=json.dumps({"id": "123", "title": "Cached", "duration": 1}),
+                stderr="",
+            )
+        directory = kwargs["cwd"]
+        (directory / "123.mp4").write_bytes(b"video")
+        (directory / "123.jpg").write_bytes(b"thumbnail")
+        (directory / "123.info.json").write_text('{"id":"123"}')
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+    url = "https://www.tiktok.com/@creator/video/123"
+
+    adapter.inspect(url)
+    adapter.download(url)
+
+    assert "--load-info-json" in commands[1]
+    assert url not in commands[1]
 
 
 def test_a_new_video_downloader_can_be_registered_and_selected(monkeypatch):

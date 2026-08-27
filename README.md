@@ -22,7 +22,7 @@
 - Prompt·모델·입력·파라미터 Snapshot을 보존하는 단일 Experiment 실행 이력
 - Gemini Image·Veo·Gemini-TTS 결과를 MinIO에 저장하고 Canvas에서 재생하는 실제 생성 경로
 - 교체 가능한 Video Downloader Adapter(`yt-dlp` 기본)를 통한 Canvas URL 업로드 Artifact와 FFmpeg 기반 Video Editor·오디오 교체·자막 Mux·최종 렌더·ffprobe QC
-- `curl_cffi` Chrome impersonation을 이용한 TikTok TLS fingerprint 대응
+- `curl_cffi` Chrome impersonation, 제한 재시도, 성공한 메타데이터 재사용을 이용한 TikTok TLS/JS 챌린지 대응
 - Asset Library 비디오 seek·현재 프레임 캡처와 원본 Video → Image Artifact lineage
 - 정규화된 `artifact_edges`, 양방향 Lineage API·그래프·Before/After·생성 Prompt/모델 상세
 - Google/OpenAI 모델 선택형 Prompt 장면 검색·후보 seek/캡처와 Canvas Frame Extract 노드

@@ -133,10 +133,13 @@ class YtDlpVideoDownloaderAdapter:
         *,
         impersonate_target: str | None = "chrome",
         impersonate_domains: tuple[str, ...] = ("tiktok.com",),
+        impersonate_attempts: int = 6,
     ) -> None:
         self.executable = executable
         self.impersonate_target = (impersonate_target or "").strip() or None
         self.impersonate_domains = tuple(domain.strip().lower().lstrip(".") for domain in impersonate_domains if domain.strip())
+        self.impersonate_attempts = max(1, impersonate_attempts)
+        self._inspection_info: dict[str, dict] = {}
 
     def _base(self, url: str | None = None) -> list[str]:
         command = [
@@ -157,25 +160,53 @@ class YtDlpVideoDownloaderAdapter:
         hostname = (urlparse(url).hostname or "").lower().rstrip(".")
         return any(hostname == domain or hostname.endswith(f".{domain}") for domain in self.impersonate_domains)
 
+    def _run(
+        self,
+        command: list[str],
+        *,
+        url: str,
+        timeout: int,
+        failure_message: str,
+        cwd: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        attempts = self.impersonate_attempts if self.impersonate_target and self._should_impersonate(url) else 1
+        last_error: subprocess.CalledProcessError[str] | None = None
+        for _ in range(attempts):
+            try:
+                return subprocess.run(
+                    command,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    cwd=cwd,
+                )
+            except FileNotFoundError as exc:
+                raise VideoDownloaderError("yt-dlp is not installed") from exc
+            except subprocess.TimeoutExpired as exc:
+                detail = (exc.stderr or str(exc))[-1200:]
+                raise VideoDownloaderError(f"{failure_message}: {detail}") from exc
+            except subprocess.CalledProcessError as exc:
+                last_error = exc
+        assert last_error is not None
+        detail = (last_error.stderr or str(last_error))[-1200:]
+        raise VideoDownloaderError(f"{failure_message}: {detail}") from last_error
+
     def inspect(self, url: str) -> InspectedVideo:
         safe_url = validate_public_url(url)
-        try:
-            result = subprocess.run(
-                [*self._base(safe_url), "--skip-download", "--dump-single-json", "--", safe_url],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-        except FileNotFoundError as exc:
-            raise VideoDownloaderError("yt-dlp is not installed") from exc
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            detail = (getattr(exc, "stderr", "") or str(exc))[-1000:]
-            raise VideoDownloaderError(f"metadata inspection failed: {detail}") from exc
+        result = self._run(
+            [*self._base(safe_url), "--skip-download", "--dump-single-json", "--", safe_url],
+            url=safe_url,
+            timeout=60,
+            failure_message="metadata inspection failed",
+        )
         try:
             info = json.loads(result.stdout)
         except json.JSONDecodeError as exc:
             raise VideoDownloaderError("yt-dlp returned invalid metadata") from exc
+        canonical_url = str(info.get("webpage_url") or safe_url)
+        self._inspection_info[safe_url] = info
+        self._inspection_info[canonical_url] = info
         formats = info.get("formats") or []
         estimated = max(
             (item.get("filesize") or item.get("filesize_approx") or 0 for item in formats),
@@ -183,7 +214,7 @@ class YtDlpVideoDownloaderAdapter:
         )
         subtitles = info.get("subtitles") or info.get("automatic_captions") or {}
         return InspectedVideo(
-            canonical_url=str(info.get("webpage_url") or safe_url),
+            canonical_url=canonical_url,
             source_id=str(info.get("id") or _source_id(safe_url)),
             title=str(info.get("title") or "Untitled video")[:512],
             creator=str(info.get("channel") or info.get("uploader") or "Unknown")[:255],
@@ -206,10 +237,9 @@ class YtDlpVideoDownloaderAdapter:
         with tempfile.TemporaryDirectory(prefix="frameflow-video-download-") as temp_dir:
             directory = Path(temp_dir)
             template = str(directory / "%(id).80s.%(ext)s")
+            inspected_info = self._inspection_info.get(safe_url)
             command = [
                 *self._base(safe_url),
-                "--max-downloads",
-                "1",
                 "--match-filter",
                 f"duration <= {max_duration_seconds}",
                 "--format",
@@ -229,21 +259,19 @@ class YtDlpVideoDownloaderAdapter:
             ]
             if max_filesize_bytes is not None:
                 command.extend(["--max-filesize", str(max_filesize_bytes)])
-            command.extend(["--", safe_url])
-            try:
-                subprocess.run(
-                    command,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=900,
-                    cwd=directory,
-                )
-            except FileNotFoundError as exc:
-                raise VideoDownloaderError("yt-dlp is not installed") from exc
-            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-                detail = (getattr(exc, "stderr", "") or str(exc))[-1200:]
-                raise VideoDownloaderError(f"video download failed: {detail}") from exc
+            if inspected_info:
+                info_input = directory / "inspected-metadata.json"
+                info_input.write_text(json.dumps(inspected_info))
+                command.extend(["--load-info-json", str(info_input)])
+            else:
+                command.extend(["--", safe_url])
+            self._run(
+                command,
+                url=safe_url,
+                timeout=900,
+                failure_message="video download failed",
+                cwd=directory,
+            )
             files = [path for path in directory.iterdir() if path.is_file()]
             video_path = next(
                 (path for path in files if path.suffix.lower() in {".mp4", ".mov", ".mkv", ".webm"}),
@@ -384,6 +412,7 @@ register_video_downloader(
             for value in os.getenv("YT_DLP_IMPERSONATE_DOMAINS", "tiktok.com").split(",")
             if value.strip()
         ),
+        impersonate_attempts=int(os.getenv("YT_DLP_IMPERSONATE_ATTEMPTS", "6")),
     ),
 )
 register_video_downloader("fixture", FixtureVideoDownloaderAdapter)
