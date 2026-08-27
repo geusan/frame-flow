@@ -22,6 +22,29 @@ def test_yt_dlp_is_the_configurable_default_adapter(monkeypatch):
     assert adapter.executable == "/opt/bin/custom-yt-dlp"
 
 
+def test_yt_dlp_impersonation_is_scoped_to_configured_tiktok_domains(monkeypatch):
+    monkeypatch.setenv("VIDEO_DOWNLOADER_PROVIDER", "yt-dlp")
+    monkeypatch.setenv("YT_DLP_IMPERSONATE_TARGET", "chrome")
+    monkeypatch.setenv("YT_DLP_IMPERSONATE_DOMAINS", "tiktok.com")
+    adapter = get_video_downloader()
+
+    tiktok_command = adapter._base("https://www.tiktok.com/@creator/video/123")
+    short_link_command = adapter._base("https://vm.tiktok.com/example")
+    youtube_command = adapter._base("https://www.youtube.com/watch?v=example")
+
+    assert tiktok_command[-2:] == ["--impersonate", "chrome"]
+    assert short_link_command[-2:] == ["--impersonate", "chrome"]
+    assert "--impersonate" not in youtube_command
+
+
+def test_yt_dlp_impersonation_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("VIDEO_DOWNLOADER_PROVIDER", "yt-dlp")
+    monkeypatch.setenv("YT_DLP_IMPERSONATE_TARGET", "")
+    adapter = get_video_downloader()
+
+    assert "--impersonate" not in adapter._base("https://www.tiktok.com/@creator/video/123")
+
+
 def test_a_new_video_downloader_can_be_registered_and_selected(monkeypatch):
     class CustomAdapter:
         provider_name = "custom-test"

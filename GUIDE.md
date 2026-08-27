@@ -280,6 +280,8 @@ Artifact Content API는 HTTP byte-range 응답을 지원한다. 따라서 브라
 
 URL 영상 다운로드는 `VideoDownloaderAdapter` 계약과 provider registry를 통한다. `VIDEO_DOWNLOADER_PROVIDER`의 기본값은 `yt-dlp`이며, 실행 파일 경로는 `YT_DLP_EXECUTABLE`로 바꿀 수 있다. 새 provider는 `inspect`와 `download` 계약을 구현하고 registry에 등록하면 Reference 수집과 Canvas URL 업로드에서 같은 방식으로 선택할 수 있다. 사용된 provider 이름은 Artifact metadata와 audit event에 기록된다.
 
+`yt-dlp`는 `curl_cffi` 네트워크 extra를 포함해 설치한다. TikTok처럼 TLS fingerprinting을 사용하는 도메인은 `YT_DLP_IMPERSONATE_DOMAINS`에 포함된 경우에만 `YT_DLP_IMPERSONATE_TARGET`(기본 `chrome`)을 적용한다. 전역 impersonation은 다운로드 안정성과 성능에 영향을 줄 수 있어 기본적으로 사용하지 않는다.
+
 Artifact 파생관계는 `artifact_edges` 테이블에 부모·자식·역할·순서·작업 ID로 정규화된다. `/artifacts/{id}/lineage`는 조상·후손·양방향 그래프를 반환하며 Asset 상세 Drawer에서 생성 설명, Prompt, 모델, 파라미터, Before/After와 전체 lineage를 확인한다. `SCENE_SEARCH_PROVIDER_MODE=live`는 Gemini Vision을 사용하고 테스트에서만 `fixture` 모드를 허용한다.
 
 ### Object Storage

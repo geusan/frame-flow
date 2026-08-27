@@ -127,11 +127,19 @@ def validate_public_url(value: str) -> str:
 class YtDlpVideoDownloaderAdapter:
     provider_name = "yt-dlp"
 
-    def __init__(self, executable: str = "yt-dlp") -> None:
+    def __init__(
+        self,
+        executable: str = "yt-dlp",
+        *,
+        impersonate_target: str | None = "chrome",
+        impersonate_domains: tuple[str, ...] = ("tiktok.com",),
+    ) -> None:
         self.executable = executable
+        self.impersonate_target = (impersonate_target or "").strip() or None
+        self.impersonate_domains = tuple(domain.strip().lower().lstrip(".") for domain in impersonate_domains if domain.strip())
 
-    def _base(self) -> list[str]:
-        return [
+    def _base(self, url: str | None = None) -> list[str]:
+        command = [
             self.executable,
             "--ignore-config",
             "--no-playlist",
@@ -140,14 +148,20 @@ class YtDlpVideoDownloaderAdapter:
             "15",
             "--retries",
             "2",
-            "--no-warnings",
         ]
+        if url and self.impersonate_target and self._should_impersonate(url):
+            command.extend(["--impersonate", self.impersonate_target])
+        return command
+
+    def _should_impersonate(self, url: str) -> bool:
+        hostname = (urlparse(url).hostname or "").lower().rstrip(".")
+        return any(hostname == domain or hostname.endswith(f".{domain}") for domain in self.impersonate_domains)
 
     def inspect(self, url: str) -> InspectedVideo:
         safe_url = validate_public_url(url)
         try:
             result = subprocess.run(
-                [*self._base(), "--skip-download", "--dump-single-json", "--", safe_url],
+                [*self._base(safe_url), "--skip-download", "--dump-single-json", "--", safe_url],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -193,7 +207,7 @@ class YtDlpVideoDownloaderAdapter:
             directory = Path(temp_dir)
             template = str(directory / "%(id).80s.%(ext)s")
             command = [
-                *self._base(),
+                *self._base(safe_url),
                 "--max-downloads",
                 "1",
                 "--match-filter",
@@ -362,6 +376,14 @@ def _run_ffmpeg(command: list[str], *, timeout: int = 120) -> None:
 
 register_video_downloader(
     "yt-dlp",
-    lambda: YtDlpVideoDownloaderAdapter(os.getenv("YT_DLP_EXECUTABLE", "yt-dlp")),
+    lambda: YtDlpVideoDownloaderAdapter(
+        os.getenv("YT_DLP_EXECUTABLE", "yt-dlp"),
+        impersonate_target=os.getenv("YT_DLP_IMPERSONATE_TARGET", "chrome"),
+        impersonate_domains=tuple(
+            value.strip()
+            for value in os.getenv("YT_DLP_IMPERSONATE_DOMAINS", "tiktok.com").split(",")
+            if value.strip()
+        ),
+    ),
 )
 register_video_downloader("fixture", FixtureVideoDownloaderAdapter)
