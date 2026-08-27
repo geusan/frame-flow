@@ -69,7 +69,7 @@ class GoogleGenerationServices:
         seed = payload.parameters.get("seed")
         seed_value = int(seed) if seed is not None else None
 
-        if payload.node_key == "image.generate":
+        if payload.node_key in {"image.generate", "image.edit"}:
             candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
             generated_images = self.image.generate(
@@ -82,11 +82,12 @@ class GoogleGenerationServices:
             )
             generated = generated_images[0]
             extension = ".png" if "png" in generated.mime_type else ".jpg"
+            editing = payload.node_key == "image.edit"
             return LiveGenerationResult(
-                {"kind": "image", "title": "Generated image", "mimeType": generated.mime_type},
-                "Image", "google.image.v1", generated.provider_request_id, generated.data,
-                generated.mime_type, f"generated{extension}", input_ids,
-                tuple(GeneratedAsset(item.data, item.mime_type, f"generated-{index}{'.png' if 'png' in item.mime_type else '.jpg'}") for index, item in enumerate(generated_images[1:], start=2)),
+                {"kind": "image", "title": "AI edited image" if editing else "Generated image", "mimeType": generated.mime_type},
+                "Image", "google.image.edit.v1" if editing else "google.image.v1", generated.provider_request_id, generated.data,
+                generated.mime_type, f"{'edited' if editing else 'generated'}{extension}", input_ids,
+                tuple(GeneratedAsset(item.data, item.mime_type, f"{'edited' if editing else 'generated'}-{index}{'.png' if 'png' in item.mime_type else '.jpg'}") for index, item in enumerate(generated_images[1:], start=2)),
             )
 
         if payload.node_key == "video.generate":

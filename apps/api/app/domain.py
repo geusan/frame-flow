@@ -222,6 +222,37 @@ class SceneSearchRequest(BaseModel):
     sample_count: int = Field(default=12, ge=3, le=24)
 
 
+class ImageEditTransform(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rotation: float = Field(default=0, ge=-180, le=180)
+    zoom: float = Field(default=1, ge=1, le=4)
+    offset_x: float = Field(default=0, ge=-1, le=1)
+    offset_y: float = Field(default=0, ge=-1, le=1)
+    flip_horizontal: bool = False
+    flip_vertical: bool = False
+
+
+class ImageEditAdjustments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    brightness: float = Field(default=1, ge=0, le=2)
+    contrast: float = Field(default=1, ge=0, le=2)
+    saturation: float = Field(default=1, ge=0, le=2)
+    blur: float = Field(default=0, ge=0, le=30)
+    grayscale: float = Field(default=0, ge=0, le=1)
+    sepia: float = Field(default=0, ge=0, le=1)
+
+
+class ImageEditDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal["image-edit.v1"] = "image-edit.v1"
+    aspect_ratio: Literal["original", "1:1", "4:5", "9:16", "16:9"] = "original"
+    transform: ImageEditTransform = Field(default_factory=ImageEditTransform)
+    adjustments: ImageEditAdjustments = Field(default_factory=ImageEditAdjustments)
+
+
 class ExperimentRunRequest(BaseModel):
     canvas_id: str = Field(min_length=1, max_length=128)
     node_id: str = Field(min_length=1, max_length=128)

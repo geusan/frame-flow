@@ -1,5 +1,10 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+
 import { AssetLibrary } from "@/components/views/asset-library";
 
 export default function ImagesPage() {
-  return <AssetLibrary tab="images" />;
+  const router = useRouter();
+  return <AssetLibrary tab="images" onEditImage={(artifactId) => router.push(`/asset/images/${artifactId}/edit`)} />;
 }

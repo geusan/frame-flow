@@ -164,16 +164,30 @@ def _derivation_payload(
             "execution_mode": experiment.execution_mode if experiment else "local-media.v1",
         }
     if experiment:
+        editing_image = experiment.node_key == "image.edit"
         return {
             "operation": experiment.node_key,
-            "title": _operation_title(experiment.node_key),
-            "description": _operation_description(experiment.node_key, experiment.prompt),
+            "title": "AI edited image" if editing_image else _operation_title(experiment.node_key),
+            "description": f"Edited the source image with the recorded instruction: {experiment.prompt.strip().replace(chr(10), ' ')[:180]}" if editing_image else _operation_description(experiment.node_key, experiment.prompt),
             "prompt": experiment.prompt or None,
             "model_alias": experiment.model_alias,
             "exact_model_id": experiment.exact_model_id,
             "parameters": experiment.parameters or {},
             "request_hash": experiment.request_hash,
             "execution_mode": experiment.execution_mode,
+        }
+    if source == "image_manual_edit":
+        edit_document = artifact.metadata_json.get("image_edit") or {}
+        return {
+            "operation": "image.manual_edit",
+            "title": "Manually edited image",
+            "description": "Applied deterministic browser canvas transforms and adjustments to the source image.",
+            "prompt": None,
+            "model_alias": "local.browser-canvas",
+            "exact_model_id": "canvas-2d.v1",
+            "parameters": edit_document,
+            "request_hash": None,
+            "execution_mode": "browser-canvas.v1",
         }
     if source == "canvas_url_import":
         return {
@@ -216,6 +230,7 @@ def _derivation_payload(
 def _operation_title(node_key: str) -> str:
     return {
         "image.generate": "Generated image",
+        "image.edit": "AI edited image",
         "video.generate": "Generated video",
         "video.edit": "Edited video",
         "video.change_voice": "Replaced video audio",

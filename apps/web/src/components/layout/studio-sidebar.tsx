@@ -49,6 +49,7 @@ const settingsNavigation: NavigationItem[] = [
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/workflows") return pathname === href || pathname.startsWith("/workflows/");
+  if (href.startsWith("/asset/")) return pathname === href || pathname.startsWith(`${href}/`);
   return pathname === href;
 }
 

@@ -242,6 +242,44 @@ export interface ArtifactListItem {
   url: string;
 }
 
+export interface ArtifactDetail {
+  id: string;
+  created_at: string;
+  type: ArtifactListItem["type"];
+  schema_id?: string;
+  uri: string;
+  sha256: string;
+  producer_node_run_id?: string;
+  input_artifact_ids: string[];
+  metadata: Record<string, unknown> & {
+    filename?: string;
+    source?: string;
+    output?: { title?: string };
+    storage?: { content_type?: string; size_bytes?: number };
+  };
+}
+
+export interface ImageEditDocument {
+  version: "image-edit.v1";
+  aspect_ratio: "original" | "1:1" | "4:5" | "9:16" | "16:9";
+  transform: {
+    rotation: number;
+    zoom: number;
+    offset_x: number;
+    offset_y: number;
+    flip_horizontal: boolean;
+    flip_vertical: boolean;
+  };
+  adjustments: {
+    brightness: number;
+    contrast: number;
+    saturation: number;
+    blur: number;
+    grayscale: number;
+    sepia: number;
+  };
+}
+
 export interface CapturedFrameArtifact extends ArtifactListItem {
   source_artifact_id: string;
   timestamp_ms: number;
@@ -377,6 +415,13 @@ export const frameflowApi = {
       assets.push(...page);
       if (page.length < pageSize) return assets;
     }
+  },
+  getArtifact: (artifactId: string) => request<ArtifactDetail>(`/artifacts/${artifactId}`),
+  saveManualImageEdit: (artifactId: string, image: Blob, document: ImageEditDocument) => {
+    const body = new FormData();
+    body.append("file", new File([image], `edited-${artifactId}.png`, { type: "image/png" }));
+    body.append("edit_document", JSON.stringify(document));
+    return request<ArtifactListItem>(`/artifacts/${artifactId}/image-edits`, { method: "POST", body });
   },
   captureVideoFrame: (artifactId: string, timestampMs: number, context?: SceneCaptureContext) => request<CapturedFrameArtifact>(`/artifacts/${artifactId}/capture-frame`, { method: "POST", body: JSON.stringify({ timestamp_ms: timestampMs, ...context }) }),
   searchVideoScenes: (artifactId: string, prompt: string, provider: "google" | "openai", modelAlias: string, candidateCount = 4, sampleCount = 12) => request<SceneSearchResult>(`/artifacts/${artifactId}/scene-search`, { method: "POST", body: JSON.stringify({ prompt, provider, model_alias: modelAlias, candidate_count: candidateCount, sample_count: sampleCount }) }),

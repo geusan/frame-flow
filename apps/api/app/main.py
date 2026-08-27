@@ -9,7 +9,7 @@ import re
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import func, select
@@ -49,6 +49,7 @@ from .domain import (
     FormatRunRequest,
     GenerationBriefRequest,
     GenerationRunRequest,
+    ImageEditDocument,
     MergeRequest,
     NodeStatus,
     ReferenceImportRequest,
@@ -1204,6 +1205,76 @@ async def upload_artifact(file: UploadFile = File(...), db: Session = Depends(ge
         "size_bytes": len(content),
         "filename": file.filename or "upload.bin",
         "url": artifact_content_url(playback_artifact.id),
+    }
+
+
+@app.post("/artifacts/{artifact_id}/image-edits", status_code=status.HTTP_201_CREATED)
+async def save_manual_image_edit(
+    artifact_id: str,
+    file: UploadFile = File(...),
+    edit_document: str = Form(...),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    source = db.get(ArtifactRecord, artifact_id)
+    if not source:
+        raise HTTPException(404, "source image artifact not found")
+    if source.type != "Image":
+        raise HTTPException(415, "only image artifacts can be edited")
+    content_type = (file.content_type or "").split(";", 1)[0].lower()
+    if content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(415, "edited image must be PNG, JPEG, or WebP")
+    if len(edit_document.encode()) > 32_000:
+        raise HTTPException(413, "image edit document is too large")
+    try:
+        document = ImageEditDocument.model_validate(json.loads(edit_document))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(422, f"invalid image edit document: {exc}") from exc
+    content = await file.read(CANVAS_ARTIFACT_MAX_BYTES + 1)
+    if not content:
+        raise HTTPException(422, "edited image is empty")
+    if len(content) > CANVAS_ARTIFACT_MAX_BYTES:
+        raise HTTPException(413, "edited image exceeds the 250 MB Canvas limit")
+
+    source_filename = str(source.metadata_json.get("filename") or f"{source.id}.png")
+    source_stem = re.sub(r"\.[A-Za-z0-9]{1,10}$", "", source_filename)
+    safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", source_stem).strip(" .") or source.id
+    extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[content_type]
+    filename = f"{safe_stem[:170]}-edited{extension}"
+    document_payload = document.model_dump()
+    artifact = create_artifact(
+        db,
+        "Image",
+        schema_id="image.manual-edit.v1",
+        input_artifact_ids=[source.id],
+        input_artifact_roles={source.id: "source_image"},
+        content=content,
+        content_type=content_type,
+        filename=filename,
+        metadata={
+            "source": "image_manual_edit",
+            "filename": filename,
+            "operation": "image.manual.edit",
+            "image_edit": document_payload,
+            "immutable": True,
+        },
+    )
+    db.flush()
+    audit(db, "artifact.image_manually_edited", artifact.id, {
+        "source_artifact_id": source.id,
+        "content_type": content_type,
+        "image_edit": document_payload,
+    })
+    db.commit()
+    return {
+        "id": artifact.id,
+        "created_at": artifact.created_at,
+        "type": artifact.type,
+        "content_type": content_type,
+        "size_bytes": len(content),
+        "filename": filename,
+        "source": "image_manual_edit",
+        "duration_ms": 0,
+        "url": artifact_content_url(artifact.id),
     }
 
 

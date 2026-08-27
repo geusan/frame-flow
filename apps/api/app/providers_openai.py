@@ -76,7 +76,7 @@ class OpenAIGenerationServices:
                 response.id, text.encode(), "text/plain", "result.txt", input_ids,
             )
 
-        if payload.node_key == "image.generate":
+        if payload.node_key in {"image.generate", "image.edit"}:
             count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
             size = _image_size(str(payload.parameters.get("aspect_ratio") or "9:16"))
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
@@ -96,10 +96,11 @@ class OpenAIGenerationServices:
             if not images:
                 raise RuntimeError("OpenAI Images API returned no image")
             request_id = f"openai_{hashlib.sha256((payload.prompt + str(response.created)).encode()).hexdigest()[:20]}"
+            editing = payload.node_key == "image.edit"
             return LiveGenerationResult(
-                {"kind": "image", "title": "Generated image", "mimeType": "image/png"},
-                "Image", "openai.image.v1", request_id, images[0], "image/png", "generated.png", input_ids,
-                tuple(GeneratedAsset(data, "image/png", f"generated-{index}.png") for index, data in enumerate(images[1:], start=2)),
+                {"kind": "image", "title": "AI edited image" if editing else "Generated image", "mimeType": "image/png"},
+                "Image", "openai.image.edit.v1" if editing else "openai.image.v1", request_id, images[0], "image/png", "edited.png" if editing else "generated.png", input_ids,
+                tuple(GeneratedAsset(data, "image/png", f"{'edited' if editing else 'generated'}-{index}.png") for index, data in enumerate(images[1:], start=2)),
             )
 
         if payload.node_key == "tts.generate":

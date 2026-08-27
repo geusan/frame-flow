@@ -8,6 +8,7 @@ import {
   Film,
   GitBranch,
   Image as ImageIcon,
+  Pencil,
   Play,
   RefreshCw,
   Search,
@@ -331,7 +332,41 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   </Dialog>;
 }
 
-function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem; onInspect: () => void; onOpenVideo: () => void }) {
+function ImagePreviewDialog({ asset, onClose, onEdit }: { asset: ArtifactListItem; onClose: () => void; onEdit?: () => void }) {
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <DialogContent className="image-asset-dialog z-[111]" overlayClassName="scene-search-backdrop">
+      <DialogDescription className="sr-only">Large image preview and actions for {asset.filename}</DialogDescription>
+      <div className="scene-search-head"><span><small>Image asset</small><DialogTitle asChild><strong title={asset.filename}>{asset.filename}</strong></DialogTitle></span><DialogClose asChild><button type="button" aria-label="Close image preview"><X size={16} /></button></DialogClose></div>
+      <div className="image-preview-body">
+        <div className="image-preview-stage">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={asset.url} alt={asset.filename} onLoad={(event) => setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />
+        </div>
+        <aside className="image-preview-panel">
+          <section>
+            <small>About this image</small>
+            <h3>{asset.filename}</h3>
+            <p>{sourceLabel(asset.source)}로 저장된 이미지입니다. 원본은 그대로 유지되며 편집 결과는 새 Image Artifact로 저장됩니다.</p>
+          </section>
+          <div className="image-preview-meta">
+            <span><small>Resolution</small><strong>{dimensions ? `${dimensions.width} × ${dimensions.height}` : "Loading…"}</strong></span>
+            <span><small>Size</small><strong>{formatBytes(asset.size_bytes)}</strong></span>
+            <span><small>Created</small><strong>{new Date(asset.created_at).toLocaleString("ko-KR")}</strong></span>
+            <span><small>Source</small><strong>{sourceLabel(asset.source)}</strong></span>
+          </div>
+          <div className="image-preview-actions">
+            {onEdit && <Button type="button" size="lg" onClick={onEdit}><Pencil size={15} /> 편집하기</Button>}
+            <Button type="button" variant="secondary" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")}><ExternalLink size={14} /> 원본 열기</Button>
+            <Button type="button" variant="secondary" onClick={() => { onClose(); }}><X size={14} /> 닫기</Button>
+          </div>
+        </aside>
+      </div>
+    </DialogContent>
+  </Dialog>;
+}
+
+function AssetCard({ asset, onInspect, onOpenVideo, onOpenImage }: { asset: ArtifactListItem; onInspect: () => void; onOpenVideo: () => void; onOpenImage: () => void }) {
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [aspectRatio, setAspectRatio] = useState(16 / 10);
   const duration = formatDuration(asset.duration_ms);
@@ -339,9 +374,10 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
     "--asset-ratio": aspectRatio,
     "--asset-basis": `${aspectRatio * 260}px`,
   } as CSSProperties;
+  const openAsset = () => { if (isVideo(asset)) onOpenVideo(); else onOpenImage(); };
 
   return <article className={`asset-card ${isVideo(asset) ? "video" : "image"}`} style={galleryStyle}>
-    <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`} role={isVideo(asset) ? "button" : undefined} tabIndex={isVideo(asset) ? 0 : undefined} aria-label={isVideo(asset) ? `Play ${asset.filename}` : undefined} onClick={() => { if (isVideo(asset)) onOpenVideo(); }} onKeyDown={(event) => { if (isVideo(asset) && ["Enter", " "].includes(event.key)) { event.preventDefault(); onOpenVideo(); } }}>
+    <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`} role="button" tabIndex={0} aria-label={`${isVideo(asset) ? "Play" : "Preview"} ${asset.filename}`} onClick={openAsset} onKeyDown={(event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); openAsset(); } }}>
       {isVideo(asset)
         ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} onMetadata={(metadata) => {
             setVideoDimensions({ width: metadata.width, height: metadata.height });
@@ -371,7 +407,7 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
   </article>;
 }
 
-export function AssetLibrary({ tab, onOpenImages }: { tab: AssetTab; onOpenImages?: () => void }) {
+export function AssetLibrary({ tab, onOpenImages, onEditImage }: { tab: AssetTab; onOpenImages?: () => void; onEditImage?: (artifactId: string) => void }) {
   const [assets, setAssets] = useState<ArtifactListItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -379,6 +415,7 @@ export function AssetLibrary({ tab, onOpenImages }: { tab: AssetTab; onOpenImage
   const [capturedAsset, setCapturedAsset] = useState<CapturedFrameArtifact | null>(null);
   const [inspectedAsset, setInspectedAsset] = useState<ArtifactListItem | null>(null);
   const [sceneSearchAsset, setSceneSearchAsset] = useState<ArtifactListItem | null>(null);
+  const [previewedImage, setPreviewedImage] = useState<ArtifactListItem | null>(null);
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -435,11 +472,12 @@ export function AssetLibrary({ tab, onOpenImages }: { tab: AssetTab; onOpenImage
 
       {!error && !loading && visibleAssets.length > 0 && (
         <div className="asset-grid">
-          {visibleAssets.map((asset) => <AssetCard asset={asset} onInspect={() => setInspectedAsset(asset)} onOpenVideo={() => setSceneSearchAsset(asset)} key={asset.id} />)}
+          {visibleAssets.map((asset) => <AssetCard asset={asset} onInspect={() => setInspectedAsset(asset)} onOpenVideo={() => setSceneSearchAsset(asset)} onOpenImage={() => setPreviewedImage(asset)} key={asset.id} />)}
         </div>
       )}
       {inspectedAsset && <AssetLineageDrawer asset={inspectedAsset} onClose={() => setInspectedAsset(null)} key={inspectedAsset.id} />}
       {sceneSearchAsset && <SceneSearchDialog asset={sceneSearchAsset} onClose={() => setSceneSearchAsset(null)} onCaptured={handleCaptured} key={sceneSearchAsset.id} />}
+      {previewedImage && <ImagePreviewDialog asset={previewedImage} onClose={() => setPreviewedImage(null)} onEdit={onEditImage ? () => onEditImage(previewedImage.id) : undefined} key={previewedImage.id} />}
     </div>
   );
 }

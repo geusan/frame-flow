@@ -23,6 +23,7 @@ MODEL_REGISTRY = {
     "google.text.quality": "gemini-2.5-pro",
     "google.image.fast": "gemini-3.1-flash-image",
     "google.image.quality": "gemini-3-pro-image",
+    "google.image.edit.fast": "gemini-3.1-flash-lite-image",
     "google.video.fast": "veo-3.1-fast-generate-001",
     "google.video.quality": "veo-3.1-generate-001",
     "google.tts.fast": "gemini-2.5-flash-tts",

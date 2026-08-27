@@ -86,6 +86,19 @@ def test_openai_image_provider_edits_connected_image():
     assert "input_fidelity" not in client.images.last
 
 
+def test_openai_image_edit_operation_has_distinct_artifact_contract():
+    client = FakeOpenAIClient()
+    service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)
+    result = service.execute(
+        payload("image.edit", "openai.image.default"),
+        [InputMedia("art_source", "Image", b"source-png", "image/png")],
+    )
+    assert result.output["title"] == "AI edited image"
+    assert result.schema_id == "openai.image.edit.v1"
+    assert result.filename == "edited.png"
+    assert result.input_artifact_ids == ["art_source"]
+
+
 def test_openai_speech_provider_requests_wav():
     client = FakeOpenAIClient()
     service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)

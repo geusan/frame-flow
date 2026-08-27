@@ -262,6 +262,55 @@ def test_canvas_can_import_a_video_url_as_an_artifact(client: TestClient):
     assert listed_asset["duration_ms"] == 35_000
 
 
+def test_manual_image_edit_creates_an_immutable_derived_artifact(client: TestClient):
+    uploaded = client.post(
+        "/artifacts/upload",
+        files={"file": ("source.png", b"\x89PNG\r\n\x1a\nsource", "image/png")},
+    ).json()
+    document = {
+        "version": "image-edit.v1",
+        "aspect_ratio": "4:5",
+        "transform": {
+            "rotation": 2.5,
+            "zoom": 1.15,
+            "offset_x": 0.1,
+            "offset_y": -0.05,
+            "flip_horizontal": False,
+            "flip_vertical": False,
+        },
+        "adjustments": {
+            "brightness": 1.08,
+            "contrast": 1.05,
+            "saturation": 0.95,
+            "blur": 0,
+            "grayscale": 0,
+            "sepia": 0,
+        },
+    }
+    response = client.post(
+        f"/artifacts/{uploaded['artifact_id']}/image-edits",
+        files={"file": ("edited.png", b"\x89PNG\r\n\x1a\nedited", "image/png")},
+        data={"edit_document": json.dumps(document)},
+    )
+    assert response.status_code == 201
+    edited = response.json()
+    assert edited["type"] == "Image"
+    assert edited["source"] == "image_manual_edit"
+    assert edited["filename"] == "source-edited.png"
+
+    artifact = client.get(f"/artifacts/{edited['id']}").json()
+    assert artifact["input_artifact_ids"] == [uploaded["artifact_id"]]
+    assert artifact["metadata"]["immutable"] is True
+    assert artifact["metadata"]["image_edit"] == document
+    lineage = client.get(f"/artifacts/{edited['id']}/lineage").json()
+    node = next(item for item in lineage["nodes"] if item["id"] == edited["id"])
+    assert node["derivation"]["operation"] == "image.manual_edit"
+    assert node["derivation"]["parameters"] == document
+    edge = next(item for item in lineage["edges"] if item["child_artifact_id"] == edited["id"])
+    assert edge["parent_artifact_id"] == uploaded["artifact_id"]
+    assert edge["role"] == "source_image"
+
+
 def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient):
     imported = client.post(
         "/artifacts/import-url",

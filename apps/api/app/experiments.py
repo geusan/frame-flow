@@ -29,8 +29,9 @@ from .storage import artifact_content_url, get_storage, storage_location
 MODEL_COSTS = {
     "google.text.fast": 0.01,
     "google.text.quality": 0.03,
-    "google.image.fast": 0.21,
-    "google.image.quality": 0.42,
+    "google.image.fast": 0.067,
+    "google.image.quality": 0.134,
+    "google.image.edit.fast": 0.0336,
     "google.video.fast": 1.40,
     "google.video.quality": 2.80,
     "google.tts.fast": 0.12,
@@ -91,6 +92,7 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
 def validate_model_for_node(node_key: str, model_alias: str) -> None:
     allowed_families = {
         "image.generate": ("google.image.", "openai.image."),
+        "image.edit": ("google.image.", "openai.image."),
         "video.generate": ("google.video.",),
         "tts.generate": ("google.tts.", "openai.tts."),
         "llm.assistant": ("google.text.", "openai.text.", "openai.chat."),
@@ -127,10 +129,10 @@ class FixtureResult:
 
 def execute_fixture(payload: ExperimentRunRequest, exact_model_id: str, digest: str) -> FixtureResult:
     provider_request_id = f"local_{digest[:20]}"
-    if payload.node_key == "image.generate":
-        output = {"kind": "image", "title": "Experiment image", "mimeType": "image/svg+xml"}
+    if payload.node_key in {"image.generate", "image.edit"}:
+        output = {"kind": "image", "title": "AI edited image" if payload.node_key == "image.edit" else "Experiment image", "mimeType": "image/svg+xml"}
         content = render_image_svg(payload.prompt, exact_model_id, digest)
-        return FixtureResult(output, "Image", "experiment.image.v1", provider_request_id, content, "image/svg+xml", "preview.svg")
+        return FixtureResult(output, "Image", "experiment.image.edit.v1" if payload.node_key == "image.edit" else "experiment.image.v1", provider_request_id, content, "image/svg+xml", "edited.svg" if payload.node_key == "image.edit" else "preview.svg")
     if payload.node_key == "video.generate":
         output = {"kind": "video", "title": "Experiment video", "mimeType": "video/mp4"}
         content = render_video_mp4(digest)

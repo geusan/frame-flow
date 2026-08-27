@@ -156,6 +156,8 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 
 사이드바의 Asset Library는 저장된 이미지와 비디오를 탭·검색·미리보기로 모아 보여준다. 비디오 플레이어에서 원하는 위치로 이동한 뒤 `Capture frame`을 누르면 해당 시점의 JPEG가 새 Image Artifact로 저장된다. `Prompt search`는 Google 또는 OpenAI Provider와 논리적 모델 별칭을 선택할 수 있다. 영상을 샘플링한 뒤 선택한 Vision 모델이 Prompt 관련도를 평가해 후보 썸네일·점수·타임스탬프를 반환한다. 후보를 누르면 플레이어가 해당 위치로 seek하며 선택 장면을 캡처할 수 있다. 캡처 이미지는 원본 Video Artifact ID, 정확한 타임스탬프, 검색 Prompt·점수·Provider·논리 모델·정확한 모델 ID와 FFmpeg 작업 버전을 lineage로 보존한다. Canvas의 Assets 노드는 같은 목록을 축소한 Popover를 열며, 이미지/비디오 탭에서 한 개를 선택해 해당 노드 출력으로 사용한다. ReferenceSet을 Canvas 생성 입력으로 직접 사용하지 않는다.
 
+Images의 각 Asset은 `편집하기`로 전용 이미지 편집기를 연다. Manual 탭은 비율 Crop, 이동, Zoom, 회전, Flip, 밝기, 대비, 채도, Blur, Grayscale, Sepia를 브라우저 Canvas에서 비파괴적으로 미리보기하며 저장 시 원본을 덮어쓰지 않고 `image-edit.v1` 문서와 함께 새 Image Artifact를 만든다. AI edit 탭은 자연어 지시와 원본 Image Artifact를 Nano Banana 2 Lite·Nano Banana 2·Nano Banana Pro 또는 GPT Image에 전달한다. 저장되지 않은 수동 변경이 있으면 먼저 수동 편집본을 파생 Artifact로 만든 뒤 이를 AI 입력으로 사용해 전체 lineage를 보존한다.
+
 이미지를 다른 앱에서 복사한 뒤 Canvas에서 `⌘V`를 누르면 마우스 위치에 Upload 노드가 생성되고 Preview와 `ReferenceAsset` 출력이 설정된다. 공개 영상 URL을 Canvas 빈 영역에 붙여넣어도 Upload 노드가 생성되고 Video Downloader Adapter로 영상을 내려받아 Artifact로 저장한다. 현재 기본 Adapter는 `yt-dlp`다. Upload 노드의 URL 입력란에서는 URL을 붙여넣는 즉시 가져오기를 시작한다. 그 밖의 일반 텍스트 붙여넣기는 Prompt 입력으로 유지된다.
 
 ### 6.3 Image/Video

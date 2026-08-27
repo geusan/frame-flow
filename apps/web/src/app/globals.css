@@ -6,6 +6,7 @@
 @import "../styles/integrations/react-flow.css";
 @import "../styles/features/reference-library.css";
 @import "../styles/features/asset-library.css";
+@import "../styles/features/image-editor.css";
 @import "../styles/features/canvas-library.css";
 @import "../styles/features/format-lab.css";
 @import "../styles/features/runs-models.css";

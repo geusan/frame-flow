@@ -24,6 +24,7 @@
 - 교체 가능한 Video Downloader Adapter(`yt-dlp` 기본)를 통한 Canvas URL 업로드 Artifact와 FFmpeg 기반 Video Editor·오디오 교체·자막 Mux·최종 렌더·ffprobe QC
 - `curl_cffi` Chrome impersonation, 제한 재시도, 성공한 메타데이터 재사용을 이용한 TikTok TLS/JS 챌린지 대응
 - Asset Library 비디오 seek·현재 프레임 캡처와 원본 Video → Image Artifact lineage
+- Images의 브라우저 Canvas 수동 편집과 Nano Banana/GPT Image 자연어 편집, 원본을 보존하는 파생 Image Artifact lineage
 - 정규화된 `artifact_edges`, 양방향 Lineage API·그래프·Before/After·생성 Prompt/모델 상세
 - Google/OpenAI 모델 선택형 Prompt 장면 검색·후보 seek/캡처
 - `memory`·`minio`·`r2`·`s3`로 교체 가능한 S3 호환 Storage Provider
