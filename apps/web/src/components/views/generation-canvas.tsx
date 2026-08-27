@@ -217,6 +217,7 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
       ...node,
       data: {
         ...node.data,
+        label: node.data.key === "asset.upload" && node.data.label === "Upload" ? "Asset" : node.data.label,
         inputTypes: template.data.inputTypes,
         requiredInputTypes: template.data.requiredInputTypes,
         multiInputTypes: template.data.multiInputTypes,
@@ -267,9 +268,9 @@ function isImmutableUploadArtifact(data: StudioFlowNode["data"]): boolean {
 
 function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
   if (!isImmutableUploadArtifact(data)) return <StatusPill status={data.status} compact={compact} />;
-  return <span className={`status-pill status-artifact ${compact ? "compact" : ""}`}>
+  return <span className={`status-pill status-asset ${compact ? "compact" : ""}`}>
     <LockKeyhole size={compact ? 11 : 12} />
-    {!compact && "Artifact"}
+    {!compact && "Asset"}
   </span>;
 }
 
@@ -418,7 +419,6 @@ function WorkflowNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
       {data.key === "asset.upload" && !immutableArtifact && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
       {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
       {data.configText !== undefined && !["asset.select", "asset.upload"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
-      {immutableArtifact && <div className="node-artifact-lock"><LockKeyhole size={13} /><span><strong>Artifact</strong><small>Immutable · {data.outputArtifactIds?.[0]}</small></span></div>}
       {data.output ? <NodeOutput output={data.output} /> : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
       <div className="node-meta">
         {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
@@ -463,7 +463,10 @@ function NodePromptEditor({ nodeId, value, onCommit }: { nodeId: string; value: 
 
 function NodeOutput({ output }: { output: CanvasOutput }) {
   if (output.kind === "image") return <div className="node-output node-output-image"><div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} /><span>{output.title}</span></div>;
-  if (output.kind === "video") return <div className="node-output node-output-video">{output.mimeType?.startsWith("video/") ? <video className="nodrag nowheel" src={output.url} controls muted /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}<span className="video-play"><Play size={19} fill="currentColor" /></span><span className="video-badge">00:06</span></div>;
+  if (output.kind === "video") {
+    const playable = output.mimeType?.startsWith("video/");
+    return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <video className="nodrag nowheel" src={output.url} controls muted preload="metadata" /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}</div>;
+  }
   if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span></div>;
   if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p></div>;
   return <div className="node-output node-output-json"><small>{output.title}</small><pre>{output.text}</pre></div>;
@@ -793,7 +796,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       });
       markUnsaved();
       setAssetOptions((current) => [{ id: artifact.artifact_id, created_at: new Date().toISOString(), type: artifact.type, content_type: artifact.content_type, size_bytes: artifact.size_bytes, filename: file.name, source: "canvas_upload", duration_ms: 0, url: artifact.url }, ...current.filter((item) => item.id !== artifact.artifact_id)]);
-      notify(`${file.name} 파일을 Artifact로 저장했습니다.`, "success");
+      notify(`${file.name} 파일을 Asset으로 저장했습니다.`, "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Artifact upload failed";
       setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "FAILED" as NodeStatus, preview: undefined, logs: [...(node.data.logs ?? []), message] } } : node));
@@ -827,7 +830,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       });
       markUnsaved();
       setAssetOptions((current) => [{ id: artifact.artifact_id, created_at: new Date().toISOString(), type: artifact.type, content_type: artifact.content_type, size_bytes: artifact.size_bytes, filename: artifact.filename, source: "canvas_url_import", duration_ms: 0, url: artifact.url }, ...current.filter((item) => item.id !== artifact.artifact_id)]);
-      notify(`${artifact.filename} 영상을 Artifact로 저장했습니다.`, "success");
+      notify(`${artifact.filename} 영상을 Asset으로 저장했습니다.`, "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Video URL import failed";
       setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "FAILED" as NodeStatus, preview: undefined, logs: [...(node.data.logs ?? []), message] } } : node));
@@ -1321,7 +1324,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
               {selectedNode.data.status === "RUNNING" ? <><RefreshCw className="spin" size={15} /> Running step…</> : <><Play size={14} fill="currentColor" /> Run this step</>}
             </button>}
             <p className={`step-run-help ${selectedInputError ? "has-error" : ""}`}>{selectedNode.data.executable === false ? "입력 또는 Canvas 정리용 노드입니다." : selectedInputError ?? "이 Step만 실행합니다. 연결된 입력을 사용합니다."}</p>
-            {isImmutableUploadArtifact(selectedNode.data) && <div className="inspector-artifact-lock"><LockKeyhole size={15} /><span><strong>Immutable Artifact</strong><small>원본은 수정하거나 교체할 수 없습니다. 다른 입력은 새 Upload 노드를 사용하세요.</small></span></div>}
+            {isImmutableUploadArtifact(selectedNode.data) && <div className="inspector-asset-lock"><LockKeyhole size={15} /><span><strong>Locked Asset</strong><small>원본은 수정하거나 교체할 수 없습니다. 다른 입력은 새 Asset 노드를 사용하세요.</small></span></div>}
             {selectedNode.data.kind === "generate" && <div className="generator-settings">
               <div className={`connected-prompt-preview ${selectedPromptText ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || "Prompt 노드를 연결하고 내용을 입력하세요."}</p></div>
               <div className="generator-setting-grid provider-model-selectors">
