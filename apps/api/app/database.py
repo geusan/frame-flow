@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .domain import utc_now
@@ -195,7 +195,12 @@ class AuditEventRecord(Timestamped, Base):
 
 
 def create_all() -> None:
-    Base.metadata.create_all(bind=engine)
+    with engine.begin() as connection:
+        if connection.dialect.name == "postgresql":
+            # API and Temporal worker start together in Compose. Serialize schema
+            # inspection/DDL so both processes cannot create the same table.
+            connection.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": 2026082701})
+        Base.metadata.create_all(bind=connection)
 
 
 def get_db() -> Iterator[Session]:
