@@ -372,9 +372,8 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
   </article>;
 }
 
-export function AssetLibrary() {
+export function AssetLibrary({ tab, onChangeTab }: { tab: AssetTab; onChangeTab: (tab: AssetTab) => void }) {
   const [assets, setAssets] = useState<ArtifactListItem[]>([]);
-  const [tab, setTab] = useState<AssetTab>("images");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -388,7 +387,6 @@ export function AssetLibrary() {
     try {
       const items = await frameflowApi.listAllArtifacts(["Image", "Video", "FinalVideo"]);
       setAssets(items);
-      setTab((current) => current === "images" && !items.some((item) => item.type === "Image") && items.some(isVideo) ? "videos" : current);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Asset loading failed");
     } finally {
@@ -402,7 +400,6 @@ export function AssetLibrary() {
       .then((items) => {
         if (!active) return;
         setAssets(items);
-        setTab((current) => current === "images" && !items.some((item) => item.type === "Image") && items.some(isVideo) ? "videos" : current);
       })
       .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "Asset loading failed"); })
       .finally(() => { if (active) setLoading(false); });
@@ -437,11 +434,11 @@ export function AssetLibrary() {
       </div>
 
       <div className="asset-summary">
-        <button type="button" className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}>
+        <button type="button" className={tab === "images" ? "active" : ""} onClick={() => onChangeTab("images")}>
           <span className="asset-summary-icon image"><ImageIcon size={17} /></span>
           <span><small>Images</small><strong>{imageCount}</strong></span>
         </button>
-        <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}>
+        <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => onChangeTab("videos")}>
           <span className="asset-summary-icon video"><Film size={17} /></span>
           <span><small>Videos</small><strong>{videoCount}</strong></span>
         </button>
@@ -450,13 +447,13 @@ export function AssetLibrary() {
 
       <div className="asset-toolbar">
         <div className="asset-tabs" role="tablist" aria-label="Asset type">
-          <button type="button" role="tab" aria-selected={tab === "images"} className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}><ImageIcon size={14} /> Images <span>{imageCount}</span></button>
-          <button type="button" role="tab" aria-selected={tab === "videos"} className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}><Film size={14} /> Videos <span>{videoCount}</span></button>
+          <button type="button" role="tab" aria-selected={tab === "images"} className={tab === "images" ? "active" : ""} onClick={() => onChangeTab("images")}><ImageIcon size={14} /> Images <span>{imageCount}</span></button>
+          <button type="button" role="tab" aria-selected={tab === "videos"} className={tab === "videos" ? "active" : ""} onClick={() => onChangeTab("videos")}><Film size={14} /> Videos <span>{videoCount}</span></button>
         </div>
         <label className="input-shell asset-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${tab}…`} /></label>
       </div>
 
-      {capturedAsset && <div className="asset-capture-notice"><CircleCheck size={16} /><span><strong>Frame saved as an image asset</strong><small>{capturedAsset.filename}</small></span><button type="button" onClick={() => { setTab("images"); setQuery(capturedAsset.filename); setCapturedAsset(null); }}>View image</button><button type="button" className="close" onClick={() => setCapturedAsset(null)} aria-label="Dismiss capture notice">×</button></div>}
+      {capturedAsset && <div className="asset-capture-notice"><CircleCheck size={16} /><span><strong>Frame saved as an image asset</strong><small>{capturedAsset.filename}</small></span><button type="button" onClick={() => { onChangeTab("images"); setCapturedAsset(null); }}>View image</button><button type="button" className="close" onClick={() => setCapturedAsset(null)} aria-label="Dismiss capture notice">×</button></div>}
 
       {error && <div className="asset-library-state error">{error}</div>}
       {!error && loading && <div className="asset-library-state"><RefreshCw size={18} className="spin" /> Loading assets…</div>}

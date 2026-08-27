@@ -6,8 +6,9 @@ import {
   Boxes,
   CircleHelp,
   FileStack,
-  FolderOpen,
+  Film,
   GalleryVerticalEnd,
+  Image as ImageIcon,
   Play,
   Sparkles,
   Workflow,
@@ -25,7 +26,8 @@ import { ModelRegistry } from "./views/model-registry";
 
 const navigation: Array<{ id: StudioView; label: string; icon: typeof Workflow }> = [
   { id: "canvas", label: "Canvas", icon: Workflow },
-  { id: "assets", label: "Assets", icon: FolderOpen },
+  { id: "images", label: "Images", icon: ImageIcon },
+  { id: "videos", label: "Videos", icon: Film },
   { id: "references", label: "References", icon: GalleryVerticalEnd },
   { id: "formats", label: "Format Lab", icon: FileStack },
   { id: "runs", label: "Runs", icon: Play },
@@ -35,7 +37,8 @@ const navigation: Array<{ id: StudioView; label: string; icon: typeof Workflow }
 const titles: Record<StudioView, { eyebrow: string; title: string }> = {
   canvas: { eyebrow: "Workspace canvases", title: "Canvases" },
   "canvas-editor": { eyebrow: "Canvas editor", title: "Workflow Canvas" },
-  assets: { eyebrow: "Workspace media", title: "Asset Library" },
+  images: { eyebrow: "Workspace assets", title: "Image Gallery" },
+  videos: { eyebrow: "Workspace assets", title: "Video Gallery" },
   references: { eyebrow: "Reference intelligence", title: "Reference Library" },
   formats: { eyebrow: "Reusable format system", title: "Format Lab" },
   runs: { eyebrow: "Execution & recovery", title: "Runs" },
@@ -98,7 +101,8 @@ export function StudioShell() {
               <Icon size={17} strokeWidth={1.9} />
               <span>{label}</span>
               {workspace && id === "canvas" && <span className="nav-count">{workspace.canvases}</span>}
-              {workspace && id === "assets" && <span className="nav-count">{workspace.images + workspace.videos}</span>}
+              {workspace && id === "images" && <span className="nav-count">{workspace.images}</span>}
+              {workspace && id === "videos" && <span className="nav-count">{workspace.videos}</span>}
               {workspace && id === "references" && <span className="nav-count">{workspace.references}</span>}
               {workspace && id === "formats" && <span className="nav-count">{workspace.formats}</span>}
               {workspace && id === "runs" && <span className="nav-count">{workspace.runs}</span>}
@@ -126,7 +130,8 @@ export function StudioShell() {
           {view === "canvas" && <CanvasLibrary onOpen={openCanvas} />}
           {view === "canvas-editor" && selectedCanvasId && <GenerationCanvas canvasId={selectedCanvasId} onBack={() => setView("canvas")} key={selectedCanvasId} />}
           {view === "canvas-editor" && !selectedCanvasId && <CanvasLibrary onOpen={openCanvas} />}
-          {view === "assets" && <AssetLibrary />}
+          {view === "images" && <AssetLibrary tab="images" onChangeTab={(tab) => setView(tab)} />}
+          {view === "videos" && <AssetLibrary tab="videos" onChangeTab={(tab) => setView(tab)} />}
           {view === "references" && <ReferenceLibrary />}
           {view === "formats" && <FormatLab />}
           {view === "runs" && <RunsView />}
