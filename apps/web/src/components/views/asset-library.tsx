@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   Camera,
   CircleCheck,
@@ -277,10 +277,15 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [aspectRatio, setAspectRatio] = useState(16 / 10);
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const duration = formatDuration(asset.duration_ms);
   const currentTimestamp = formatPlaybackTimestamp(currentTimestampMs);
+  const galleryStyle = {
+    "--asset-ratio": aspectRatio,
+    "--asset-basis": `${aspectRatio * 260}px`,
+  } as CSSProperties;
 
   const captureCurrentFrame = async () => {
     if (!isVideo(asset)) return;
@@ -296,7 +301,7 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
     }
   };
 
-  return <article className="asset-card">
+  return <article className={`asset-card ${isVideo(asset) ? "video" : "image"}`} style={galleryStyle}>
     <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`}>
       {isVideo(asset)
         ? <video
@@ -309,26 +314,37 @@ function AssetCard({ asset, onCaptured, onInspect, onSearchScenes }: { asset: Ar
             onLoadedMetadata={(event) => {
               setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
               setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
+              if (event.currentTarget.videoWidth && event.currentTarget.videoHeight) setAspectRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight);
             }}
             onTimeUpdate={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
             onSeeked={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))}
           />
         : <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="asset-card-image" src={asset.url} alt={asset.filename} loading="lazy" />
+            <img className="asset-card-image" src={asset.url} alt={asset.filename} loading="lazy" onLoad={(event) => {
+              if (event.currentTarget.naturalWidth && event.currentTarget.naturalHeight) setAspectRatio(event.currentTarget.naturalWidth / event.currentTarget.naturalHeight);
+            }} />
           </>}
-      <span className="asset-kind-badge">{isVideo(asset) ? <Film size={11} /> : <ImageIcon size={11} />}{isVideo(asset) ? "Video" : "Image"}</span>
-      {duration && <span className="asset-duration">{duration}</span>}
-    </div>
-    <div className="asset-card-copy">
-      <div className="asset-card-title"><strong title={asset.filename}>{asset.filename}</strong><button type="button" onClick={onInspect} aria-label={`View lineage for ${asset.filename}`}><GitBranch size={13} /></button><button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button></div>
-      <span><small>{sourceLabel(asset.source)}</small><i /> <small>{formatBytes(asset.size_bytes)}</small></span>
-      <time dateTime={asset.created_at}>{new Date(asset.created_at).toLocaleString("ko-KR")}</time>
-      {isVideo(asset) && <div className="asset-capture-actions">
-        <span><small>Original frame{videoDimensions ? ` · ${videoDimensions.width}×${videoDimensions.height}` : ""}</small><strong>{currentTimestamp}</strong></span>
-        <div><button className="asset-scene-search-button" type="button" onClick={onSearchScenes}><Sparkles size={13} /> Prompt search</button><button className="asset-capture-button" type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button></div>
-      </div>}
-      {captureError && <p className="asset-capture-error">{captureError}</p>}
+      <div className="asset-tile-top">
+        <span className="asset-kind-badge">{isVideo(asset) ? <Film size={11} /> : <ImageIcon size={11} />}{isVideo(asset) ? "Video" : "Image"}</span>
+        <span className="asset-tile-quick-actions">
+          {duration && <small>{duration}</small>}
+          <button type="button" onClick={onInspect} aria-label={`View lineage for ${asset.filename}`}><GitBranch size={13} /></button>
+          <button type="button" onClick={() => window.open(asset.url, "_blank", "noopener,noreferrer")} aria-label={`Open ${asset.filename}`}><ExternalLink size={13} /></button>
+        </span>
+      </div>
+      <div className="asset-tile-info">
+        <strong title={asset.filename}>{asset.filename}</strong>
+        <span>{sourceLabel(asset.source)} · {formatBytes(asset.size_bytes)} · {new Date(asset.created_at).toLocaleDateString("ko-KR")}</span>
+        {isVideo(asset) && <>
+          <span>Original {videoDimensions ? `${videoDimensions.width}×${videoDimensions.height}` : "ratio"} · {currentTimestamp}</span>
+          <div className="asset-tile-video-actions">
+            <button type="button" onClick={onSearchScenes}><Sparkles size={13} /> Prompt search</button>
+            <button type="button" onClick={() => void captureCurrentFrame()} disabled={capturing}><Camera size={13} /> {capturing ? "Capturing…" : "Capture frame"}</button>
+          </div>
+        </>}
+        {captureError && <p className="asset-capture-error">{captureError}</p>}
+      </div>
     </div>
   </article>;
 }
