@@ -94,6 +94,7 @@ import {
   type StudioFlowNode,
 } from "@/lib/canvas-model";
 import { StatusPill } from "@/components/ui/status-pill";
+import { VideoPlayer } from "@/components/ui/video-player";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
@@ -360,7 +361,7 @@ function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }
       <span className={`node-asset-trigger-thumb ${selected && isVideoAsset(selected) ? "video" : "image"}`}>
         {selected
           ? isVideoAsset(selected)
-            ? <video src={selected.url} muted playsInline preload="metadata" />
+            ? <VideoPlayer src={selected.url} title={selected.filename} controls={false} />
             : <i style={{ backgroundImage: `url(${selected.url})` }} />
           : <FolderOpen size={16} />}
       </span>
@@ -378,7 +379,7 @@ function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }
       <div className="node-asset-popover-grid nowheel">
         {visibleAssets.map((asset) => <button type="button" className={asset.id === value ? "selected" : ""} key={asset.id} onClick={() => { actions.selectAsset(nodeId, asset.id); setOpen(false); }} title={asset.filename}>
           <span className="node-asset-popover-media">
-            {isVideoAsset(asset) ? <video src={asset.url} muted playsInline preload="metadata" /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
+            {isVideoAsset(asset) ? <VideoPlayer src={asset.url} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
             {isVideoAsset(asset) && <Film size={13} />}
             {asset.id === value && <b><CircleCheck size={13} /></b>}
           </span>
@@ -465,7 +466,7 @@ function NodeOutput({ output }: { output: CanvasOutput }) {
   if (output.kind === "image") return <div className="node-output node-output-image"><div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} /><span>{output.title}</span></div>;
   if (output.kind === "video") {
     const playable = output.mimeType?.startsWith("video/");
-    return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <video className="nodrag nowheel" src={output.url} controls muted preload="metadata" /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}</div>;
+    return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <VideoPlayer className="nodrag nowheel" src={output.url ?? ""} title={output.title} compact /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}</div>;
   }
   if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span></div>;
   if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p></div>;
@@ -1428,7 +1429,7 @@ function CandidateDialog({ candidates, selected, setSelected, onClose, onApprove
   const active = candidates[selected];
   return <div className="modal-backdrop candidate-backdrop" onMouseDown={onClose}><section className="candidate-dialog" onMouseDown={(event) => event.stopPropagation()}>
     <div className="candidate-dialog-head"><div><span className="subtle-label">Human review · Candidate Select step</span><h2>Choose a connected video</h2><p>연결된 실제 Video Artifact 중 다음 Step으로 전달할 결과를 선택합니다.</p></div><button className="icon-button" type="button" onClick={onClose}><X size={17} /></button></div>
-    <div className="candidate-grid">{candidates.map((candidate, index) => <button type="button" key={candidate.id} onClick={() => setSelected(index)} className={`candidate-card ${selected === index ? "selected" : ""}`}><div className="candidate-video"><video src={candidate.output.url} muted loop autoPlay playsInline preload="metadata" />{selected === index && <i className="selected-check"><BadgeCheck size={18} /></i>}</div><div><span><strong>{candidate.label}</strong><small>{candidate.output.title}</small></span><span className="ai-score"><Film size={11} /> Artifact</span></div></button>)}</div>
+    <div className="candidate-grid">{candidates.map((candidate, index) => <button type="button" key={candidate.id} onClick={() => setSelected(index)} className={`candidate-card ${selected === index ? "selected" : ""}`}><div className="candidate-video"><VideoPlayer src={candidate.output.url ?? ""} title={candidate.output.title} controls={false} autoPlay loop />{selected === index && <i className="selected-check"><BadgeCheck size={18} /></i>}</div><div><span><strong>{candidate.label}</strong><small>{candidate.output.title}</small></span><span className="ai-score"><Film size={11} /> Artifact</span></div></button>)}</div>
     {!candidates.length && <div className="candidate-details"><div><span className="subtle-label">No runnable candidates</span><p>Artifact가 저장된 Video 출력 노드를 하나 이상 연결한 뒤 다시 실행하세요.</p></div></div>}
     {active && <div className="candidate-details"><div><span className="subtle-label">Selected output</span><p>{active.output.title} · {active.artifactIds.join(", ")}</p></div></div>}
     <div className="candidate-footer"><span>{active ? <><BadgeCheck size={16} /> {active.label} selected · original Artifact remains immutable</> : "Video Artifact connection required"}</span><div><button className="primary-button" type="button" onClick={onApprove} disabled={!active}>Use candidate & complete step <ArrowRight size={15} /></button></div></div>

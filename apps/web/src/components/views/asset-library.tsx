@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 
+import { VideoPlayer, type VideoPlayerHandle } from "@/components/ui/video-player";
 import { frameflowApi, type ArtifactLineageGraph, type ArtifactListItem, type CapturedFrameArtifact, type SceneSearchCandidate, type SceneSearchResult } from "@/lib/api";
 
 type AssetTab = "images" | "videos";
@@ -93,12 +94,12 @@ function lineageColumns(graph: ArtifactLineageGraph): Array<{ level: number; nod
 }
 
 function ComparisonMedia({ node, label, seekMs = 0 }: { node: ArtifactLineageGraph["nodes"][number]; label: string; seekMs?: number }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<VideoPlayerHandle>(null);
   return <div className="asset-compare-item">
     <span>{label}</span>
     <div className="asset-compare-media">
       {isVideo(node)
-        ? <video ref={videoRef} src={node.url} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => { event.currentTarget.currentTime = Math.min(seekMs / 1000, event.currentTarget.duration || 0); }} />
+        ? <VideoPlayer ref={videoRef} src={node.url} title={node.filename} compact onMetadata={() => videoRef.current?.seek(seekMs / 1000)} />
         : <div role="img" aria-label={node.filename} style={{ backgroundImage: `url(${node.url})` }} />}
     </div>
     <strong title={node.filename}>{node.filename}</strong>
@@ -130,7 +131,7 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
       <div className="asset-detail-head"><span><small>Artifact lineage</small><strong title={asset.filename}>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close asset details"><X size={16} /></button></div>
       <div className="asset-detail-scroll">
         <div className={`asset-detail-preview ${isVideo(asset) ? "video" : "image"}`}>
-          {isVideo(asset) ? <video src={asset.url} controls muted playsInline preload="metadata" /> : <div role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
+          {isVideo(asset) ? <VideoPlayer src={asset.url} title={asset.filename} /> : <div role="img" aria-label={asset.filename} style={{ backgroundImage: `url(${asset.url})` }} />}
         </div>
         <div className="asset-detail-summary">
           <div><small>Type</small><strong>{isVideo(asset) ? "Video" : "Image"}</strong></div>
@@ -187,7 +188,7 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
 }
 
 function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactListItem; onClose: () => void; onCaptured: (captured: CapturedFrameArtifact) => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<VideoPlayerHandle>(null);
   const videoStageRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<SceneSearchProvider>("google");
@@ -202,8 +203,8 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!selected || !videoRef.current || videoRef.current.readyState < 1) return;
-    videoRef.current.currentTime = Math.min(selected.timestamp_ms / 1000, videoRef.current.duration || 0);
+    if (!selected) return;
+    videoRef.current?.seek(selected.timestamp_ms / 1000);
   }, [selected]);
 
   useEffect(() => {
@@ -266,7 +267,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   };
 
   const captureCurrent = async () => {
-    const timestampMs = Math.max(0, Math.round((videoRef.current?.currentTime ?? 0) * 1000));
+    const timestampMs = Math.max(0, Math.round((videoRef.current?.getCurrentTime() ?? 0) * 1000));
     setCapturing(true);
     setError(null);
     try {
@@ -284,11 +285,10 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
       <div className="scene-search-head"><span><small>Video asset</small><strong>{asset.filename}</strong></span><button type="button" onClick={onClose} aria-label="Close video"><X size={16} /></button></div>
       <div className="scene-search-body">
         <div className="scene-search-source" ref={videoStageRef}>
-          <video ref={videoRef} src={asset.url} controls muted playsInline autoPlay preload="metadata" style={{ aspectRatio: videoDimensions ? `${videoDimensions.width} / ${videoDimensions.height}` : "auto", width: playerSize?.width, height: playerSize?.height }} onLoadedMetadata={(event) => {
-            setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
-            setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000));
-            if (selected) event.currentTarget.currentTime = Math.min(selected.timestamp_ms / 1000, event.currentTarget.duration || 0);
-          }} onTimeUpdate={(event) => setCurrentTimestampMs(Math.round(event.currentTarget.currentTime * 1000))} />
+          <VideoPlayer ref={videoRef} src={asset.url} title={asset.filename} autoPlay style={{ aspectRatio: videoDimensions ? `${videoDimensions.width} / ${videoDimensions.height}` : "auto", width: playerSize?.width, height: playerSize?.height }} onMetadata={(metadata) => {
+            setVideoDimensions({ width: metadata.width, height: metadata.height });
+            if (selected) videoRef.current?.seek(selected.timestamp_ms / 1000);
+          }} onTimeUpdate={(seconds) => setCurrentTimestampMs(Math.round(seconds * 1000))} />
         </div>
         <aside className="scene-search-panel">
           <section className="video-asset-description">
@@ -338,16 +338,10 @@ function AssetCard({ asset, onInspect, onOpenVideo }: { asset: ArtifactListItem;
   return <article className={`asset-card ${isVideo(asset) ? "video" : "image"}`} style={galleryStyle}>
     <div className={`asset-card-media ${isVideo(asset) ? "video" : "image"}`} role={isVideo(asset) ? "button" : undefined} tabIndex={isVideo(asset) ? 0 : undefined} aria-label={isVideo(asset) ? `Play ${asset.filename}` : undefined} onClick={() => { if (isVideo(asset)) onOpenVideo(); }} onKeyDown={(event) => { if (isVideo(asset) && ["Enter", " "].includes(event.key)) { event.preventDefault(); onOpenVideo(); } }}>
       {isVideo(asset)
-        ? <video
-            src={asset.url}
-            muted
-            playsInline
-            preload="metadata"
-            onLoadedMetadata={(event) => {
-              setVideoDimensions({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight });
-              if (event.currentTarget.videoWidth && event.currentTarget.videoHeight) setAspectRatio(event.currentTarget.videoWidth / event.currentTarget.videoHeight);
-            }}
-          />
+        ? <VideoPlayer src={asset.url} title={asset.filename} controls={false} onMetadata={(metadata) => {
+            setVideoDimensions({ width: metadata.width, height: metadata.height });
+            if (metadata.width && metadata.height) setAspectRatio(metadata.width / metadata.height);
+          }} />
         : <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img className="asset-card-image" src={asset.url} alt={asset.filename} loading="lazy" onLoad={(event) => {
