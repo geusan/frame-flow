@@ -4,7 +4,37 @@ import type { NodeStatus, PortType } from "./types";
 export type NodeKind = "input" | "logic" | "generate" | "compose" | "review";
 export type ProviderName = "google" | "openai";
 export type StickyColor = "yellow" | "pink" | "blue" | "green" | "lavender" | "gray";
-export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "text" | "sticky" | "changeVoice" | "translate";
+export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "text" | "sticky" | "drawing" | "changeVoice" | "translate";
+
+export interface DrawingPoint {
+  x: number;
+  y: number;
+}
+
+export interface DrawingStroke {
+  id: string;
+  color: string;
+  width: number;
+  points: DrawingPoint[];
+}
+
+export interface DrawingImage {
+  id: string;
+  name: string;
+  src: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface DrawingDocument {
+  version: 1;
+  width: number;
+  height: number;
+  images: DrawingImage[];
+  strokes: DrawingStroke[];
+}
 
 export interface CanvasOutput {
   kind: "image" | "video" | "audio" | "text" | "json";
@@ -52,6 +82,7 @@ export interface StudioNodeData extends Record<string, unknown> {
   targetLanguage?: string;
   voiceName?: string;
   stickyColor?: StickyColor;
+  drawing?: DrawingDocument;
 }
 
 export type StudioFlowNode = Node<StudioNodeData, "studio">;
@@ -89,11 +120,13 @@ export interface NodeTemplate {
     targetLanguage?: string;
     voiceName?: string;
     stickyColor?: StickyColor;
+    drawing?: DrawingDocument;
   };
 }
 
 export const nodeTemplates: NodeTemplate[] = [
   { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "텍스트와 연결된 이미지들을 다음 Step으로 전달", icon: "brief", kind: "input", inputTypes: ["Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
+  { id: "drawing-canvas", label: "Drawing Canvas", group: "Quick", data: { key: "utility.drawing", label: "Drawing canvas", description: "이미지를 배치하고 펜으로 지시사항을 표시", icon: "drawing", kind: "input", outputType: "Image", executable: false, drawing: { version: 1, width: 1280, height: 720, images: [], strokes: [] } } },
   { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "voice", label: "Voiceover", group: "Quick", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
@@ -225,6 +258,9 @@ export function stepInputError(node: StudioFlowNode, nodes: StudioFlowNode[], ed
 
 export function refreshReadyStatuses(nodes: StudioFlowNode[], edges: Edge[]): StudioFlowNode[] {
   return nodes.map((node) => {
+    if (node.data.key === "utility.drawing") {
+      return { ...node, data: { ...node.data, status: node.data.output ? "SUCCEEDED" : "READY" } };
+    }
     if (["prompt.input", "asset.select", "utility.sticky"].includes(node.data.key)) {
       return { ...node, data: { ...node.data, status: node.data.configText?.trim() ? "SUCCEEDED" : "READY" } };
     }

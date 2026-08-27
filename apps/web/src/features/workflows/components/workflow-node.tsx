@@ -22,6 +22,7 @@ import {
   Link2,
   MessageSquareText,
   Mic2,
+  Paintbrush,
   Play,
   RefreshCw,
   ScrollText,
@@ -67,6 +68,7 @@ export const icons: Record<IconName, typeof Sparkles> = {
   assistant: Bot,
   text: Type,
   sticky: StickyNote,
+  drawing: Paintbrush,
   changeVoice: AudioWaveform,
   translate: Languages,
 };
@@ -75,6 +77,7 @@ export interface NodeActions {
   runStep: (nodeId: string) => void;
   updateConfig: (nodeId: string, value: string) => void;
   updateStickyColor: (nodeId: string, color: StickyColor) => void;
+  openDrawingEditor: (nodeId: string) => void;
   getPromptImages: (nodeId: string) => Array<{ id: string; title: string; url?: string; outdated: boolean }>;
   uploadAsset: (nodeId: string, file: File) => void;
   importAssetUrl: (nodeId: string, url: string) => void;
@@ -82,7 +85,7 @@ export interface NodeActions {
   assetOptions: ArtifactListItem[];
 }
 
-export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, assetOptions: [] });
+export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, assetOptions: [] });
 
 export function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
   return <StatusPill status={data.status} compact={compact} />;
@@ -234,10 +237,33 @@ function StickyNoteNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
   </article>;
 }
 
+function DrawingCanvasNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
+  const actions = useContext(NodeActionsContext);
+  const hasDrawing = Boolean(data.output?.url);
+  return <article
+    className={`drawing-canvas-node ${selected ? "selected" : ""}`}
+    onClick={(event) => { if (!(event.target as HTMLElement).closest(".react-flow__handle")) actions.openDrawingEditor(id); }}
+    onDoubleClick={(event) => event.stopPropagation()}
+  >
+    <div className="drawing-node-head">
+      <span><Paintbrush size={15} /></span>
+      <div><small>utility.drawing</small><strong>{data.label}</strong></div>
+      <CanvasNodeStatus data={data} compact />
+    </div>
+    <div className={`drawing-node-preview ${hasDrawing ? "has-drawing" : ""}`} style={hasDrawing ? { backgroundImage: `url(${data.output?.url})` } : undefined}>
+      {!hasDrawing && <span><Paintbrush size={22} /><strong>Click to draw</strong><small>이미지 붙여넣기 · 배치 · 낙서</small></span>}
+      {hasDrawing && <i><Paintbrush size={12} /> 다시 편집</i>}
+    </div>
+    <div className="drawing-node-foot"><span>{data.drawing?.images.length ?? 0} images</span><span>{data.drawing?.strokes.length ?? 0} strokes</span><b>Image</b></div>
+    <Handle type="source" position={Position.Right} id="output" className="typed-handle type-image"><span>Image</span></Handle>
+  </article>;
+}
+
 function WorkflowNode(props: NodeProps<StudioFlowNode>) {
   const { id, data, selected } = props;
   const actions = useContext(NodeActionsContext);
   if (data.key === "utility.sticky") return <StickyNoteNode {...props} />;
+  if (data.key === "utility.drawing") return <DrawingCanvasNode {...props} />;
   const Icon = icons[data.icon];
   const inputs = data.inputTypes ?? [];
   return (

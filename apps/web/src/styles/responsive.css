@@ -12,6 +12,8 @@
   .node-inspector { position: absolute; z-index: 15; top: 48px; right: 0; bottom: 0; width: 270px; box-shadow: -10px 0 30px rgba(25,26,22,.12); }
   .canvas-shell.with-inspector .react-flow__controls, .canvas-shell.with-inspector .react-flow__minimap { right: 280px !important; }
   .candidate-grid { grid-template-columns: repeat(2,1fr); }
+  .drawing-dialog { width: calc(100vw - 24px); height: calc(100vh - 24px); }
+  .drawing-editor-toolbar { overflow-x: auto; }.drawing-toolbar-spacer { display: none; }.drawing-width-control { min-width: 176px; }
 }
 
 @media (max-width: 700px) {
@@ -38,4 +40,5 @@
   .canvas-name-field input { width: 105px; }
   .node-picker { width: min(360px,calc(100vw - 90px)); }
   .node-asset-popover { width: min(370px,calc(100vw - 90px)); }
+  .drawing-dialog { width: calc(100vw - 12px); height: calc(100vh - 12px); border-radius: 11px; }.drawing-dialog-head { min-height: 66px; padding: 10px 12px; }.drawing-dialog-head p { display: none; }.drawing-editor-body { grid-template-columns: 1fr; }.drawing-image-panel { display: none; }.drawing-editor-toolbar { padding-inline: 7px; }.drawing-tool-group button { padding-inline: 8px; }.drawing-color-list { min-width: 176px; }.drawing-clear-tool { min-width: 34px; padding: 0; font-size: 0; }.drawing-dialog-foot { padding-inline: 10px; }.drawing-dialog-foot > span { display: none; }.drawing-dialog-foot > div { width: 100%; }.drawing-dialog-foot [data-slot="button"] { flex: 1; }.drawing-stage { padding: 8px; }
 }

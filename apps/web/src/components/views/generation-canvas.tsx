@@ -66,6 +66,7 @@ import {
   stepInputError,
   validateGraph,
   type CanvasOutput,
+  type DrawingDocument,
   type IconName,
   type ProviderName,
   type StickyColor,
@@ -77,6 +78,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/shared/search-field";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
+import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type NodeActions } from "@/features/workflows/components/workflow-node";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
 
@@ -179,6 +181,7 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
         voiceName: node.data.voiceName ?? template.data.voiceName,
         stickyColor: node.data.stickyColor ?? template.data.stickyColor,
+        drawing: node.data.drawing ?? template.data.drawing,
         configText: completedUploadArtifactId ?? (template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText),
         output: legacyTextNote || node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output,
       },
@@ -263,6 +266,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const [compileOpen, setCompileOpen] = useState(false);
   const [candidateOpen, setCandidateOpen] = useState(false);
+  const [drawingNodeId, setDrawingNodeId] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState(0);
   const [candidateNodeId, setCandidateNodeId] = useState<string | null>(null);
   const [paletteQuery, setPaletteQuery] = useState("");
@@ -506,7 +510,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     pushHistory();
     setNodes((current) => [...current, node]);
     selectNode(node.id);
-    if (node.data.key === "utility.sticky") setInspectorOpen(false);
+    if (["utility.sticky", "utility.drawing"].includes(node.data.key)) setInspectorOpen(false);
     setPickerOpen(false);
     setPickerQuery("");
     setPickerInsertPosition(null);
@@ -597,6 +601,71 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, stickyColor } } : node));
     markUnsaved();
   }, [markUnsaved, setNodes]);
+
+  const saveDrawing = useCallback(async (nodeId: string, drawing: DrawingDocument, image: Blob) => {
+    const filename = `canvas-drawing-${Date.now()}.png`;
+    setNodes((current) => current.map((node) => node.id === nodeId ? {
+      ...node,
+      data: { ...node.data, status: "RUNNING" as NodeStatus, preview: "Saving drawing…" },
+    } : node));
+    try {
+      const artifact = await frameflowApi.uploadArtifact(new File([image], filename, { type: "image/png" }));
+      const output = uploadedArtifactOutput(filename, artifact);
+      setNodes((current) => {
+        const invalidated = invalidateDescendants(current, edgesRef.current, nodeId);
+        const updated = invalidated.map((node) => node.id === nodeId ? {
+          ...node,
+          data: {
+            ...node.data,
+            drawing,
+            status: "SUCCEEDED" as NodeStatus,
+            preview: filename,
+            output,
+            outputType: "Image" as PortType,
+            outputArtifactIds: [artifact.artifact_id],
+          },
+        } : node);
+        return refreshReadyStatuses(updated, edgesRef.current);
+      });
+      setAssetOptions((current) => [{
+        id: artifact.artifact_id,
+        created_at: new Date().toISOString(),
+        type: artifact.type,
+        content_type: artifact.content_type,
+        size_bytes: artifact.size_bytes,
+        filename,
+        source: "canvas_drawing",
+        duration_ms: 0,
+        url: artifact.url,
+      }, ...current.filter((item) => item.id !== artifact.artifact_id)]);
+      markUnsaved();
+      notify("캔버스 그림을 Image Artifact로 저장했습니다.", "success");
+    } catch (saveError) {
+      setNodes((current) => current.map((node) => node.id === nodeId ? {
+        ...node,
+        data: { ...node.data, status: node.data.output ? "SUCCEEDED" as NodeStatus : "FAILED" as NodeStatus, preview: node.data.output?.title },
+      } : node));
+      const message = saveError instanceof Error ? saveError.message : "캔버스 그림 저장에 실패했습니다.";
+      notify(message, "error");
+      throw new Error(message);
+    }
+  }, [markUnsaved, notify, setNodes]);
+
+  const uploadDrawingSource = useCallback(async (file: File) => {
+    const artifact = await frameflowApi.uploadArtifact(file);
+    setAssetOptions((current) => [{
+      id: artifact.artifact_id,
+      created_at: new Date().toISOString(),
+      type: artifact.type,
+      content_type: artifact.content_type,
+      size_bytes: artifact.size_bytes,
+      filename: file.name || artifact.filename,
+      source: "canvas_drawing_source",
+      duration_ms: 0,
+      url: artifact.url,
+    }, ...current.filter((item) => item.id !== artifact.artifact_id)]);
+    return artifact.url;
+  }, []);
 
   const uploadNodeAsset = useCallback(async (nodeId: string, file: File) => {
     setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "RUNNING" as NodeStatus, preview: `Uploading ${file.name}…` } } : node));
@@ -724,6 +793,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
+      if (drawingNodeId) return;
       const imageFiles = [...(event.clipboardData?.items ?? [])]
         .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
         .map((item) => item.getAsFile())
@@ -743,7 +813,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [insertClipboardImage, insertPastedVideoUrl]);
+  }, [drawingNodeId, insertClipboardImage, insertPastedVideoUrl]);
 
   const completeExperimentNode = useCallback((nodeId: string, experiment: ExperimentRun) => {
     setNodes((current) => {
@@ -1064,6 +1134,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     const source = nodes.find((node) => node.id === edge.source);
     return edge.target === selectedNode.id && source?.data.outputType === "Video";
   }).length : 0;
+  const drawingNode = drawingNodeId ? nodes.find((node) => node.id === drawingNodeId && node.data.key === "utility.drawing") : undefined;
   const paletteGroups = useMemo(() => {
     const query = paletteQuery.trim().toLowerCase();
     const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities"] as const;
@@ -1076,11 +1147,12 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   }, [pickerQuery]);
   const cost = graphCost(nodes);
   const successfulCount = nodes.filter((node) => node.data.status === "SUCCEEDED").length;
-  const showInspector = Boolean(inspectorOpen && selectedNode && selectedNode.data.key !== "utility.sticky");
+  const showInspector = Boolean(inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key));
   const nodeActions = useMemo<NodeActions>(() => ({
     runStep: (nodeId) => void runStep(nodeId),
     updateConfig: updateNodeConfig,
     updateStickyColor,
+    openDrawingEditor: setDrawingNodeId,
     getPromptImages: (nodeId) => edges
       .filter((edge) => edge.target === nodeId)
       .map((edge) => nodes.find((node) => node.id === edge.source))
@@ -1142,7 +1214,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           isValidConnection={isValidConnection}
           onDrop={handleDrop}
           onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
-          onNodeClick={(_, node) => { selectNode(node.id); if (node.data.key === "utility.sticky") setInspectorOpen(false); }}
+          onNodeClick={(_, node) => { selectNode(node.id); if (["utility.sticky", "utility.drawing"].includes(node.data.key)) setInspectorOpen(false); }}
           onNodeDoubleClick={(_, node) => void runStep(node.id)}
           onNodeDragStart={() => { dragStartRef.current = cloneGraph(nodesRef.current, edgesRef.current); }}
           onNodeDragStop={() => { if (dragStartRef.current) pushHistory(dragStartRef.current); dragStartRef.current = null; markUnsaved(); }}
@@ -1237,7 +1309,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
         </aside>
       )}
 
-      {!inspectorOpen && selectedNode && selectedNode.data.key !== "utility.sticky" && <button className="open-inspector" type="button" onClick={() => setInspectorOpen(true)}><ChevronRight size={16} /></button>}
+      {!inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key) && <button className="open-inspector" type="button" onClick={() => setInspectorOpen(true)}><ChevronRight size={16} /></button>}
 
       {graphRunning && <div className="run-progress-toast running"><span className="run-pulse"><i /></span><span><strong>Workflow is running</strong><small>{graphProgress}% · {successfulCount}/{nodes.length} steps · ${cost.toFixed(2)}</small></span><div className="toast-progress"><i style={{ width: `${graphProgress}%` }} /></div></div>}
       {toast && <div className={`canvas-toast toast-${toast.tone}`}>{toast.tone === "success" ? <CircleCheck size={16} /> : toast.tone === "error" ? <CircleAlert size={16} /> : <Sparkles size={16} />}<span>{toast.message}</span></div>}
@@ -1257,6 +1329,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
       {compileOpen && <CompileDialog errors={compileErrors} nodeCount={nodes.length} edgeCount={edges.length} estimatedCost={cost} onClose={() => setCompileOpen(false)} onRun={() => void runGraph()} />}
       {candidateOpen && <CandidateDialog candidates={candidateOptions} selected={selectedCandidate} setSelected={setSelectedCandidate} onClose={() => setCandidateOpen(false)} onApprove={() => void approveCandidates()} />}
+      {drawingNode && <DrawingCanvasDialog
+        document={drawingNode.data.drawing ?? { version: 1, width: 1280, height: 720, images: [], strokes: [] }}
+        nodeName={drawingNode.data.label}
+        onAddImage={uploadDrawingSource}
+        onClose={() => setDrawingNodeId(null)}
+        onSave={(drawing, image) => saveDrawing(drawingNode.id, drawing, image)}
+      />}
     </div>
   );
 }
