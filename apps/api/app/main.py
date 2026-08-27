@@ -747,6 +747,8 @@ def search_artifact_scenes(
             payload.prompt,
             candidate_count=payload.candidate_count,
             sample_count=payload.sample_count,
+            provider=payload.provider,
+            model_alias=payload.model_alias,
         )
     except StorageError as exc:
         raise HTTPException(409, str(exc)) from exc
@@ -757,6 +759,7 @@ def search_artifact_scenes(
         "search_id": search_id,
         "prompt": payload.prompt,
         "provider": result.provider,
+        "model_alias": result.model_alias,
         "provider_request_id": result.provider_request_id,
         "candidate_count": len(result.scenes),
     })
@@ -766,6 +769,7 @@ def search_artifact_scenes(
         "source_artifact_id": source.id,
         "prompt": payload.prompt,
         "provider": result.provider,
+        "model_alias": result.model_alias,
         "exact_model_id": result.exact_model_id,
         "provider_request_id": result.provider_request_id,
         "source_duration_ms": result.source_duration_ms,

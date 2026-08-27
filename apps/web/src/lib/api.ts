@@ -173,6 +173,7 @@ export interface SceneSearchResult {
   source_artifact_id: string;
   prompt: string;
   provider: string;
+  model_alias: string;
   exact_model_id: string;
   provider_request_id: string;
   source_duration_ms: number;
@@ -184,6 +185,8 @@ export interface SceneCaptureContext {
   search_prompt: string;
   search_score: number;
   search_reason: string;
+  search_provider: "google" | "openai";
+  search_model_alias: string;
   search_model: string;
   provider_request_id: string;
 }
@@ -278,7 +281,7 @@ export const frameflowApi = {
     }
   },
   captureVideoFrame: (artifactId: string, timestampMs: number, context?: SceneCaptureContext) => request<CapturedFrameArtifact>(`/artifacts/${artifactId}/capture-frame`, { method: "POST", body: JSON.stringify({ timestamp_ms: timestampMs, ...context }) }),
-  searchVideoScenes: (artifactId: string, prompt: string, candidateCount = 4, sampleCount = 12) => request<SceneSearchResult>(`/artifacts/${artifactId}/scene-search`, { method: "POST", body: JSON.stringify({ prompt, candidate_count: candidateCount, sample_count: sampleCount }) }),
+  searchVideoScenes: (artifactId: string, prompt: string, provider: "google" | "openai", modelAlias: string, candidateCount = 4, sampleCount = 12) => request<SceneSearchResult>(`/artifacts/${artifactId}/scene-search`, { method: "POST", body: JSON.stringify({ prompt, provider, model_alias: modelAlias, candidate_count: candidateCount, sample_count: sampleCount }) }),
   getArtifactLineage: (artifactId: string, direction: ArtifactLineageGraph["direction"] = "both", depth = 8) => {
     const query = new URLSearchParams({ direction, depth: String(depth) });
     return request<ArtifactLineageGraph>(`/artifacts/${artifactId}/lineage?${query}`);

@@ -19,6 +19,19 @@ import {
 import { frameflowApi, type ArtifactLineageGraph, type ArtifactListItem, type CapturedFrameArtifact, type SceneSearchCandidate, type SceneSearchResult } from "@/lib/api";
 
 type AssetTab = "images" | "videos";
+type SceneSearchProvider = "google" | "openai";
+
+const sceneSearchModels: Record<SceneSearchProvider, Array<{ value: string; label: string }>> = {
+  google: [
+    { value: "google.text.fast", label: "Gemini Flash" },
+    { value: "google.text.quality", label: "Gemini Pro" },
+  ],
+  openai: [
+    { value: "openai.text.fast", label: "GPT-5.6 Luna" },
+    { value: "openai.text.quality", label: "GPT-5.6 Terra" },
+    { value: "openai.chat.latest", label: "ChatGPT Latest" },
+  ],
+};
 
 function isVideo(asset: ArtifactListItem): boolean {
   return asset.type === "Video" || asset.type === "FinalVideo";
@@ -176,6 +189,8 @@ function AssetLineageDrawer({ asset, onClose }: { asset: ArtifactListItem; onClo
 function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactListItem; onClose: () => void; onCaptured: (captured: CapturedFrameArtifact) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [prompt, setPrompt] = useState("");
+  const [provider, setProvider] = useState<SceneSearchProvider>("google");
+  const [modelAlias, setModelAlias] = useState("google.text.fast");
   const [result, setResult] = useState<SceneSearchResult | null>(null);
   const [selected, setSelected] = useState<SceneSearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
@@ -192,7 +207,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
     setSearching(true);
     setError(null);
     try {
-      const nextResult = await frameflowApi.searchVideoScenes(asset.id, prompt.trim());
+      const nextResult = await frameflowApi.searchVideoScenes(asset.id, prompt.trim(), provider, modelAlias);
       setResult(nextResult);
       setSelected(nextResult.candidates[0] ?? null);
     } catch (searchError) {
@@ -212,6 +227,8 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
         search_prompt: result.prompt,
         search_score: selected.score,
         search_reason: selected.reason,
+        search_provider: result.provider as SceneSearchProvider,
+        search_model_alias: result.model_alias,
         search_model: result.exact_model_id,
         provider_request_id: result.provider_request_id,
       });
@@ -234,7 +251,11 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
             <label><Search size={14} /><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 인물이 카메라를 바라보는 장면" autoFocus /></label>
             <button type="submit" disabled={searching || !prompt.trim()}>{searching ? <RefreshCw size={14} className="spin" /> : <Sparkles size={14} />}{searching ? "Searching…" : "Search scenes"}</button>
           </form>
-          {result && <div className="scene-search-provider"><span>{result.provider} · {result.exact_model_id}</span><code>{result.provider_request_id}</code></div>}
+          <div className="scene-search-model-settings">
+            <label><span>Provider</span><select value={provider} onChange={(event) => { const nextProvider = event.target.value as SceneSearchProvider; setProvider(nextProvider); setModelAlias(sceneSearchModels[nextProvider][0].value); setResult(null); setSelected(null); }}><option value="google">Google</option><option value="openai">OpenAI</option></select></label>
+            <label><span>Model</span><select value={modelAlias} onChange={(event) => { setModelAlias(event.target.value); setResult(null); setSelected(null); }}>{sceneSearchModels[provider].map((model) => <option value={model.value} key={model.value}>{model.label}</option>)}</select></label>
+          </div>
+          {result && <div className="scene-search-provider"><span>{result.provider} · {result.model_alias} → {result.exact_model_id}</span><code>{result.provider_request_id}</code></div>}
           {error && <div className="scene-search-error">{error}</div>}
         </div>
         <div className="scene-search-results">

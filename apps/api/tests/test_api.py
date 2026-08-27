@@ -379,6 +379,8 @@ def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: Test
         f"/artifacts/{imported['artifact_id']}/scene-search",
         json={
             "prompt": "인물이 카메라를 바라보는 장면",
+            "provider": "google",
+            "model_alias": "google.text.quality",
             "candidate_count": 3,
             "sample_count": 5,
         },
@@ -386,8 +388,9 @@ def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: Test
 
     assert response.status_code == 200
     search = response.json()
-    assert search["provider"] == "fixture"
-    assert search["exact_model_id"] == "fixture-scene-ranker.v1"
+    assert search["provider"] == "google"
+    assert search["model_alias"] == "google.text.quality"
+    assert search["exact_model_id"] == "gemini-2.5-pro"
     assert len(search["candidates"]) == 3
     assert all(candidate["thumbnail_data_url"].startswith("data:image/jpeg;base64,") for candidate in search["candidates"])
     assert [candidate["score"] for candidate in search["candidates"]] == sorted(
@@ -404,6 +407,8 @@ def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: Test
             "search_prompt": search["prompt"],
             "search_score": selected["score"],
             "search_reason": selected["reason"],
+            "search_provider": search["provider"],
+            "search_model_alias": search["model_alias"],
             "search_model": search["exact_model_id"],
             "provider_request_id": search["provider_request_id"],
         },
@@ -413,8 +418,34 @@ def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: Test
     lineage = client.get(f"/artifacts/{captured['id']}/lineage").json()
     captured_node = next(node for node in lineage["nodes"] if node["id"] == captured["id"])
     assert captured_node["derivation"]["prompt"] == search["prompt"]
+    assert captured_node["derivation"]["model_alias"] == "google.text.quality"
     assert "Match score" in captured_node["derivation"]["description"]
     assert captured_node["derivation"]["parameters"]["scene_search"]["search_id"] == search["search_id"]
+
+    openai = client.post(
+        f"/artifacts/{imported['artifact_id']}/scene-search",
+        json={
+            "prompt": "A close-up detail",
+            "provider": "openai",
+            "model_alias": "openai.chat.latest",
+            "candidate_count": 2,
+            "sample_count": 3,
+        },
+    )
+    assert openai.status_code == 200
+    assert openai.json()["provider"] == "openai"
+    assert openai.json()["model_alias"] == "openai.chat.latest"
+    assert openai.json()["exact_model_id"] == "chat-latest"
+
+    mismatch = client.post(
+        f"/artifacts/{imported['artifact_id']}/scene-search",
+        json={
+            "prompt": "Mismatch",
+            "provider": "google",
+            "model_alias": "openai.chat.latest",
+        },
+    )
+    assert mismatch.status_code == 422
 
 
 def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypatch):

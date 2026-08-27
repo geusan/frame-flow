@@ -157,7 +157,7 @@ def _derivation_payload(
             "title": "Extracted video frame" if experiment else "Captured video frame",
             "description": description,
             "prompt": (experiment.prompt or None) if experiment else (search_prompt or None),
-            "model_alias": experiment.model_alias if experiment else str(scene_search.get("search_model") or "local.ffmpeg"),
+            "model_alias": experiment.model_alias if experiment else str(scene_search.get("search_model_alias") or scene_search.get("search_model") or "local.ffmpeg"),
             "exact_model_id": experiment.exact_model_id if experiment else str(scene_search.get("search_model") or capture.get("operation") or "ffmpeg-accurate-seek.v1"),
             "parameters": {**(experiment.parameters if experiment else {}), **capture},
             "request_hash": experiment.request_hash if experiment else None,

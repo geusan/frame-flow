@@ -208,12 +208,16 @@ class FrameCaptureRequest(BaseModel):
     search_prompt: str | None = Field(default=None, max_length=4_000)
     search_score: float | None = Field(default=None, ge=0, le=1)
     search_reason: str | None = Field(default=None, max_length=1_000)
+    search_provider: Literal["google", "openai"] | None = None
+    search_model_alias: str | None = Field(default=None, max_length=128)
     search_model: str | None = Field(default=None, max_length=255)
     provider_request_id: str | None = Field(default=None, max_length=255)
 
 
 class SceneSearchRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4_000)
+    provider: Literal["google", "openai"] = "google"
+    model_alias: str | None = Field(default=None, max_length=128)
     candidate_count: int = Field(default=4, ge=1, le=8)
     sample_count: int = Field(default=12, ge=3, le=24)
 
