@@ -38,6 +38,7 @@ from .domain import (
     ArtifactResponse,
     ArtifactUrlImportRequest,
     CanvasDocumentRequest,
+    CanvasNodeApprovalRequest,
     CanvasRunRequest,
     CanvasRunResponse,
     CanvasSelectionRequest,
@@ -64,7 +65,7 @@ from .domain import (
     VariationRequest,
     utc_now,
 )
-from .canvas_runs import canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_selection
+from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
 from .artifact_lineage import artifact_lineage_graph
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
 from .format_extraction import FormatSource, get_format_extractor
@@ -357,17 +358,20 @@ async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_
         canvas.updated_at = utc_now()
         db.commit()
     if uses_temporal():
-        dependencies = {str(node.get("id")): [] for node in payload.nodes}
-        for edge in payload.edges:
-            dependencies[str(edge.get("target"))].append(str(edge.get("source")))
+        dependencies = canvas_dependencies(run)
         node_keys = {str(node.get("id")): str((node.get("data") or {}).get("key") or "unknown") for node in payload.nodes}
         completed = [
             node.canvas_node_id for node in run.node_runs if node.status == NodeStatus.SUCCEEDED
         ]
+        approval_node_ids = [
+            str(node.get("id"))
+            for node in payload.nodes
+            if (node.get("data") or {}).get("waitForInput") is True
+        ]
         client = await temporal_client()
         await client.start_workflow(
             CanvasRunWorkflow.run,
-            CanvasWorkflowInput(run.id, list(node_keys), node_keys, dependencies, completed),
+            CanvasWorkflowInput(run.id, list(node_keys), node_keys, dependencies, completed, approval_node_ids),
             id=f"frameflow/canvas/{run.id}",
             task_queue=TASK_QUEUE,
         )
@@ -437,6 +441,25 @@ async def select_canvas_candidate(run_id: str, canvas_node_id: str, payload: Can
     else:
         try:
             record_canvas_selection(run_id, canvas_node_id, payload.artifact_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        await local_canvas_engine.start(run_id)
+    db.expire_all()
+    return canvas_run_response(db.get(CanvasRunRecord, run_id))
+
+
+@app.post("/canvas-runs/{run_id}/nodes/{canvas_node_id}/approve", response_model=CanvasRunResponse)
+async def approve_canvas_node(run_id: str, canvas_node_id: str, payload: CanvasNodeApprovalRequest, db: Session = Depends(get_db)) -> CanvasRunResponse:
+    run = db.get(CanvasRunRecord, run_id)
+    if not run:
+        raise HTTPException(404, "Canvas run not found")
+    if uses_temporal():
+        client = await temporal_client()
+        handle = client.get_workflow_handle_for(CanvasRunWorkflow.run, f"frameflow/canvas/{run.id}")
+        await handle.signal(CanvasRunWorkflow.node_approved, canvas_node_id, payload.parameters)
+    else:
+        try:
+            record_canvas_approval(run_id, canvas_node_id, payload.parameters)
         except ValueError as exc:
             raise HTTPException(409, str(exc)) from exc
         await local_canvas_engine.start(run_id)
@@ -1406,7 +1429,13 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         "exact_model_id": model_id_for_alias(alias, gemini_api=using_gemini_api) or model_id,
         "provider": "Google",
         "modality": alias.split(".")[1],
-        "region": speech_location if ".stt." in alias else location,
+        "region": (
+            speech_location
+            if ".stt." in alias
+            else "global"
+            if alias == "google.tts.latest" and not using_gemini_api
+            else location
+        ),
         "status": "active" if configured else "disabled",
         "configured": configured,
         "configuration": "Gemini API key configured" if using_gemini_api and configured else google_project or "Google credentials are not configured",

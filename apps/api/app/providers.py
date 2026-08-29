@@ -26,13 +26,17 @@ MODEL_REGISTRY = {
     "google.image.edit.fast": "gemini-3.1-flash-lite-image",
     "google.video.fast": "veo-3.1-fast-generate-001",
     "google.video.quality": "veo-3.1-generate-001",
+    "google.tts.latest": "gemini-3.1-flash-tts-preview",
     "google.tts.fast": "gemini-2.5-flash-tts",
+    "google.tts.quality": "gemini-2.5-pro-tts",
     "google.stt.default": "chirp_3",
 }
 
 GEMINI_API_MODEL_OVERRIDES = {
     "google.video.fast": "veo-3.1-fast-generate-preview",
     "google.video.quality": "veo-3.1-generate-preview",
+    "google.tts.fast": "gemini-2.5-flash-preview-tts",
+    "google.tts.quality": "gemini-2.5-pro-preview-tts",
 }
 
 OPENAI_MODEL_REGISTRY = {
@@ -41,6 +45,8 @@ OPENAI_MODEL_REGISTRY = {
     "openai.chat.latest": "chat-latest",
     "openai.image.default": "gpt-image-2",
     "openai.tts.default": "gpt-4o-mini-tts",
+    "openai.tts.fast": "tts-1",
+    "openai.tts.quality": "tts-1-hd",
 }
 
 ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY}

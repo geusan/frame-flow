@@ -104,13 +104,18 @@ class OpenAIGenerationServices:
             )
 
         if payload.node_key == "tts.generate":
-            response = self.client.audio.speech.create(
-                model=exact_model,
-                voice=str(payload.parameters.get("voice_name") or "coral"),
-                input=payload.prompt,
-                instructions=str(payload.parameters.get("style_prompt") or "Speak naturally and clearly for a short-form video."),
-                response_format="wav",
-            )
+            speech_request = {
+                "model": exact_model,
+                "voice": str(payload.parameters.get("voice_name") or "coral"),
+                "input": payload.prompt,
+                "response_format": "wav",
+            }
+            if exact_model.startswith("gpt-4o-mini-tts"):
+                speech_request["instructions"] = str(
+                    payload.parameters.get("style_prompt")
+                    or "Speak naturally and clearly for a short-form video."
+                )
+            response = self.client.audio.speech.create(**speech_request)
             audio = bytes(response.content)
             if not audio:
                 raise RuntimeError("OpenAI Speech API returned no audio")

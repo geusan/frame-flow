@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -146,6 +147,37 @@ def record_canvas_selection(run_id: str, canvas_node_id: str, artifact_id: str) 
         db.commit()
 
 
+def record_canvas_approval(run_id: str, canvas_node_id: str, parameters: dict[str, Any]) -> None:
+    with SessionLocal() as db:
+        run = db.get(CanvasRunRecord, run_id)
+        node = db.scalar(select(CanvasNodeRunRecord).where(CanvasNodeRunRecord.run_id == run_id, CanvasNodeRunRecord.canvas_node_id == canvas_node_id))
+        if not run or not node or node.status != NodeStatus.WAITING_INPUT:
+            raise ValueError("Canvas node is not waiting for input approval")
+        graph = copy.deepcopy(run.graph_snapshot or {})
+        graph_node = next((item for item in graph.get("nodes", []) if str(item.get("id")) == canvas_node_id), None)
+        if not graph_node:
+            raise ValueError("Canvas graph node was not found")
+        data = dict(graph_node.get("data") or {})
+        if data.get("waitForInput") is not True:
+            raise ValueError("Canvas node does not accept workflow input approval")
+        allowed = {
+            "caption_x": "captionX",
+            "caption_y": "captionY",
+            "caption_align": "captionAlign",
+            "caption_font_size": "captionFontSize",
+        }
+        for source_key, target_key in allowed.items():
+            if source_key in parameters:
+                data[target_key] = parameters[source_key]
+        data["inputApproved"] = True
+        graph_node["data"] = data
+        run.graph_snapshot = graph
+        node.status = NodeStatus.BLOCKED
+        node.progress = 0
+        run.status = NodeStatus.RUNNING
+        db.commit()
+
+
 def mark_canvas_waiting(run_id: str, canvas_node_id: str) -> None:
     with SessionLocal() as db:
         run = db.get(CanvasRunRecord, run_id)
@@ -187,7 +219,7 @@ class LocalCanvasRunEngine:
                 run = db.get(CanvasRunRecord, run_id)
                 if not run or run.status in {NodeStatus.CANCELED, NodeStatus.FAILED, NodeStatus.SUCCEEDED}:
                     return
-                dependencies = _dependencies(run)
+                dependencies = canvas_dependencies(run)
                 by_canvas_id = {node.canvas_node_id: node for node in run.node_runs}
                 pending = [node for node in run.node_runs if node.status in {NodeStatus.BLOCKED, NodeStatus.READY}]
                 ready = [node for node in pending if all(by_canvas_id[source].status == NodeStatus.SUCCEEDED for source in dependencies.get(node.canvas_node_id, []))]
@@ -203,11 +235,13 @@ class LocalCanvasRunEngine:
                     db.commit()
                     return
                 candidate_nodes = [node for node in ready if node.node_key == "candidate.select"]
-                executable = [node.canvas_node_id for node in ready if node.node_key != "candidate.select"]
-                for candidate in candidate_nodes:
-                    candidate.status = NodeStatus.WAITING_INPUT
-                    candidate.progress = 100
-                if candidate_nodes:
+                approval_nodes = [node for node in ready if _canvas_node_requires_input(run, node)]
+                waiting_ids = {node.canvas_node_id for node in [*candidate_nodes, *approval_nodes]}
+                executable = [node.canvas_node_id for node in ready if node.canvas_node_id not in waiting_ids]
+                for waiting_node in [*candidate_nodes, *approval_nodes]:
+                    waiting_node.status = NodeStatus.WAITING_INPUT
+                    waiting_node.progress = 100
+                if waiting_ids:
                     run.status = NodeStatus.WAITING_INPUT
                 db.commit()
             if executable:
@@ -274,6 +308,10 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("source_language", data.get("sourceLanguage"))
     parameters.setdefault("target_language", data.get("targetLanguage"))
     parameters.setdefault("voice_name", data.get("voiceName"))
+    parameters.setdefault("caption_x", data.get("captionX"))
+    parameters.setdefault("caption_y", data.get("captionY"))
+    parameters.setdefault("caption_align", data.get("captionAlign"))
+    parameters.setdefault("caption_font_size", data.get("captionFontSize"))
     parameters.setdefault("provider", data.get("provider"))
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,
@@ -290,14 +328,35 @@ def _graph_node(run: CanvasRunRecord, canvas_node_id: str) -> dict[str, Any]:
     return next(node for node in (run.graph_snapshot or {}).get("nodes", []) if str(node.get("id")) == canvas_node_id)
 
 
+def _canvas_node_requires_input(run: CanvasRunRecord, node: CanvasNodeRunRecord) -> bool:
+    data = dict(_graph_node(run, node.canvas_node_id).get("data") or {})
+    return data.get("waitForInput") is True and data.get("inputApproved") is not True
+
+
 def _incoming_sources(run: CanvasRunRecord, target_id: str) -> list[str]:
     return [str(edge.get("source")) for edge in (run.graph_snapshot or {}).get("edges", []) if str(edge.get("target")) == target_id]
 
 
-def _dependencies(run: CanvasRunRecord) -> dict[str, list[str]]:
-    result: dict[str, list[str]] = {node.canvas_node_id: [] for node in run.node_runs}
+def canvas_dependencies(run: CanvasRunRecord) -> dict[str, list[str]]:
+    direct: dict[str, list[str]] = {node.canvas_node_id: [] for node in run.node_runs}
     for edge in (run.graph_snapshot or {}).get("edges", []):
-        result[str(edge.get("target"))].append(str(edge.get("source")))
+        direct[str(edge.get("target"))].append(str(edge.get("source")))
+    graph_nodes = {str(item.get("id")): dict(item.get("data") or {}) for item in (run.graph_snapshot or {}).get("nodes", [])}
+
+    def expanded(source_id: str, visited: set[str] | None = None) -> list[str]:
+        visited = set() if visited is None else visited
+        if source_id in visited:
+            return []
+        visited.add(source_id)
+        dependencies = [source_id]
+        if graph_nodes[source_id].get("executable") is False:
+            for ancestor_id in direct.get(source_id, []):
+                dependencies.extend(expanded(ancestor_id, visited))
+        return dependencies
+
+    result: dict[str, list[str]] = {}
+    for target_id, source_ids in direct.items():
+        result[target_id] = list(dict.fromkeys(dependency for source_id in source_ids for dependency in expanded(source_id)))
     return result
 
 

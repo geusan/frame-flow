@@ -78,6 +78,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchField } from "@/components/shared/search-field";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
+import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
 import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
@@ -142,7 +143,15 @@ function providerOptionsForNode(nodeKey: string): Array<{ value: ProviderName; l
 function modelOptionsForNode(nodeKey: string, provider: ProviderName): Array<{ value: string; label: string }> {
   if (nodeKey === "image.generate") return provider === "openai" ? [{ value: "openai.image.default", label: "GPT Image 2" }] : [{ value: "image.fast", label: "Gemini Image Fast" }, { value: "image.quality", label: "Gemini Image Quality" }];
   if (nodeKey === "video.generate") return [{ value: "video.fast", label: "Veo Fast" }, { value: "video.quality", label: "Veo Quality" }];
-  if (nodeKey === "tts.generate") return provider === "openai" ? [{ value: "openai.tts.default", label: "GPT-4o Mini TTS" }] : [{ value: "tts.fast", label: "Gemini TTS" }];
+  if (nodeKey === "tts.generate") return provider === "openai" ? [
+    { value: "openai.tts.default", label: "GPT-4o Mini TTS" },
+    { value: "openai.tts.fast", label: "TTS-1 · Fast" },
+    { value: "openai.tts.quality", label: "TTS-1 HD · Quality" },
+  ] : [
+    { value: "tts.fast", label: "Gemini 2.5 Flash TTS" },
+    { value: "tts.latest", label: "Gemini 3.1 Flash TTS · Preview" },
+    { value: "tts.quality", label: "Gemini 2.5 Pro TTS" },
+  ];
   return provider === "openai" ? [{ value: "openai.text.fast", label: "GPT-5.6 Luna" }, { value: "openai.text.quality", label: "GPT-5.6 Terra" }, { value: "openai.chat.latest", label: "ChatGPT Latest" }] : [{ value: "text.fast", label: "Gemini Flash" }, { value: "text.quality", label: "Gemini Pro" }];
 }
 
@@ -181,6 +190,11 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         sourceLanguage: node.data.sourceLanguage ?? template.data.sourceLanguage,
         targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
         voiceName: node.data.voiceName ?? template.data.voiceName,
+        captionX: node.data.captionX ?? template.data.captionX,
+        captionY: node.data.captionY ?? template.data.captionY,
+        captionAlign: node.data.captionAlign ?? template.data.captionAlign,
+        captionFontSize: node.data.captionFontSize ?? template.data.captionFontSize,
+        waitForInput: node.data.waitForInput ?? template.data.waitForInput,
         stickyColor: node.data.stickyColor ?? template.data.stickyColor,
         drawing: node.data.drawing ?? template.data.drawing,
         configText: completedUploadArtifactId ?? (template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText),
@@ -305,6 +319,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const spaceHoldRef = useRef<(CanvasSpaceHoldRequest & { activated: boolean }) | null>(null);
   const cancelRunRef = useRef(false);
   const canvasRunEventsRef = useRef<EventSource | null>(null);
+  const waitingInputNodeRef = useRef<string | null>(null);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
 
@@ -651,7 +666,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName"]);
+    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -989,6 +1004,10 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           source_language: node.data.sourceLanguage,
           target_language: node.data.targetLanguage,
           voice_name: node.data.voiceName,
+          caption_x: node.data.captionX,
+          caption_y: node.data.captionY,
+          caption_align: node.data.captionAlign,
+          caption_font_size: node.data.captionFontSize,
           provider: node.data.provider,
         },
         inputs: inputSnapshots,
@@ -1051,6 +1070,15 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       setSelectedCandidate(0);
       setCandidateOpen(true);
     }
+    const waitingApproval = run.node_runs.find((node) => node.node_key === "timeline.compose" && node.status === "WAITING_INPUT");
+    if (waitingApproval && waitingInputNodeRef.current !== waitingApproval.canvas_node_id) {
+      waitingInputNodeRef.current = waitingApproval.canvas_node_id;
+      selectNode(waitingApproval.canvas_node_id);
+      setInspectorOpen(true);
+      notify("자막 위치를 조정한 뒤 워크플로우를 계속 진행하세요.", "info");
+    } else if (!waitingApproval) {
+      waitingInputNodeRef.current = null;
+    }
     if (["SUCCEEDED", "FAILED", "CANCELED"].includes(run.status)) {
       canvasRunEventsRef.current?.close();
       canvasRunEventsRef.current = null;
@@ -1061,7 +1089,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     } else {
       setGraphRunning(true);
     }
-  }, [notify, setNodes]);
+  }, [notify, selectNode, setInspectorOpen, setNodes]);
 
   const subscribeCanvasRun = useCallback((runId: string) => {
     canvasRunEventsRef.current?.close();
@@ -1191,6 +1219,23 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
   const selectedProvider = selectedNode ? selectedNode.data.provider ?? providerFromModel(selectedNode.data.model) : "google";
   const selectedModelOptions = selectedNode ? modelOptionsForNode(selectedNode.data.key, selectedProvider) : [];
+  const selectedCaptionVideo = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Video" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
+  const selectedCaptionSubtitle = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Subtitle" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
+  const approveCaptionLayout = async () => {
+    if (!activeCanvasRunId || selectedNode?.data.key !== "timeline.compose") return;
+    try {
+      const run = await frameflowApi.approveCanvasNode(activeCanvasRunId, selectedNode.id, {
+        caption_x: selectedNode.data.captionX ?? 0.5,
+        caption_y: selectedNode.data.captionY ?? 0.82,
+        caption_align: selectedNode.data.captionAlign ?? "center",
+        caption_font_size: selectedNode.data.captionFontSize ?? 54,
+      });
+      applyCanvasRunUpdate(run);
+      notify("자막 레이아웃을 확정했습니다. 남은 Step을 계속 실행합니다.", "success");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "자막 레이아웃 승인에 실패했습니다.", "error");
+    }
+  };
   const selectedPromptText = selectedNode ? (() => {
     const promptIndex = selectedNode.data.inputTypes?.indexOf("Prompt") ?? -1;
     if (promptIndex < 0) return "";
@@ -1356,6 +1401,22 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
                 <label><span>Output ratio</span><NativeSelect value={selectedNode.data.aspectRatio ?? "9:16"} onChange={(event) => updateSelectedData({ aspectRatio: event.target.value })}><option>9:16</option><option>1:1</option><option>16:9</option></NativeSelect></label>
                 <label><span>Target length</span><NativeSelect value={String(selectedNode.data.targetDurationSeconds ?? 30)} onChange={(event) => updateSelectedData({ targetDurationSeconds: Number(event.target.value) })}><option value="15">15s</option><option value="30">30s</option><option value="45">45s</option><option value="60">60s</option></NativeSelect></label>
               </div>
+            </div>}
+            {selectedNode.data.key === "timeline.compose" && <div className="caption-layout-settings">
+              <div className={`editor-input-count ${selectedCaptionVideo?.data.output?.url ? "connected" : "missing"}`}><span>Caption canvas</span><strong>{selectedCaptionVideo?.data.output?.url ? "✓" : "—"}</strong><small>{selectedCaptionVideo?.data.output?.url ? "영상 위 자막을 드래그해 위치를 조정하세요." : "Video와 Subtitle 출력을 연결하면 편집할 수 있습니다."}</small></div>
+              <CaptionLayoutEditor
+                videoUrl={selectedCaptionVideo?.data.output?.kind === "video" ? selectedCaptionVideo.data.output.url : undefined}
+                videoMimeType={selectedCaptionVideo?.data.output?.mimeType}
+                subtitleText={selectedCaptionSubtitle?.data.output?.text}
+                value={{
+                  x: selectedNode.data.captionX ?? 0.5,
+                  y: selectedNode.data.captionY ?? 0.82,
+                  align: selectedNode.data.captionAlign ?? "center",
+                  fontSize: selectedNode.data.captionFontSize ?? 54,
+                }}
+                onChange={(layout) => updateSelectedData({ captionX: layout.x, captionY: layout.y, captionAlign: layout.align, captionFontSize: layout.fontSize })}
+              />
+              {selectedNode.data.status === "WAITING_INPUT" && activeCanvasRunId && <Button className="caption-workflow-continue" type="button" onClick={() => void approveCaptionLayout()}><Play size={14} fill="currentColor" /> 위치 확정하고 워크플로우 계속</Button>}
             </div>}
             {selectedNode.data.key === "video.translate" && <div className="video-editor-settings">
               <div className="editor-input-count connected"><span>Live pipeline</span><strong>3</strong><small>Chirp 3 STT → Gemini translation → Gemini TTS</small></div>

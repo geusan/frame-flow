@@ -301,6 +301,17 @@ class GoogleVideoProvider(GoogleProviderBase):
 
 
 class GoogleTtsProvider(GoogleProviderBase):
+    def __init__(self, config: GoogleProviderConfig | None = None, client: Any | None = None) -> None:
+        super().__init__(config, client)
+        self._preview_client = self.client
+        if client is None and self.config.project and self.config.api_version != "v1beta1":
+            self._preview_client = genai.Client(
+                vertexai=True,
+                project=self.config.project,
+                location="global",
+                http_options=types.HttpOptions(api_version="v1beta1"),
+            )
+
     def synthesize(
         self,
         *,
@@ -313,7 +324,8 @@ class GoogleTtsProvider(GoogleProviderBase):
         exact_model = self.exact_model(logical_model)
         rendered = f"{style_prompt.strip()}\n\nRead the following text exactly:\n{text.strip()}"
         digest = request_hash(logical_model, {"model": exact_model, "text": text, "style_prompt": style_prompt, "voice_name": voice_name, "locale": locale})
-        response = self.client.models.generate_content(
+        client = self._preview_client if exact_model == "gemini-3.1-flash-tts-preview" else self.client
+        response = client.models.generate_content(
             model=exact_model,
             contents=rendered,
             config=types.GenerateContentConfig(

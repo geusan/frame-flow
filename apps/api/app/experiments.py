@@ -34,7 +34,12 @@ MODEL_COSTS = {
     "google.image.edit.fast": 0.0336,
     "google.video.fast": 1.40,
     "google.video.quality": 2.80,
+    "google.tts.latest": 0.12,
     "google.tts.fast": 0.12,
+    "google.tts.quality": 0.24,
+    "openai.tts.default": 0.12,
+    "openai.tts.fast": 0.12,
+    "openai.tts.quality": 0.24,
 }
 FIXTURE_EXECUTOR_REVISION = "fixture-media.v2"
 IMAGE_VARIABLE_PATTERN = re.compile(r"\{\{image:([^}]+)}}")
@@ -82,7 +87,7 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
     normalized = model_alias if model_alias.startswith(("google.", "openai.")) else f"google.{model_alias}"
     exact = model_id_for_alias(
         normalized,
-        gemini_api=bool(os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_CLOUD_PROJECT")),
+        gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
     )
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")

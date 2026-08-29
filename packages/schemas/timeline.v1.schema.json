@@ -22,9 +22,21 @@
       "required": ["id", "clips"],
       "properties": {
         "id": { "type": "string" },
+        "style": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "number", "minimum": 0, "maximum": 1 },
+            "y": { "type": "number", "minimum": 0, "maximum": 1 },
+            "align": { "enum": ["left", "center", "right"] },
+            "font_size": { "type": "number", "minimum": 24, "maximum": 96 },
+            "font_family": { "type": "string" },
+            "color": { "type": "string" },
+            "outline_color": { "type": "string" }
+          }
+        },
         "clips": { "type": "array", "items": { "type": "object" } }
       }
     }
   }
 }
-

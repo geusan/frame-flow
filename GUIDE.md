@@ -167,6 +167,10 @@ Images의 각 Asset은 `편집하기`로 전용 이미지 편집기를 연다. M
 | Image Generator | `Prompt`, 선택 `ReferenceAsset` | `Image` | 단일 이미지 생성 |
 | Video Generator | `Prompt`, 선택 `Image × N`, 선택 `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
+| Caption layout | `Video`, `Subtitle` | `Timeline` | 영상 위 자막을 드래그하고 가로 정렬·세로 위치·크기를 저장 |
+| Render captions | `Timeline` | `Video` | 저장한 위치의 자막을 FFmpeg로 영상에 렌더 |
+
+전체 Canvas Run에서는 `Caption layout`이 사람 입력을 기다리는 Step으로 동작한다. 앞선 TTS·Speech subtitles Step이 완료되면 Run은 `WAITING_INPUT`에서 멈추고 연결된 실제 영상과 자막을 Inspector에 표시한다. 자막을 드래그하거나 정렬 프리셋을 적용한 뒤 `위치 확정하고 워크플로우 계속`을 누르면 해당 좌표가 Run Snapshot에 저장되고 Timeline Compose와 Render captions가 자동으로 이어진다.
 
 Video Editor 설정:
 
@@ -184,6 +188,7 @@ Video Editor 설정:
 | 노드 | 필수 입력 | 출력 | 설명 |
 | --- | --- | --- | --- |
 | Voiceover | `Prompt` | `Audio` | 음성 생성 |
+| Speech subtitles | `Audio` | `Subtitle` | TTS Audio를 인식해 타임스탬프가 포함된 SRT 생성 |
 | Change Voice | `Video` | `Video` | 생성된 영상의 음성 교체 |
 | Translate Video | `Video` | `Video` | Chirp 3 인식, Gemini 번역·TTS와 자막 Mux |
 
@@ -352,9 +357,9 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 - Gemini Structured Output
 - Gemini Image
 - Veo Video operation submit/poll
-- Gemini-TTS
+- Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS
 - Chirp 3 Speech-to-Text와 Gemini 기반 Translate Video
-- OpenAI Responses API, ChatGPT Latest, GPT Image 2, GPT-4o Mini TTS
+- OpenAI Responses API, ChatGPT Latest, GPT Image 2, GPT-4o Mini TTS, TTS-1, TTS-1 HD
 - 테스트 전용 Fixture Provider
 - yt-dlp Reference Ingest Adapter
 

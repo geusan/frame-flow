@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from app.providers_google import GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleVideoProvider
+from app.providers_google import GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleTtsProvider, GoogleVideoProvider
 from app.providers_localization import get_localization_services
 from app.format_extraction import FormatSource, GeminiFormatExtractor
 from app.providers_openai import OpenAIProviderConfig
@@ -106,6 +106,76 @@ def test_gemini_api_key_selects_developer_api_and_preview_veo_model(monkeypatch)
     assert len(config.reference_images) == 2
     assert config.reference_images[0].reference_type.value == "ASSET"
     assert provider.client.models.last["source"].image is None
+
+
+@pytest.mark.parametrize(("model_alias", "vertex_model", "gemini_api_model"), [
+    ("google.tts.latest", "gemini-3.1-flash-tts-preview", "gemini-3.1-flash-tts-preview"),
+    ("google.tts.fast", "gemini-2.5-flash-tts", "gemini-2.5-flash-preview-tts"),
+    ("google.tts.quality", "gemini-2.5-pro-tts", "gemini-2.5-pro-preview-tts"),
+])
+def test_tts_model_ids_follow_google_auth_mode(
+    model_alias: str,
+    vertex_model: str,
+    gemini_api_model: str,
+):
+    client = FakeClient()
+    vertex_provider = GoogleTtsProvider(GoogleProviderConfig(project="demo"), client=client)
+    gemini_api_provider = GoogleTtsProvider(GoogleProviderConfig(api_key="test-key"), client=client)
+    assert vertex_provider.exact_model(model_alias) == vertex_model
+    assert gemini_api_provider.exact_model(model_alias) == gemini_api_model
+
+
+def test_tts_model_resolution_prefers_gemini_api_key_when_both_auth_inputs_exist(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "vertex-project")
+    assert resolve_model("tts.fast", "tts.generate") == (
+        "google.tts.fast",
+        "gemini-2.5-flash-preview-tts",
+    )
+    assert resolve_model("tts.quality", "tts.generate") == (
+        "google.tts.quality",
+        "gemini-2.5-pro-preview-tts",
+    )
+
+
+def test_latest_vertex_tts_uses_beta_api(monkeypatch):
+    clients = []
+
+    class FakeAudioModels:
+        def __init__(self):
+            self.last = None
+
+        def generate_content(self, **kwargs):
+            self.last = kwargs
+            inline_data = SimpleNamespace(data=b"pcm", mime_type="audio/pcm;rate=24000")
+            part = SimpleNamespace(inline_data=inline_data)
+            return SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(parts=[part]))])
+
+    class FakeAudioClient:
+        def __init__(self, options):
+            self.options = options
+            self.models = FakeAudioModels()
+
+    def create_client(**kwargs):
+        client = FakeAudioClient(kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr("app.providers_google.genai.Client", create_client)
+    provider = GoogleTtsProvider(GoogleProviderConfig(project="demo", location="us-central1", api_version="v1"))
+    generated = provider.synthesize(
+        text="안녕하세요",
+        style_prompt="Speak clearly.",
+        voice_name="Kore",
+        logical_model="google.tts.latest",
+    )
+    assert generated.data == b"pcm"
+    assert len(clients) == 2
+    assert clients[0].options["http_options"].api_version == "v1"
+    assert clients[0].options["location"] == "us-central1"
+    assert clients[1].options["http_options"].api_version == "v1beta1"
+    assert clients[1].options["location"] == "global"
+    assert clients[1].models.last["model"] == "gemini-3.1-flash-tts-preview"
 
 
 def test_gemini_api_video_download_uses_files_api():

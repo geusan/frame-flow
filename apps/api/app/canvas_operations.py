@@ -414,6 +414,80 @@ def _segments_to_srt(segments: list[SpeechSegment]) -> bytes:
     return "\n".join(cues).encode("utf-8")
 
 
+def _caption_style(parameters: dict[str, Any]) -> dict[str, Any]:
+    def number(key: str, default: float, minimum: float, maximum: float) -> float:
+        try:
+            value = float(parameters.get(key, default))
+        except (TypeError, ValueError):
+            value = default
+        return min(maximum, max(minimum, value))
+
+    align = str(parameters.get("caption_align") or "center").lower()
+    if align not in {"left", "center", "right"}:
+        align = "center"
+    return {
+        "x": round(number("caption_x", 0.5, 0.0, 1.0), 4),
+        "y": round(number("caption_y", 0.82, 0.0, 1.0), 4),
+        "align": align,
+        "font_size": round(number("caption_font_size", 54, 24, 96)),
+        "font_family": "Noto Sans CJK KR",
+        "color": "#FFFFFF",
+        "outline_color": "#000000",
+    }
+
+
+def _ass_timestamp(value: str) -> str:
+    match = re.fullmatch(r"(\d+):(\d{2}):(\d{2})[,.](\d{3})", value.strip())
+    if not match:
+        raise ValueError(f"invalid SRT timestamp: {value}")
+    hours, minutes, seconds, milliseconds = (int(item) for item in match.groups())
+    return f"{hours}:{minutes:02}:{seconds:02}.{milliseconds // 10:02}"
+
+
+def _srt_to_ass(content: bytes, *, width: int, height: int, style: dict[str, Any]) -> str:
+    source = content.decode("utf-8-sig", errors="replace").strip()
+    blocks = re.split(r"\r?\n\s*\r?\n", source) if source else []
+    events: list[str] = []
+    alignment = {"left": 4, "center": 5, "right": 6}[str(style.get("align") or "center")]
+    x = round(float(style.get("x", 0.5)) * width)
+    y = round(float(style.get("y", 0.82)) * height)
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        timing_index = next((index for index, line in enumerate(lines) if "-->" in line), -1)
+        if timing_index < 0:
+            continue
+        start, end = (item.strip().split(" ", 1)[0] for item in lines[timing_index].split("-->", 1))
+        text = r"\N".join(re.sub(r"<[^>]+>", "", line).replace("{", "(").replace("}", ")") for line in lines[timing_index + 1:])
+        if not text:
+            continue
+        events.append(
+            f"Dialogue: 0,{_ass_timestamp(start)},{_ass_timestamp(end)},Caption,,0,0,0,,"
+            f"{{\\an{alignment}\\pos({x},{y})\\q2}}{text}"
+        )
+    if not events:
+        raise ValueError("Subtitle input does not contain valid SRT cues")
+    font_size = max(14, round(float(style.get("font_size") or 54) * width / 1080))
+    outline = max(2, round(4 * width / 1080))
+    font_family = str(style.get("font_family") or "Noto Sans CJK KR").replace(",", " ")
+    return "\n".join([
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        f"PlayResX: {width}",
+        f"PlayResY: {height}",
+        "ScaledBorderAndShadow: yes",
+        "WrapStyle: 2",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Caption,{font_family},{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H78000000,-1,0,0,0,100,100,0,0,1,{outline},0,5,24,24,24,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        *events,
+        "",
+    ])
+
+
 def _timeline(artifacts: list[ArtifactData], parameters: dict[str, Any]) -> dict[str, Any]:
     video = _require(artifacts, "Video", "Video", "FinalVideo")
     subtitle = next(iter(_of_type(artifacts, "Subtitle")), None)
@@ -433,7 +507,11 @@ def _timeline(artifacts: list[ArtifactData], parameters: dict[str, Any]) -> dict
         "duration_ms": duration_ms,
         "video_tracks": [{"id": "video-main", "clips": [{"artifact_id": video.record.id, "start_ms": 0, "trim_in_ms": 0, "duration_ms": duration_ms}]}],
         "audio_tracks": [{"id": "audio-main", "clips": [{"artifact_id": video.record.id, "start_ms": 0, "trim_in_ms": 0, "duration_ms": duration_ms}]}],
-        "caption_tracks": [] if not subtitle else [{"id": "captions", "clips": [{"artifact_id": subtitle.record.id, "start_ms": 0, "duration_ms": duration_ms}]}],
+        "caption_tracks": [] if not subtitle else [{
+            "id": "captions",
+            "style": _caption_style(parameters),
+            "clips": [{"artifact_id": subtitle.record.id, "start_ms": 0, "duration_ms": duration_ms}],
+        }],
         "effects": [],
     }
 
@@ -460,16 +538,22 @@ def _render_timeline(db: Session, timeline_artifact: ArtifactData) -> bytes:
     if not subtitle:
         return rendered
     rendered_artifact = ArtifactData(video.record, rendered, "video/mp4")
-    # Preserve the rendered audio while adding a selectable MP4 subtitle track.
+    caption_style = dict(caption_tracks[0].get("style") or _caption_style({}))
+    width = int(timeline.get("width") or 1080)
+    height = int(timeline.get("height") or 1920)
+    ass_content = _srt_to_ass(subtitle.data, width=width, height=height, style=caption_style)
+    # Burn the positioned caption into the image so social players render it consistently.
     with tempfile.TemporaryDirectory(prefix="frameflow-caption-mux-") as temp_dir:
         directory = Path(temp_dir)
         video_path = _write_artifact(directory, rendered_artifact, 0)
-        subtitle_path = _write_artifact(directory, subtitle, 1)
+        subtitle_path = directory / "captions.ass"
+        subtitle_path.write_text(ass_content, encoding="utf-8")
         output = directory / "final.mp4"
         _run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video_path), "-i", str(subtitle_path),
-            "-map", "0:v:0", "-map", "0:a:0?", "-map", "1:0", "-c:v", "copy", "-c:a", "copy",
-            "-c:s", "mov_text", "-movflags", "+faststart", str(output),
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video_path),
+            "-vf", f"ass={subtitle_path}", "-map", "0:v:0", "-map", "0:a:0?",
+            "-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-preset", "veryfast", "-crf", "18",
+            "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(output),
         ])
         return output.read_bytes()
 

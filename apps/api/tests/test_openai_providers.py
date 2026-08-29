@@ -1,6 +1,8 @@
 import base64
 from types import SimpleNamespace
 
+import pytest
+
 from app.domain import ExperimentRunRequest
 from app.providers_generation import InputMedia
 from app.providers_openai import OpenAIGenerationServices, OpenAIProviderConfig
@@ -99,10 +101,20 @@ def test_openai_image_edit_operation_has_distinct_artifact_contract():
     assert result.input_artifact_ids == ["art_source"]
 
 
-def test_openai_speech_provider_requests_wav():
+@pytest.mark.parametrize(("model_alias", "exact_model", "uses_instructions"), [
+    ("openai.tts.default", "gpt-4o-mini-tts", True),
+    ("openai.tts.fast", "tts-1", False),
+    ("openai.tts.quality", "tts-1-hd", False),
+])
+def test_openai_speech_provider_requests_supported_model(
+    model_alias: str,
+    exact_model: str,
+    uses_instructions: bool,
+):
     client = FakeOpenAIClient()
     service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)
-    result = service.execute(payload("tts.generate", "openai.tts.default"), [])
+    result = service.execute(payload("tts.generate", model_alias), [])
     assert result.content == b"RIFFtest-wave"
-    assert client.audio.speech.last["model"] == "gpt-4o-mini-tts"
+    assert client.audio.speech.last["model"] == exact_model
     assert client.audio.speech.last["response_format"] == "wav"
+    assert ("instructions" in client.audio.speech.last) is uses_instructions

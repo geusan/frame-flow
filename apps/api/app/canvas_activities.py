@@ -5,7 +5,7 @@ from typing import Any
 
 from temporalio import activity
 
-from .canvas_runs import execute_canvas_node, finalize_canvas_run, mark_canvas_waiting, record_canvas_selection
+from .canvas_runs import execute_canvas_node, finalize_canvas_run, mark_canvas_waiting, record_canvas_approval, record_canvas_selection
 from .provider_settings import refresh_provider_environment
 
 
@@ -29,6 +29,11 @@ async def mark_canvas_waiting_activity(run_id: str, canvas_node_id: str) -> None
 @activity.defn(name="record_canvas_selection")
 async def record_canvas_selection_activity(run_id: str, canvas_node_id: str, artifact_id: str) -> None:
     record_canvas_selection(run_id, canvas_node_id, artifact_id)
+
+
+@activity.defn(name="record_canvas_approval")
+async def record_canvas_approval_activity(run_id: str, canvas_node_id: str, parameters: dict[str, Any]) -> None:
+    record_canvas_approval(run_id, canvas_node_id, parameters)
 
 
 @activity.defn(name="finalize_canvas_run")

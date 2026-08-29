@@ -281,6 +281,10 @@ class CanvasSelectionRequest(BaseModel):
     artifact_id: str = Field(min_length=1, max_length=128)
 
 
+class CanvasNodeApprovalRequest(BaseModel):
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 class ProviderSettingsUpdateRequest(BaseModel):
     enabled: bool
     auth_method: str | None = Field(default=None, min_length=1, max_length=64)

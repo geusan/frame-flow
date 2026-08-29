@@ -588,8 +588,15 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
             {"type": "Video", "artifact_ids": localized["output_artifact_ids"]},
             {"type": "Subtitle", "artifact_ids": subtitles["output_artifact_ids"]},
         ],
+        parameters={"caption_x": 0.5, "caption_y": 0.42, "caption_align": "center", "caption_font_size": 62},
     )
     assert '"version": "timeline.v1"' in timeline["output"]["text"]
+    timeline_payload = json.loads(timeline["output"]["text"])
+    caption_style = timeline_payload["caption_tracks"][0]["style"]
+    assert caption_style["x"] == 0.5
+    assert caption_style["y"] == 0.42
+    assert caption_style["align"] == "center"
+    assert caption_style["font_size"] == 62
 
     rendered = execute(
         "render",
@@ -662,6 +669,77 @@ def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(clie
     assert event_stream.status_code == 200
     assert "event: canvas.run.updated" in event_stream.text
     assert '"status":"SUCCEEDED"' in event_stream.text
+
+
+def test_caption_layout_pauses_canvas_workflow_and_resumes_with_approved_position(client: TestClient, monkeypatch):
+    captured = []
+
+    def fake_run_experiment(db, payload):
+        del db
+        captured.append(payload)
+        return SimpleNamespace(
+            status="SUCCEEDED",
+            provider_request_id=f"provider_{payload.node_id}",
+            request_hash=f"{payload.node_id:0<64}"[:64],
+            output_artifact_ids=[f"artifact_{payload.node_id}"],
+            output_payload={"kind": "json" if payload.node_key == "timeline.compose" else "video", "title": payload.node_id, "text": "{}"},
+            duration_ms=10,
+            cost_usd=0,
+            cache_hit=False,
+            error=None,
+        )
+
+    monkeypatch.setattr("app.canvas_runs.run_experiment", fake_run_experiment)
+    graph = {
+        "canvas_id": "caption_workflow_canvas",
+        "name": "Caption workflow",
+        "nodes": [
+            {"id": "video", "data": {"key": "asset.select", "label": "Video", "kind": "input", "executable": False, "outputType": "Video", "outputArtifactIds": ["video_artifact"]}},
+            {"id": "subtitle", "data": {"key": "subtitle.align", "label": "Subtitle", "kind": "compose", "executable": False, "outputType": "Subtitle", "outputArtifactIds": ["subtitle_artifact"]}},
+            {"id": "layout", "data": {"key": "timeline.compose", "label": "Caption layout", "kind": "compose", "model": "local.timeline", "outputType": "Timeline", "waitForInput": True, "captionX": 0.5, "captionY": 0.82, "captionAlign": "center", "captionFontSize": 54}},
+            {"id": "render", "data": {"key": "video.render", "label": "Render", "kind": "compose", "model": "local.ffmpeg", "outputType": "Video"}},
+        ],
+        "edges": [
+            {"id": "video-layout", "source": "video", "target": "layout"},
+            {"id": "subtitle-layout", "source": "subtitle", "target": "layout"},
+            {"id": "layout-render", "source": "layout", "target": "render"},
+        ],
+    }
+    started = client.post("/canvas-runs", json=graph)
+    assert started.status_code == 201
+    run_id = started.json()["id"]
+    deadline = time.monotonic() + 3
+    run = started.json()
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run_id}").json()
+        if run["status"] == "WAITING_INPUT":
+            break
+        time.sleep(0.03)
+    assert run["status"] == "WAITING_INPUT"
+    layout_node = next(node for node in run["node_runs"] if node["canvas_node_id"] == "layout")
+    assert layout_node["status"] == "WAITING_INPUT"
+    assert captured == []
+
+    approved = client.post(f"/canvas-runs/{run_id}/nodes/layout/approve", json={"parameters": {
+        "caption_x": 0.31,
+        "caption_y": 0.44,
+        "caption_align": "left",
+        "caption_font_size": 68,
+    }})
+    assert approved.status_code == 200
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run_id}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+    assert [payload.node_key for payload in captured] == ["timeline.compose", "video.render"]
+    layout_parameters = captured[0].parameters
+    assert layout_parameters["caption_x"] == 0.31
+    assert layout_parameters["caption_y"] == 0.44
+    assert layout_parameters["caption_align"] == "left"
+    assert layout_parameters["caption_font_size"] == 68
 
 
 def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: TestClient):

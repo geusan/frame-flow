@@ -433,5 +433,6 @@ export const frameflowApi = {
   getCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}`),
   cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),
   selectCanvasCandidate: (runId: string, canvasNodeId: string, artifactId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/select`, { method: "POST", body: JSON.stringify({ artifact_id: artifactId }) }),
+  approveCanvasNode: (runId: string, canvasNodeId: string, parameters: Record<string, unknown>) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/approve`, { method: "POST", body: JSON.stringify({ parameters }) }),
   canvasRunEventsUrl: (runId: string) => `${API_BASE}/canvas-runs/${runId}/events`,
 };

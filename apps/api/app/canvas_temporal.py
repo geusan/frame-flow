@@ -15,6 +15,7 @@ class CanvasWorkflowInput:
     node_keys: dict[str, str]
     dependencies: dict[str, list[str]]
     completed_node_ids: list[str]
+    approval_node_ids: list[str]
 
 
 @workflow.defn(name="frameflow.canvas.v1")
@@ -22,6 +23,8 @@ class CanvasRunWorkflow:
     def __init__(self) -> None:
         self.waiting_node_id: str | None = None
         self.selected_artifact_id: str | None = None
+        self.approved_node_id: str | None = None
+        self.approval_parameters: dict[str, object] | None = None
 
     @workflow.run
     async def run(self, payload: CanvasWorkflowInput) -> dict[str, object]:
@@ -33,7 +36,8 @@ class CanvasRunWorkflow:
             if not ready:
                 raise RuntimeError("Canvas DAG cannot make progress")
             candidates = [node_id for node_id in ready if payload.node_keys[node_id] == "candidate.select"]
-            executable = [node_id for node_id in ready if payload.node_keys[node_id] != "candidate.select"]
+            approvals = [node_id for node_id in ready if node_id in payload.approval_node_ids]
+            executable = [node_id for node_id in ready if node_id not in candidates and node_id not in approvals]
             if executable:
                 await asyncio.gather(*[
                     workflow.execute_activity(
@@ -66,6 +70,34 @@ class CanvasRunWorkflow:
                 completed.add(node_id)
                 remaining.remove(node_id)
                 self.waiting_node_id = None
+            for node_id in approvals:
+                self.waiting_node_id = node_id
+                self.approved_node_id = None
+                self.approval_parameters = None
+                await workflow.execute_activity(
+                    "mark_canvas_waiting",
+                    args=[payload.run_id, node_id],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=retry,
+                )
+                await workflow.wait_condition(lambda: self.approved_node_id == node_id)
+                await workflow.execute_activity(
+                    "record_canvas_approval",
+                    args=[payload.run_id, node_id, self.approval_parameters or {}],
+                    start_to_close_timeout=timedelta(seconds=30),
+                    retry_policy=retry,
+                )
+                await workflow.execute_activity(
+                    "execute_canvas_node",
+                    args=[payload.run_id, node_id],
+                    start_to_close_timeout=timedelta(minutes=30),
+                    heartbeat_timeout=timedelta(minutes=1),
+                    retry_policy=retry,
+                    cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+                )
+                completed.add(node_id)
+                remaining.remove(node_id)
+                self.waiting_node_id = None
         await workflow.execute_activity(
             "finalize_canvas_run",
             payload.run_id,
@@ -78,3 +110,9 @@ class CanvasRunWorkflow:
     def candidate_selected(self, canvas_node_id: str, artifact_id: str) -> None:
         if self.waiting_node_id == canvas_node_id:
             self.selected_artifact_id = artifact_id
+
+    @workflow.signal(name="canvas_node_approved")
+    def node_approved(self, canvas_node_id: str, parameters: dict[str, object]) -> None:
+        if self.waiting_node_id == canvas_node_id:
+            self.approved_node_id = canvas_node_id
+            self.approval_parameters = parameters

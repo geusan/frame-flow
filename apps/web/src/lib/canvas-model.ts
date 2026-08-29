@@ -4,6 +4,7 @@ import type { NodeStatus, PortType } from "./types";
 export type NodeKind = "input" | "logic" | "generate" | "compose" | "review";
 export type ProviderName = "google" | "openai";
 export type StickyColor = "yellow" | "pink" | "blue" | "green" | "lavender" | "gray";
+export type CaptionAlignment = "left" | "center" | "right";
 export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "text" | "sticky" | "drawing" | "changeVoice" | "translate";
 
 export interface DrawingPoint {
@@ -81,6 +82,11 @@ export interface StudioNodeData extends Record<string, unknown> {
   sourceLanguage?: string;
   targetLanguage?: string;
   voiceName?: string;
+  captionX?: number;
+  captionY?: number;
+  captionAlign?: CaptionAlignment;
+  captionFontSize?: number;
+  waitForInput?: boolean;
   stickyColor?: StickyColor;
   drawing?: DrawingDocument;
 }
@@ -119,6 +125,11 @@ export interface NodeTemplate {
     sourceLanguage?: string;
     targetLanguage?: string;
     voiceName?: string;
+    captionX?: number;
+    captionY?: number;
+    captionAlign?: CaptionAlignment;
+    captionFontSize?: number;
+    waitForInput?: boolean;
     stickyColor?: StickyColor;
     drawing?: DrawingDocument;
   };
@@ -154,9 +165,9 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "fit-script", label: "Fit duration", group: "Advanced", visible: false, data: { key: "script.fit_duration", label: "Fit script duration", description: "목표 길이에 맞춰 발화 시간을 보정", icon: "script", kind: "logic", inputTypes: ["Script"], outputType: "Script", model: "local.script-fit", cost: "$0.00" } },
   { id: "shot-plan", label: "Shot planner", group: "Advanced", visible: false, data: { key: "shot.plan", label: "Plan shots", description: "4·6·8초 단위의 Shot Plan", icon: "shot", kind: "logic", inputTypes: ["Script"], outputType: "ShotPlan", model: "local.shot-plan", cost: "$0.00" } },
   { id: "candidate", label: "Candidate select", group: "Advanced", visible: false, data: { key: "candidate.select", label: "Choose candidate", description: "연결된 실제 Video 후보 중 하나를 선택", icon: "select", kind: "review", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video" } },
-  { id: "subtitle", label: "Speech subtitles", group: "Advanced", visible: false, data: { key: "subtitle.align", label: "Speech subtitles", description: "Chirp 3 음성인식 타임스탬프로 SRT 자막 생성", icon: "subtitle", kind: "compose", inputTypes: ["Audio"], requiredInputTypes: ["Audio"], outputType: "Subtitle", model: "google.stt.default", cost: "$0.00", sourceLanguage: "auto" } },
-  { id: "timeline", label: "Compose timeline", group: "Advanced", visible: false, data: { key: "timeline.compose", label: "Compose timeline", description: "입력 Artifact를 참조하는 Timeline JSON", icon: "timeline", kind: "compose", inputTypes: ["Video", "Subtitle"], outputType: "Timeline", model: "local.timeline" } },
-  { id: "render", label: "Render video", group: "Advanced", visible: false, data: { key: "video.render", label: "Render final MP4", description: "FFmpeg H.264 · AAC render", icon: "render", kind: "compose", inputTypes: ["Timeline"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },
+  { id: "subtitle", label: "Speech subtitles", group: "Audio", data: { key: "subtitle.align", label: "Speech subtitles", description: "TTS Audio를 인식해 타임스탬프가 포함된 SRT 자막 생성", icon: "subtitle", kind: "compose", inputTypes: ["Audio"], requiredInputTypes: ["Audio"], outputType: "Subtitle", model: "google.stt.default", cost: "$0.00", sourceLanguage: "auto" } },
+  { id: "timeline", label: "Caption layout", group: "Video", data: { key: "timeline.compose", label: "Caption layout", description: "영상 위에서 자막을 드래그하고 위치·정렬을 저장", icon: "timeline", kind: "compose", inputTypes: ["Video", "Subtitle"], requiredInputTypes: ["Video", "Subtitle"], outputType: "Timeline", model: "local.timeline", captionX: 0.5, captionY: 0.82, captionAlign: "center", captionFontSize: 54, waitForInput: true } },
+  { id: "render", label: "Render captions", group: "Video", data: { key: "video.render", label: "Render captioned video", description: "설정한 위치의 자막을 영상에 렌더", icon: "render", kind: "compose", inputTypes: ["Timeline"], requiredInputTypes: ["Timeline"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },
   { id: "qc", label: "Quality control", group: "Advanced", visible: false, data: { key: "media.qc", label: "Quality control", description: "ffprobe 기반 Codec·Pixel Format·Audio·Duration 검사", icon: "qc", kind: "review", inputTypes: ["Video"], outputType: "QCReport", model: "local.ffprobe", cost: "$0.00" } },
 ];
 
