@@ -51,6 +51,7 @@ import {
   Sparkles,
   Trash2,
   Undo2,
+  Unlink2,
   Workflow,
   X,
 } from "lucide-react";
@@ -614,6 +615,31 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     setNodes((current) => refreshReadyStatuses(current, next));
     if (changes.some((change) => change.type !== "select")) markUnsaved();
   }, [markUnsaved, pushHistory, setEdges, setNodes]);
+
+  const disconnectInput = useCallback((nodeId: string, type: PortType, index: number) => {
+    const target = nodesRef.current.find((node) => node.id === nodeId);
+    if (!target) return;
+    const handleId = inputHandleId(type, index);
+    const isMatchingInput = (edge: Edge) => edge.target === nodeId
+      && (edge.targetHandle === handleId || (!edge.targetHandle && target.data.inputTypes?.length === 1));
+    if (!edgesRef.current.some(isMatchingInput)) return;
+    pushHistory();
+    const nextEdges = edgesRef.current.filter((edge) => !isMatchingInput(edge));
+    setEdges(nextEdges);
+    setNodes((current) => {
+      const invalidated = invalidateDescendants(current, nextEdges, nodeId);
+      const resetTarget = invalidated.map((node) => node.id === nodeId && node.data.executable !== false ? {
+        ...node,
+        data: {
+          ...node.data,
+          status: node.data.output || node.data.outputArtifactIds?.length ? "STALE" as NodeStatus : "READY" as NodeStatus,
+        },
+      } : node);
+      return refreshReadyStatuses(resetTarget, nextEdges);
+    });
+    markUnsaved();
+    notify(`${type} 입력 연결을 해제했습니다.`, "success");
+  }, [markUnsaved, notify, pushHistory, setEdges, setNodes]);
 
   const isValidConnection = useCallback((connection: Connection | Edge) => {
     if (!isConnectionCompatible(connection, nodesRef.current)) return false;
@@ -1481,12 +1507,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
             {selectedNode.data.model && selectedNode.data.kind !== "generate" && <label className="field-label"><span>Runtime engine</span><Input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
             <div className="inspector-section-title"><span>Input contracts</span><Braces size={14} /></div>
             {(selectedNode.data.inputTypes?.length ? selectedNode.data.inputTypes : ["Source node"]).map((type, index) => {
-              const connectionCount = type === "Source node" ? 0 : edges.filter((edge) => edge.target === selectedNode.id && edge.targetHandle === inputHandleId(type as PortType, index)).length;
+              const handleId = type === "Source node" ? undefined : inputHandleId(type as PortType, index);
+              const connectionCount = type === "Source node" ? 0 : edges.filter((edge) => edge.target === selectedNode.id && (edge.targetHandle === handleId || (!edge.targetHandle && selectedNode.data.inputTypes?.length === 1))).length;
               const connected = connectionCount > 0;
               const required = selectedNode.data.requiredInputTypes?.includes(type as PortType) ?? selectedNode.data.inputsRequired !== false;
               const optional = !required;
               const acceptsMany = selectedNode.data.multiInputTypes?.includes(type as PortType);
-              return <div className="port-contract" key={`${type}-${index}`}><span className={`contract-dot type-${String(type).toLowerCase()}`} /><span><strong>{type}{acceptsMany ? " × N" : ""}</strong><small>{type === "Source node" ? "No input required" : connected ? `${connectionCount} connected` : optional ? "Optional input" : "Required · not connected"}</small></span>{type !== "Source node" && (connected ? <CircleCheck size={15} /> : optional ? <span className="optional-port">Optional</span> : <CircleAlert size={15} className="contract-warning" />)}</div>;
+              return <div className="port-contract" key={`${type}-${index}`}><span className={`contract-dot type-${String(type).toLowerCase()}`} /><span><strong>{type}{acceptsMany ? " × N" : ""}</strong><small>{type === "Source node" ? "No input required" : connected ? `${connectionCount} connected` : optional ? "Optional input" : "Required · not connected"}</small></span>{type !== "Source node" && (connected ? <span className="contract-status"><CircleCheck size={15} /><button type="button" className="contract-disconnect" onClick={() => disconnectInput(selectedNode.id, type as PortType, index)} aria-label={`${type} 입력 연결 해제`} title={`${type} 입력 연결 해제`}><Unlink2 size={13} /> 해제</button></span> : optional ? <span className="optional-port">Optional</span> : <CircleAlert size={15} className="contract-warning" />)}</div>;
             })}
             <div className="inspector-section-title"><span>Runtime</span><CircleGauge size={14} /></div>
             <div className="runtime-grid"><div><small>Last duration</small><strong>{selectedNode.data.duration ?? "—"}</strong></div><div><small>Est. cost</small><strong>{selectedNode.data.cost ?? "$0.00"}</strong></div><div><small>Attempts</small><strong>{selectedNode.data.attemptCount ?? 0}</strong></div><div><small>Output</small><strong>{selectedNode.data.outputType ?? "—"}</strong></div></div>

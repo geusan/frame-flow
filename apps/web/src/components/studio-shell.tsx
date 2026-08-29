@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 
 import { StudioSidebar } from "@/components/layout/studio-sidebar";
-import { frameflowApi, type WorkspaceSummary } from "@/lib/api";
+import { frameflowApi, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 
 function pageTitle(pathname: string): { eyebrow: string; title: string } {
   if (pathname.startsWith("/workflows/")) return { eyebrow: "Canvas editor", title: "Workflow Canvas" };
@@ -22,6 +22,7 @@ export function StudioShell({ children }: { children: ReactNode }) {
   const title = pageTitle(pathname);
   const [apiStatus, setApiStatus] = useState<{ connected: boolean; googleConfigured: boolean; openaiConfigured: boolean } | null>(null);
   const [workspace, setWorkspace] = useState<WorkspaceSummary | null>(null);
+  const [canvases, setCanvases] = useState<CanvasDocument[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -39,12 +40,22 @@ export function StudioShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    frameflowApi.workspaceSummary().then((summary) => { if (active) setWorkspace(summary); }).catch(() => undefined);
+    Promise.all([
+      frameflowApi.workspaceSummary().catch(() => null),
+      frameflowApi.listCanvases().catch(() => null),
+    ]).then(([summary, canvasItems]) => {
+      if (!active) return;
+      if (summary) setWorkspace(summary);
+      if (canvasItems) setCanvases(canvasItems);
+    });
     return () => { active = false; };
   }, [pathname]);
 
   useEffect(() => {
-    const refreshWorkspace = () => { void frameflowApi.workspaceSummary().then(setWorkspace).catch(() => undefined); };
+    const refreshWorkspace = () => {
+      void frameflowApi.workspaceSummary().then(setWorkspace).catch(() => undefined);
+      void frameflowApi.listCanvases().then(setCanvases).catch(() => undefined);
+    };
     const refreshHealth = () => {
       void frameflowApi.health().then((health) => setApiStatus({ connected: true, googleConfigured: health.google_configured, openaiConfigured: health.openai_configured })).catch(() => setApiStatus({ connected: false, googleConfigured: false, openaiConfigured: false }));
     };
@@ -58,7 +69,7 @@ export function StudioShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="grid min-h-screen grid-cols-[240px_minmax(0,1fr)] overflow-hidden max-[980px]:grid-cols-[64px_minmax(0,1fr)]">
-      <StudioSidebar pathname={pathname} workspace={workspace} />
+      <StudioSidebar pathname={pathname} workspace={workspace} canvases={canvases} />
 
       <main className="main-stage">
         <header className="topbar">

@@ -23,7 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { API_BASE, type WorkspaceSummary } from "@/lib/api";
+import { API_BASE, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type WorkspaceCount = "canvases" | "images" | "videos" | "runs";
@@ -36,7 +36,7 @@ interface NavigationItem {
 }
 
 const workspaceNavigation: NavigationItem[] = [
-  { href: "/workflows", label: "Canvas", icon: Workflow, count: "canvases" },
+  { href: "/workflows", label: "Canvases", icon: Workflow, count: "canvases" },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
   { href: "/runs", label: "Runs", icon: Play, count: "runs" },
@@ -78,7 +78,41 @@ function SidebarNavItem({ item, pathname, workspace }: { item: NavigationItem; p
   );
 }
 
-export function StudioSidebar({ pathname, workspace }: { pathname: string; workspace: WorkspaceSummary | null }) {
+function SidebarCanvasLinks({ canvases, pathname }: { canvases: CanvasDocument[]; pathname: string }) {
+  if (!canvases.length) return null;
+  const visibleCanvases = canvases.slice(0, 5);
+  return (
+    <div className="mb-1 ml-[17px] flex flex-col gap-0.5 border-l border-[#3a3d37] py-1 pl-2 max-[980px]:hidden" aria-label="Canvas shortcuts">
+      {visibleCanvases.map((canvas) => {
+        const href = `/workflows/${encodeURIComponent(canvas.id)}`;
+        const active = pathname === href;
+        return (
+          <Link
+            className={cn(
+              "flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 text-[length:var(--text-sm)] text-[#90948c] no-underline transition-colors hover:bg-[#2a2d28] hover:text-white",
+              active && "bg-[#2a2d28] text-white",
+            )}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            title={canvas.name}
+            key={canvas.id}
+          >
+            <span className={cn("size-1.5 shrink-0 rounded-full bg-[#5e6259]", active && "bg-[#d6ff78]")} />
+            <span className="min-w-0 flex-1 truncate">{canvas.name}</span>
+            <span className="shrink-0 text-[10px] text-[#686c64]">{canvas.node_count}</span>
+          </Link>
+        );
+      })}
+      {canvases.length > visibleCanvases.length && (
+        <Link className="min-h-7 rounded-md px-2 py-1.5 text-[length:var(--text-sm)] text-[#7f837b] no-underline hover:bg-[#2a2d28] hover:text-white" href="/workflows">
+          +{canvases.length - visibleCanvases.length} more · View all
+        </Link>
+      )}
+    </div>
+  );
+}
+
+export function StudioSidebar({ pathname, workspace, canvases }: { pathname: string; workspace: WorkspaceSummary | null; canvases: CanvasDocument[] }) {
   return (
     <aside className="sticky top-0 z-20 flex h-screen flex-col bg-[#1e201d] px-3 pb-3 pt-[18px] text-[#f7f7f3] max-[980px]:px-2.5">
       <Link className="flex h-9 items-center gap-[9px] px-2 text-inherit no-underline max-[980px]:justify-center max-[980px]:px-0" href="/workflows" aria-label="Frameflow home">
@@ -109,9 +143,11 @@ export function StudioSidebar({ pathname, workspace }: { pathname: string; works
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <nav className="flex flex-col gap-[3px]" aria-label="Main navigation">
+      <nav className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto" aria-label="Main navigation">
         <span className="px-2.5 pb-[7px] pt-[5px] text-[length:var(--text-sm)] font-bold uppercase tracking-[.1em] text-[#777b73] max-[980px]:hidden">Workspace</span>
-        {workspaceNavigation.map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
+        <SidebarNavItem item={workspaceNavigation[0]} pathname={pathname} workspace={workspace} />
+        <SidebarCanvasLinks canvases={canvases} pathname={pathname} />
+        {workspaceNavigation.slice(1).map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
         <span className="mt-3.5 px-2.5 pb-[7px] pt-[5px] text-[length:var(--text-sm)] font-bold uppercase tracking-[.1em] text-[#777b73] max-[980px]:hidden">Configure</span>
         {settingsNavigation.map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
       </nav>
