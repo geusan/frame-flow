@@ -81,6 +81,7 @@ from .provider_settings import (
     provider_settings_payload,
     update_provider_settings,
 )
+from .project_skills import list_project_skills
 from .reference_ingest import ReferenceIngestError, get_reference_provider, render_proxy
 from .scene_search import SceneSearchError, search_video_scenes
 from .experiments import experiment_response, run_experiment
@@ -173,6 +174,11 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "openai_configured": bool(settings.get("openai") and provider_is_configured(settings["openai"])),
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
     }
+
+
+@app.get("/skills")
+def project_skills() -> list[dict[str, str]]:
+    return [skill.public_payload() for skill in list_project_skills()]
 
 
 @app.get("/workspace/summary")

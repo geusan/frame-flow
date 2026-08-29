@@ -289,16 +289,45 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
             "artifact_ids": source.output_artifact_ids or [],
         })
 
+    def append_prompt_ancestors(source_id: str) -> None:
+        for prompt_edge in (run.graph_snapshot or {}).get("edges", []):
+            if str(prompt_edge.get("target")) != source_id:
+                continue
+            ancestor_id = str(prompt_edge.get("source"))
+            append_input(ancestor_id)
+            if graph_nodes[ancestor_id].get("outputType") == "Prompt":
+                append_prompt_ancestors(ancestor_id)
+
+    def resolve_prompt_text(source_id: str, visited: set[str] | None = None) -> str:
+        visited = set() if visited is None else visited
+        if source_id in visited:
+            return ""
+        visited.add(source_id)
+        source_data = graph_nodes[source_id]
+        source_run = node_by_canvas_id[source_id]
+        current = str(source_data.get("configText") or (source_run.output_payload or {}).get("text") or "").strip()
+        if current:
+            return current
+        for prompt_edge in (run.graph_snapshot or {}).get("edges", []):
+            if str(prompt_edge.get("target")) != source_id:
+                continue
+            ancestor_id = str(prompt_edge.get("source"))
+            if graph_nodes[ancestor_id].get("outputType") != "Prompt":
+                continue
+            inherited = resolve_prompt_text(ancestor_id, visited)
+            if inherited:
+                return inherited
+        return ""
+
     for edge in (run.graph_snapshot or {}).get("edges", []):
         if str(edge.get("target")) != node.canvas_node_id:
             continue
         source_id = str(edge.get("source"))
         source_data = graph_nodes[source_id]
-        if source_data.get("key") == "prompt.input":
-            prompt = str(source_data.get("configText") or "")
-            for prompt_edge in (run.graph_snapshot or {}).get("edges", []):
-                if str(prompt_edge.get("target")) == source_id:
-                    append_input(str(prompt_edge.get("source")))
+        if source_data.get("outputType") == "Prompt":
+            prompt = resolve_prompt_text(source_id)
+        if source_data.get("outputType") == "Prompt":
+            append_prompt_ancestors(source_id)
         append_input(source_id)
     parameters = dict(data.get("parameters") or {})
     parameters.setdefault("resolution", data.get("resolution"))
@@ -312,6 +341,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("caption_y", data.get("captionY"))
     parameters.setdefault("caption_align", data.get("captionAlign"))
     parameters.setdefault("caption_font_size", data.get("captionFontSize"))
+    parameters.setdefault("skill_id", data.get("skillId"))
     parameters.setdefault("provider", data.get("provider"))
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,

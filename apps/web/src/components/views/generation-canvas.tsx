@@ -81,7 +81,7 @@ import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features
 import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type UploadedArtifact } from "@/lib/api";
+import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type ProjectSkillRecord, type UploadedArtifact } from "@/lib/api";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
@@ -130,6 +130,34 @@ function invalidateDescendants(nodes: StudioFlowNode[], edges: Edge[], sourceId:
       status: "STALE" as NodeStatus,
     },
   } : node);
+}
+
+function promptOutputText(node: StudioFlowNode | undefined): string {
+  if (!node) return "";
+  if (node.data.output?.kind === "text" && node.data.output.text?.trim()) return node.data.output.text.trim();
+  return node.data.configText?.trim() ?? "";
+}
+
+function propagateConnectedPrompts(nodes: StudioFlowNode[], edges: Edge[], sourceId?: string, force = false): StudioFlowNode[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return nodes.map((node) => {
+    if (node.data.key !== "prompt.input") return node;
+    const promptIndex = node.data.inputTypes?.indexOf("Prompt") ?? -1;
+    if (promptIndex < 0) return node;
+    const promptEdge = edges.find((edge) => edge.target === node.id && edge.targetHandle === inputHandleId("Prompt", promptIndex));
+    if (!promptEdge || (sourceId && promptEdge.source !== sourceId)) return node;
+    const upstreamText = promptOutputText(byId.get(promptEdge.source));
+    if (!upstreamText || (!force && node.data.promptEdited) || node.data.configText === upstreamText) return node;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        configText: upstreamText,
+        status: "SUCCEEDED" as NodeStatus,
+        promptEdited: false,
+      },
+    };
+  });
 }
 
 function providerFromModel(model?: string): ProviderName {
@@ -195,6 +223,7 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         captionAlign: node.data.captionAlign ?? template.data.captionAlign,
         captionFontSize: node.data.captionFontSize ?? template.data.captionFontSize,
         waitForInput: node.data.waitForInput ?? template.data.waitForInput,
+        skillId: node.data.skillId ?? template.data.skillId,
         stickyColor: node.data.stickyColor ?? template.data.stickyColor,
         drawing: node.data.drawing ?? template.data.drawing,
         configText: completedUploadArtifactId ?? (template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText),
@@ -258,7 +287,9 @@ function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experi
       },
     };
   });
-  return { nodes: refreshReadyStatuses(reconciled, edges), changed };
+  const propagated = propagateConnectedPrompts(reconciled, edges);
+  const promptChanged = propagated.some((node, index) => node.data.configText !== reconciled[index]?.data.configText);
+  return { nodes: refreshReadyStatuses(propagated, edges), changed: changed || promptChanged };
 }
 
 function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): CanvasOutput {
@@ -304,6 +335,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const [experimentHistoryNodeId, setExperimentHistoryNodeId] = useState<string | null>(null);
   const [experimentHistoryError, setExperimentHistoryError] = useState<string | null>(null);
   const [assetOptions, setAssetOptions] = useState<ArtifactListItem[]>([]);
+  const [projectSkills, setProjectSkills] = useState<ProjectSkillRecord[]>([]);
   const selectedNodeId = useStudioStore((state) => state.selectedNodeId);
   const selectNode = useStudioStore((state) => state.selectNode);
   const inspectorOpen = useStudioStore((state) => state.inspectorOpen);
@@ -483,6 +515,12 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   }, []);
 
   useEffect(() => {
+    let active = true;
+    frameflowApi.listSkills().then((items) => { if (active) setProjectSkills(items); }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     if (!assetOptions.length) return;
     const byId = new Map(assetOptions.map((asset) => [asset.id, asset]));
     const needsHydration = nodes.some((node) => {
@@ -593,7 +631,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     pushHistory();
     const next = addEdge({ ...connection, id: `edge-${Date.now()}`, type: EDGE_TYPE, style: { stroke: "#a8aaa3", strokeWidth: 1.35 } }, edgesRef.current);
     setEdges(next);
-    setNodes((current) => refreshReadyStatuses(current, next));
+    setNodes((current) => refreshReadyStatuses(propagateConnectedPrompts(current, next, connection.source), next));
     markUnsaved();
     notify("노드를 연결했습니다.", "success");
   }, [isValidConnection, markUnsaved, notify, pushHistory, setEdges, setNodes]);
@@ -666,7 +704,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize"]);
+    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize", "skillId"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -689,7 +727,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           const immediateSource = ["prompt.input", "asset.select", "utility.sticky"].includes(node.data.key);
           const promptStatus: NodeStatus = immediateSource ? (value.trim() ? "SUCCEEDED" : "READY") : node.data.status === "SUCCEEDED" ? "STALE" : node.data.status;
           const selectedAssetOutput: CanvasOutput | undefined = node.data.key === "asset.select" && value.trim() ? { kind: "json", title: "Selected asset", text: JSON.stringify({ asset: value, reference_mode: "single" }, null, 2) } : undefined;
-          return { ...node, data: { ...node.data, configText: value, status: promptStatus, output: selectedAssetOutput, preview: node.data.key === "asset.select" && value ? value : undefined } };
+          return { ...node, data: { ...node.data, configText: value, status: promptStatus, output: selectedAssetOutput, preview: node.data.key === "asset.select" && value ? value : undefined, promptEdited: node.data.key === "prompt.input" ? true : node.data.promptEdited } };
         }
         return node;
       });
@@ -937,7 +975,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           logs: [...(node.data.logs ?? []), `${new Date(experiment.created_at).toLocaleTimeString("ko-KR")} · Experiment ${experiment.id} succeeded${experiment.cache_hit ? " · cache hit" : ""}`],
         },
       } : node);
-      return refreshReadyStatuses(completed, edgesRef.current);
+      return refreshReadyStatuses(propagateConnectedPrompts(completed, edgesRef.current, nodeId, true), edgesRef.current);
     });
     markUnsaved();
   }, [markUnsaved, setNodes]);
@@ -967,12 +1005,15 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       || node.data.configText?.trim()
       || node.data.description;
     const directInputEdges = edgesRef.current.filter((edge) => edge.target === nodeId);
-    const inputSourceIds = directInputEdges.flatMap((edge) => {
-      const source = nodesRef.current.find((candidate) => candidate.id === edge.source);
-      if (source?.data.key !== "prompt.input") return [edge.source];
-      const promptInputIds = edgesRef.current.filter((candidate) => candidate.target === source.id).map((candidate) => candidate.source);
-      return [edge.source, ...promptInputIds];
-    });
+    const collectInputSources = (sourceId: string, visited = new Set<string>()): string[] => {
+      if (visited.has(sourceId)) return [];
+      visited.add(sourceId);
+      const source = nodesRef.current.find((candidate) => candidate.id === sourceId);
+      if (source?.data.outputType !== "Prompt") return [sourceId];
+      const upstream = edgesRef.current.filter((candidate) => candidate.target === sourceId).flatMap((candidate) => collectInputSources(candidate.source, visited));
+      return [sourceId, ...upstream];
+    };
+    const inputSourceIds = directInputEdges.flatMap((edge) => collectInputSources(edge.source));
     const inputSnapshots = [...new Set(inputSourceIds)].map((sourceId) => {
       const source = nodesRef.current.find((candidate) => candidate.id === sourceId);
       return {
@@ -1008,6 +1049,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           caption_y: node.data.captionY,
           caption_align: node.data.captionAlign,
           caption_font_size: node.data.captionFontSize,
+          skill_id: node.data.skillId,
           provider: node.data.provider,
         },
         inputs: inputSnapshots,
@@ -1041,7 +1083,8 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const byNodeId = new Map(run.node_runs.map((node) => [node.canvas_node_id, node]));
-    setNodes((current) => current.map((node) => {
+    setNodes((current) => {
+      const updated = current.map((node) => {
       const server = byNodeId.get(node.id);
       if (!server) return node;
       const output = Object.keys(server.output ?? {}).length ? server.output as CanvasOutput : undefined;
@@ -1062,7 +1105,9 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           logs: statusChanged ? [...(node.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Worker ${status}${server.error ? ` · ${server.error}` : ""}`] : node.data.logs,
         },
       };
-    }));
+      });
+      return refreshReadyStatuses(propagateConnectedPrompts(updated, edgesRef.current, undefined, true), edgesRef.current);
+    });
     setGraphProgress(run.progress);
     const waiting = run.node_runs.find((node) => node.node_key === "candidate.select" && node.status === "WAITING_INPUT");
     if (waiting) {
@@ -1219,6 +1264,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
   const selectedProvider = selectedNode ? selectedNode.data.provider ?? providerFromModel(selectedNode.data.model) : "google";
   const selectedModelOptions = selectedNode ? modelOptionsForNode(selectedNode.data.key, selectedProvider) : [];
+  const selectedProjectSkill = selectedNode?.data.skillId ? projectSkills.find((skill) => skill.id === selectedNode.data.skillId) : undefined;
   const selectedCaptionVideo = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Video" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
   const selectedCaptionSubtitle = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Subtitle" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
   const approveCaptionLayout = async () => {
@@ -1384,6 +1430,10 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
             <p className={`step-run-help ${selectedInputError ? "has-error" : ""}`}>{selectedNode.data.executable === false ? "입력 또는 Canvas 정리용 노드입니다." : selectedInputError ?? "이 Step만 실행합니다. 연결된 입력을 사용합니다."}</p>
             {selectedNode.data.kind === "generate" && <div className="generator-settings">
               <div className={`connected-prompt-preview ${selectedPromptText ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || "Prompt 노드를 연결하고 내용을 입력하세요."}</p></div>
+              {selectedNode.data.key === "skill.execute" && <label className="field-label"><span>Project skill</span><NativeSelect value={selectedNode.data.skillId ?? ""} onChange={(event) => updateSelectedData({ skillId: event.target.value })}>
+                {!projectSkills.length && <option value={selectedNode.data.skillId ?? "nottalggak-prompt-machine"}>{selectedNode.data.skillId ?? "nottalggak-prompt-machine"}</option>}
+                {projectSkills.map((skill) => <option value={skill.id} key={skill.id}>{skill.display_name}</option>)}
+              </NativeSelect><small>{selectedProjectSkill?.description ?? "API에서 프로젝트 Skill 레지스트리를 불러옵니다."}</small></label>}
               <div className="generator-setting-grid provider-model-selectors">
                 <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
                 <label><span>Model</span><NativeSelect value={selectedNode.data.model ?? selectedModelOptions[0]?.value ?? ""} onChange={(event) => updateSelectedData({ model: event.target.value })}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>

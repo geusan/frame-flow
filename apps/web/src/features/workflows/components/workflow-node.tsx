@@ -66,6 +66,7 @@ export const icons: Record<IconName, typeof Sparkles> = {
   assets: FolderOpen,
   folder: Folder,
   assistant: Bot,
+  skill: Sparkles,
   text: Type,
   sticky: StickyNote,
   drawing: Paintbrush,
@@ -294,6 +295,7 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
       </div>
       <p className="node-description">{data.description}</p>
       {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />}
+      {data.key === "skill.execute" && <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>}
       {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
       {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
       {data.configText !== undefined && !["asset.select", "asset.upload", "prompt.input"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}

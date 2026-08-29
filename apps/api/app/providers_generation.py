@@ -16,6 +16,7 @@ from .providers_google import (
     GoogleTtsProvider,
     GoogleVideoProvider,
 )
+from .project_skills import project_skill_system_prompt
 
 
 LIVE_GENERATION_REVISION = "google-live.v1"
@@ -137,12 +138,18 @@ class GoogleGenerationServices:
                 "audio/wav", "voiceover.wav", input_ids,
             )
 
-        if payload.node_key in {"llm.assistant", "script.generate"}:
-            system_prompt = (
-                "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add commentary."
-                if payload.node_key == "script.generate"
-                else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
-            )
+        if payload.node_key in {"llm.assistant", "script.generate", "skill.execute"}:
+            if payload.node_key == "skill.execute":
+                system_prompt = project_skill_system_prompt(
+                    str(payload.parameters.get("skill_id") or ""),
+                    str(payload.parameters.get("skill_version") or "") or None,
+                )
+            else:
+                system_prompt = (
+                    "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add commentary."
+                    if payload.node_key == "script.generate"
+                    else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
+                )
             text, request_id = self.text.generate_text(
                 logical_model=logical_model,
                 system_prompt=system_prompt,
@@ -151,11 +158,11 @@ class GoogleGenerationServices:
                 seed=seed_value,
             )
             artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
-            schema_id = "script.v1" if payload.node_key == "script.generate" else "google.text.v1"
-            title = "Generated script" if payload.node_key == "script.generate" else "Generated text"
+            schema_id = "script.v1" if payload.node_key == "script.generate" else "prompt.master.v1" if payload.node_key == "skill.execute" else "google.text.v1"
+            title = "Generated script" if payload.node_key == "script.generate" else "Generated master prompt" if payload.node_key == "skill.execute" else "Generated text"
             return LiveGenerationResult(
                 {"kind": "text", "title": title, "text": text}, artifact_type, schema_id,
-                request_id, text.encode(), "text/plain", "result.txt", input_ids,
+                request_id, text.encode(), "text/plain", "master-prompt.txt" if payload.node_key == "skill.execute" else "result.txt", input_ids,
             )
 
         raise ValueError(f"unsupported live Google generation node: {payload.node_key}")

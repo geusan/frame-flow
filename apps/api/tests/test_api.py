@@ -21,6 +21,30 @@ def test_executor_revision_fits_persisted_execution_mode():
     assert len(FIXTURE_EXECUTOR_REVISION) <= 32
 
 
+def test_project_skill_registry_and_executor_snapshot_are_available(client: TestClient):
+    skills = client.get("/skills")
+    assert skills.status_code == 200
+    registered = next(skill for skill in skills.json() if skill["id"] == "nottalggak-prompt-machine")
+    assert registered["display_name"] == "NOTTALGGAK Prompt Machine"
+    assert len(registered["version"]) == 64
+
+    executed = client.post("/experiments", json={
+        "canvas_id": "skill_canvas",
+        "node_id": "skill_executor",
+        "node_key": "skill.execute",
+        "prompt": "비 오는 밤의 작은 골목",
+        "model_alias": "text.quality",
+        "parameters": {"skill_id": registered["id"], "provider": "google"},
+        "inputs": [],
+    })
+    assert executed.status_code == 201
+    result = executed.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["parameters"]["skill_version"] == registered["version"]
+    assert result["output"]["title"] == "Generated master prompt"
+    assert "### 1. English Master Prompt" in result["output"]["text"]
+
+
 def import_reference(client: TestClient, suffix: str = "abc") -> str:
     inspect = client.post("/references/inspect", json={"urls": [f"https://youtube.com/watch?v={suffix}"]})
     assert inspect.status_code == 200
@@ -740,6 +764,102 @@ def test_caption_layout_pauses_canvas_workflow_and_resumes_with_approved_positio
     assert layout_parameters["caption_y"] == 0.44
     assert layout_parameters["caption_align"] == "left"
     assert layout_parameters["caption_font_size"] == 68
+
+
+def test_skill_executor_prompt_flows_to_downstream_generator(client: TestClient):
+    uploaded = client.post(
+        "/artifacts/upload",
+        files={"file": ("reference.png", b"\x89PNG\r\n\x1a\n-skill-reference", "image/png")},
+    ).json()
+    graph = {
+        "canvas_id": "skill_prompt_canvas",
+        "name": "Skill prompt flow",
+        "nodes": [
+            {
+                "id": "prompt",
+                "data": {
+                    "key": "prompt.input", "label": "Prompt", "kind": "input",
+                    "executable": False, "configText": "비 오는 밤의 작은 골목",
+                    "outputType": "Prompt",
+                },
+            },
+            {
+                "id": "skill",
+                "data": {
+                    "key": "skill.execute", "label": "Skill executor", "kind": "generate",
+                    "inputTypes": ["Prompt"], "requiredInputTypes": ["Prompt"],
+                    "outputType": "Prompt", "model": "text.quality", "provider": "google",
+                    "skillId": "nottalggak-prompt-machine",
+                },
+            },
+            {
+                "id": "image1",
+                "data": {
+                    "key": "asset.select", "label": "Image 1", "kind": "input",
+                    "executable": False, "outputType": "Image",
+                    "outputArtifactIds": [uploaded["artifact_id"]],
+                    "output": {"kind": "image", "title": "reference.png", "url": uploaded["url"], "mimeType": "image/png"},
+                },
+            },
+            {
+                "id": "prompt2",
+                "data": {
+                    "key": "prompt.input", "label": "Prompt 2", "kind": "input",
+                    "executable": False, "inputTypes": ["Prompt", "Image"],
+                    "requiredInputTypes": [], "multiInputTypes": ["Image"],
+                    "outputType": "Prompt", "configText": "",
+                },
+            },
+            {
+                "id": "image",
+                "data": {
+                    "key": "image.generate", "label": "Image generator", "kind": "generate",
+                    "inputTypes": ["Prompt"], "requiredInputTypes": ["Prompt"],
+                    "outputType": "Image", "model": "image.fast", "provider": "google",
+                },
+            },
+        ],
+        "edges": [
+            {"id": "prompt-skill", "source": "prompt", "target": "skill", "targetHandle": "input-Prompt-0"},
+            {"id": "skill-prompt2", "source": "skill", "target": "prompt2", "targetHandle": "input-Prompt-0"},
+            {"id": "image1-prompt2", "source": "image1", "target": "prompt2", "targetHandle": "input-Image-1"},
+            {"id": "prompt2-image", "source": "prompt2", "target": "image", "targetHandle": "input-Prompt-0"},
+        ],
+    }
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    run = response.json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run['id']}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+
+    skill_run = client.get("/experiments", params={"canvas_id": graph["canvas_id"], "node_id": "skill"}).json()[0]
+    image_run = client.get("/experiments", params={"canvas_id": graph["canvas_id"], "node_id": "image"}).json()[0]
+    assert skill_run["parameters"]["skill_id"] == "nottalggak-prompt-machine"
+    assert image_run["prompt"] == skill_run["output"]["text"]
+    assert "### 3. Technical / Visual Blueprint" in image_run["prompt"]
+    forwarded_artifact_ids = [artifact_id for item in image_run["inputs"] for artifact_id in item["artifact_ids"]]
+    assert uploaded["artifact_id"] in forwarded_artifact_ids
+
+    edited_graph = json.loads(json.dumps(graph))
+    edited_graph["canvas_id"] = "edited_skill_prompt_canvas"
+    next(node for node in edited_graph["nodes"] if node["id"] == "prompt2")["data"]["configText"] = "Manually edited master prompt"
+    edited_response = client.post("/canvas-runs", json=edited_graph)
+    assert edited_response.status_code == 201
+    edited_run = edited_response.json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        edited_run = client.get(f"/canvas-runs/{edited_run['id']}").json()
+        if edited_run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert edited_run["status"] == "SUCCEEDED"
+    edited_image_run = client.get("/experiments", params={"canvas_id": edited_graph["canvas_id"], "node_id": "image"}).json()[0]
+    assert edited_image_run["prompt"] == "Manually edited master prompt"
 
 
 def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: TestClient):

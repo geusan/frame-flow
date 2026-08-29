@@ -22,6 +22,7 @@ from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
 from .providers import model_id_for_alias
 from .providers_generation import LIVE_GENERATION_REVISION, InputMedia, get_google_generation_services
 from .providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
+from .project_skills import snapshot_skill_parameters
 from .service import audit, create_artifact, new_id
 from .storage import artifact_content_url, get_storage, storage_location
 
@@ -102,6 +103,7 @@ def validate_model_for_node(node_key: str, model_alias: str) -> None:
         "tts.generate": ("google.tts.", "openai.tts."),
         "llm.assistant": ("google.text.", "openai.text.", "openai.chat."),
         "script.generate": ("google.text.", "openai.text.", "openai.chat."),
+        "skill.execute": ("google.text.", "openai.text.", "openai.chat."),
     }.get(node_key)
     if allowed_families and not model_alias.startswith(allowed_families):
         raise ValueError(f"{node_key} requires one of these model families: {', '.join(allowed_families)}")
@@ -147,6 +149,18 @@ def execute_fixture(payload: ExperimentRunRequest, exact_model_id: str, digest: 
         content = render_audio_wav(digest)
         return FixtureResult(output, "Audio", "experiment.audio.v1", provider_request_id, content, "audio/wav", "preview.wav")
     refined = f"{payload.prompt.strip()}\n\nCinematic intent preserved. Subject, action, camera motion, lighting, timing, and exclusions are explicit."
+    if payload.node_key == "skill.execute":
+        refined = (
+            "### 1. English Master Prompt\n"
+            f"Production-ready visual specification for: {payload.prompt.strip()}\n\n"
+            "### 2. Korean Translation\n"
+            f"제작 가능한 시각 명세: {payload.prompt.strip()}\n\n"
+            "### 3. Technical / Visual Blueprint\n"
+            "Discipline: visual production · Medium / Output: inferred from the request · "
+            "Invariants / Avoid: preserve explicit constraints"
+        )
+        output = {"kind": "text", "title": "Generated master prompt", "text": refined}
+        return FixtureResult(output, "Text", "prompt.master.v1", provider_request_id, refined.encode(), "text/plain", "master-prompt.txt")
     if payload.node_key == "script.generate":
         output = {"kind": "text", "title": "Generated script", "text": refined}
         return FixtureResult(output, "Script", "script.v1", provider_request_id, refined.encode(), "text/plain", "script.txt")
@@ -207,6 +221,8 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
 
 def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRecord:
     payload = resolve_prompt_image_variables(payload)
+    if payload.node_key == "skill.execute":
+        payload = payload.model_copy(update={"parameters": snapshot_skill_parameters(payload.parameters)})
     model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key)
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
     if requested_provider and model_alias.startswith(("google.", "openai.")) and not model_alias.startswith(f"{requested_provider}."):

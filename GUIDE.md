@@ -133,6 +133,14 @@ Prompt에 글자를 입력하면 별도 Run 없이 즉시 입력 준비 상태�
 
 Prompt를 수정하면 직접 연결된 기존 생성 결과는 무효화되고 다시 실행 가능한 상태로 바뀐다.
 
+`Skill Executor`는 연결된 Prompt를 프로젝트의 `.codex/skills/*/SKILL.md` 규칙으로 변환해 `Prompt`로 출력한다. 이 출력을 두 번째 `Prompt` 노드에 연결하면 생성된 내용을 그 노드에서 편집할 수 있고, 이미지 입력도 같은 노드에 함께 연결할 수 있다. Inspector에서 등록된 Skill과 Google/OpenAI 텍스트 모델을 선택한다.
+
+```text
+Prompt → Skill Executor → Prompt 2 → Image / Video Generator
+                              ↑
+                           Image 1
+```
+
 ## 6. 현재 제공되는 노드
 
 ### 6.1 Quick
@@ -140,6 +148,7 @@ Prompt를 수정하면 직접 연결된 기존 생성 결과는 무효화되고 
 | 노드 | 필수 입력 | 선택 입력 | 출력 | 설명 |
 | --- | --- | --- | --- | --- |
 | Prompt | 없음 | 없음 | `Prompt` | 다음 생성 Step에 전달할 텍스트 |
+| Skill Executor | `Prompt` | 없음 | `Prompt` | 프로젝트 Skill로 실행 가능한 Prompt를 생성 |
 | Image Generator | `Prompt` | `ReferenceAsset` | `Image` | 이미지 한 장 생성 |
 | Video Generator | `Prompt` | `Image × N`, `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Voiceover | `Prompt` | 없음 | `Audio` | Prompt를 음성으로 생성 |

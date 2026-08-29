@@ -65,6 +65,19 @@ def test_openai_responses_provider_returns_actual_response_id():
     assert client.responses.last["store"] is False
 
 
+def test_openai_skill_executor_uses_registered_skill_as_instructions():
+    client = FakeOpenAIClient()
+    service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)
+    request = payload("skill.execute", "openai.text.quality").model_copy(update={
+        "parameters": {"skill_id": "nottalggak-prompt-machine"},
+    })
+    result = service.execute(request, [])
+    assert result.output["title"] == "Generated master prompt"
+    assert result.schema_id == "prompt.master.v1"
+    assert "# NOTTALGGAK Prompt Machine" in client.responses.last["instructions"]
+    assert client.responses.last["input"] == "Create something"
+
+
 def test_openai_image_provider_maps_vertical_size_and_decodes_png():
     client = FakeOpenAIClient()
     service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)

@@ -11,6 +11,7 @@ from openai import OpenAI
 from .domain import ExperimentRunRequest
 from .providers import OPENAI_MODEL_REGISTRY
 from .providers_generation import GeneratedAsset, InputMedia, LiveGenerationResult
+from .project_skills import project_skill_system_prompt
 
 
 OPENAI_LIVE_REVISION = "openai-live.v1"
@@ -54,12 +55,18 @@ class OpenAIGenerationServices:
             raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
         input_ids = [item.artifact_id for item in inputs]
 
-        if payload.node_key in {"llm.assistant", "script.generate"}:
-            instructions = (
-                "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add meta commentary."
-                if payload.node_key == "script.generate"
-                else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
-            )
+        if payload.node_key in {"llm.assistant", "script.generate", "skill.execute"}:
+            if payload.node_key == "skill.execute":
+                instructions = project_skill_system_prompt(
+                    str(payload.parameters.get("skill_id") or ""),
+                    str(payload.parameters.get("skill_version") or "") or None,
+                )
+            else:
+                instructions = (
+                    "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add meta commentary."
+                    if payload.node_key == "script.generate"
+                    else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
+                )
             response = self.client.responses.create(
                 model=exact_model,
                 instructions=instructions,
@@ -70,10 +77,11 @@ class OpenAIGenerationServices:
             if not text:
                 raise RuntimeError("OpenAI Responses API returned no text")
             artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
+            skill_execution = payload.node_key == "skill.execute"
             return LiveGenerationResult(
-                {"kind": "text", "title": "Generated script" if artifact_type == "Script" else "Generated text", "text": text},
-                artifact_type, "script.v1" if artifact_type == "Script" else "openai.text.v1",
-                response.id, text.encode(), "text/plain", "result.txt", input_ids,
+                {"kind": "text", "title": "Generated script" if artifact_type == "Script" else "Generated master prompt" if skill_execution else "Generated text", "text": text},
+                artifact_type, "script.v1" if artifact_type == "Script" else "prompt.master.v1" if skill_execution else "openai.text.v1",
+                response.id, text.encode(), "text/plain", "master-prompt.txt" if skill_execution else "result.txt", input_ids,
             )
 
         if payload.node_key in {"image.generate", "image.edit"}:

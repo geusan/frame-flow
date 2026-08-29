@@ -119,6 +119,13 @@ export interface WorkspaceSummary {
   artifacts: number;
 }
 
+export interface ProjectSkillRecord {
+  id: string;
+  display_name: string;
+  description: string;
+  version: string;
+}
+
 export interface CanvasDocument {
   id: string;
   created_at: string;
@@ -371,6 +378,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
+  listSkills: () => request<ProjectSkillRecord[]>("/skills"),
   workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
   listCanvases: () => request<CanvasDocument[]>("/canvases"),
   createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),

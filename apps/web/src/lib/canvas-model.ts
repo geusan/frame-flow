@@ -5,7 +5,7 @@ export type NodeKind = "input" | "logic" | "generate" | "compose" | "review";
 export type ProviderName = "google" | "openai";
 export type StickyColor = "yellow" | "pink" | "blue" | "green" | "lavender" | "gray";
 export type CaptionAlignment = "left" | "center" | "right";
-export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "text" | "sticky" | "drawing" | "changeVoice" | "translate";
+export type IconName = "brief" | "format" | "reference" | "resolve" | "script" | "shot" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "skill" | "text" | "sticky" | "drawing" | "changeVoice" | "translate";
 
 export interface DrawingPoint {
   x: number;
@@ -73,6 +73,8 @@ export interface StudioNodeData extends Record<string, unknown> {
   lastRequestHash?: string;
   executionMode?: string;
   lastCostUsd?: number;
+  skillId?: string;
+  promptEdited?: boolean;
   resolution?: string;
   aspectRatio?: string;
   batchSize?: number;
@@ -130,18 +132,20 @@ export interface NodeTemplate {
     captionAlign?: CaptionAlignment;
     captionFontSize?: number;
     waitForInput?: boolean;
+    skillId?: string;
     stickyColor?: StickyColor;
     drawing?: DrawingDocument;
   };
 }
 
 export const nodeTemplates: NodeTemplate[] = [
-  { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "텍스트와 연결된 이미지들을 다음 Step으로 전달", icon: "brief", kind: "input", inputTypes: ["Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
+  { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "직접 입력하거나 상위 Prompt를 받아 이미지 참조와 함께 편집", icon: "brief", kind: "input", inputTypes: ["Prompt", "Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
   { id: "drawing-canvas", label: "Drawing Canvas", group: "Quick", data: { key: "utility.drawing", label: "Drawing canvas", description: "이미지를 배치하고 펜으로 지시사항을 표시", icon: "drawing", kind: "input", outputType: "Image", executable: false, drawing: { version: 1, width: 1280, height: 720, images: [], strokes: [] } } },
   { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "voice", label: "Voiceover", group: "Quick", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
   { id: "assistant", label: "LLM Assistant", group: "Quick", data: { key: "llm.assistant", label: "LLM assistant", description: "연결된 Prompt를 분석·변환", icon: "assistant", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Text", provider: "google", model: "text.quality", cost: "$0.03" } },
+  { id: "skill-executor", label: "Skill Executor", group: "Quick", data: { key: "skill.execute", label: "Skill executor", description: "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", icon: "skill", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Prompt", provider: "google", model: "text.quality", cost: "$0.03", skillId: "nottalggak-prompt-machine" } },
   { id: "folder", label: "Folders", group: "Advanced", visible: false, data: { key: "folder.group", label: "Folder", description: "Canvas 노드를 시각적으로 정리", icon: "folder", kind: "input", configText: "New folder", executable: false } },
 
   { id: "upload", label: "Upload", group: "References", data: { key: "asset.upload", label: "Upload", description: "로컬 이미지·영상·오디오 업로드", icon: "upload", kind: "input", outputType: "ReferenceAsset", executable: false } },
