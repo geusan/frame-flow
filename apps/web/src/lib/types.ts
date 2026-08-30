@@ -17,6 +17,7 @@ export type PortType =
   | "Prompt"
   | "ReferenceAsset"
   | "ReferenceAnalysis"
+  | "MotionTrack"
   | "ReferenceSet"
   | "Transcript"
   | "SceneList"
@@ -26,6 +27,7 @@ export type PortType =
   | "GenerationSpec"
   | "Script"
   | "ShotPlan"
+  | "Character"
   | "Image"
   | "ImageList"
   | "VideoClipList"
@@ -36,7 +38,7 @@ export type PortType =
   | "QCReport"
   | "Any";
 
-export type StudioView = "canvas" | "canvas-editor" | "images" | "videos" | "references" | "formats" | "runs" | "models";
+export type StudioView = "canvas" | "canvas-editor" | "characters" | "images" | "videos" | "references" | "formats" | "runs" | "models";
 
 export interface FormatCore {
   schema_version: "format.core.v1";

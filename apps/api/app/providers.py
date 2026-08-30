@@ -33,6 +33,7 @@ MODEL_REGISTRY = {
     "google.image.edit.fast": "gemini-3.1-flash-lite-image",
     "google.video.fast": "veo-3.1-fast-generate-001",
     "google.video.quality": "veo-3.1-generate-001",
+    "google.video.omni": "gemini-omni-1.1-flash",
     "google.tts.latest": "gemini-3.1-flash-tts-preview",
     "google.tts.fast": "gemini-2.5-flash-tts",
     "google.tts.quality": "gemini-2.5-pro-tts",
@@ -56,7 +57,12 @@ OPENAI_MODEL_REGISTRY = {
     "openai.tts.quality": "tts-1-hd",
 }
 
-ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY}
+FAL_MODEL_REGISTRY = {
+    "fal.image.flux2-lora": "fal-ai/flux-2/lora",
+    "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",
+}
+
+ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY, **FAL_MODEL_REGISTRY}
 
 
 def model_id_for_alias(logical_alias: str, *, gemini_api: bool = False) -> str | None:

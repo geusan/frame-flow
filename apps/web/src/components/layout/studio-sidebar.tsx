@@ -7,6 +7,7 @@ import {
   CircleHelp,
   Film,
   FileChartColumnIncreasing,
+  Headphones,
   Image as ImageIcon,
   Play,
   Settings,
@@ -29,7 +30,7 @@ import {
 import { API_BASE, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type WorkspaceCount = "canvases" | "characters" | "images" | "videos" | "runs";
+type WorkspaceCount = "canvases" | "characters" | "images" | "videos" | "audio" | "runs";
 
 interface NavigationItem {
   href: string;
@@ -43,6 +44,7 @@ const workspaceNavigation: NavigationItem[] = [
   { href: "/characters", label: "Characters", icon: ContactRound, count: "characters" },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
+  { href: "/asset/audio", label: "Audio", icon: Headphones, count: "audio" },
   { href: "/reference-results", label: "Reference results", icon: FileChartColumnIncreasing },
   { href: "/runs", label: "Runs", icon: Play, count: "runs" },
 ];

@@ -48,6 +48,12 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
     if any(not node_id for node_id in node_ids) or len(set(node_ids)) != len(node_ids):
         raise ValueError("Canvas node IDs must be present and unique")
     known = set(node_ids)
+    if payload.target_node_id and payload.target_node_id not in known:
+        raise ValueError("Canvas target node is not present in the graph")
+    if payload.target_node_id:
+        target = next(node for node in payload.nodes if str(node["id"]) == payload.target_node_id)
+        if dict(target.get("data") or {}).get("executable") is False:
+            raise ValueError("Canvas target node is not executable")
     edges = payload.edges
     if any(str(edge.get("source")) not in known or str(edge.get("target")) not in known for edge in edges):
         raise ValueError("Canvas edge references an unknown node")
@@ -58,12 +64,13 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         name=payload.name,
         status=NodeStatus.READY,
         progress=0,
-        graph_snapshot={"nodes": payload.nodes, "edges": payload.edges},
+        graph_snapshot={"nodes": payload.nodes, "edges": payload.edges, "target_node_id": payload.target_node_id},
     )
     db.add(run)
     for ordinal, node in enumerate(payload.nodes):
         data = dict(node.get("data") or {})
-        executable = data.get("executable") is not False
+        normally_executable = data.get("executable") is not False
+        executable = normally_executable and (payload.target_node_id is None or payload.target_node_id == str(node["id"]))
         db.add(CanvasNodeRunRecord(
             id=new_id("canvasnode"),
             run_id=run.id,
@@ -329,7 +336,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
         if source_data.get("outputType") == "Prompt":
             append_prompt_ancestors(source_id)
         append_input(source_id)
-    parameters = dict(data.get("parameters") or {})
+    parameters = dict(data.get("config") or data.get("parameters") or {})
     parameters.setdefault("resolution", data.get("resolution"))
     parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
     parameters.setdefault("transition", data.get("transition"))
@@ -337,6 +344,10 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("source_language", data.get("sourceLanguage"))
     parameters.setdefault("separate_music", data.get("separateMusic"))
     parameters.setdefault("scene_threshold", data.get("sceneThreshold"))
+    parameters.setdefault("motion_sample_fps", data.get("motionSampleFps"))
+    parameters.setdefault("motion_max_width", data.get("motionMaxWidth"))
+    parameters.setdefault("motion_min_confidence", data.get("motionMinConfidence"))
+    parameters.setdefault("motion_face_blendshapes", data.get("motionFaceBlendshapes"))
     parameters.setdefault("target_language", data.get("targetLanguage"))
     parameters.setdefault("voice_name", data.get("voiceName"))
     parameters.setdefault("caption_x", data.get("captionX"))
@@ -345,6 +356,12 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("caption_font_size", data.get("captionFontSize"))
     parameters.setdefault("skill_id", data.get("skillId"))
     parameters.setdefault("provider", data.get("provider"))
+    parameters.setdefault("character_name", data.get("characterName"))
+    parameters.setdefault("shot_count", data.get("shotCount"))
+    parameters.setdefault("duration_seconds", data.get("durationSeconds"))
+    parameters.setdefault("lora_url", data.get("loraUrl"))
+    parameters.setdefault("lora_scale", data.get("loraScale"))
+    parameters.setdefault("trigger_word", data.get("triggerWord"))
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,
         node_id=node.canvas_node_id,

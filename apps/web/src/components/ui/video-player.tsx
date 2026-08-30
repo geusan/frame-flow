@@ -146,7 +146,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   className = "",
   style,
   autoPlay = false,
-  muted = true,
+  muted,
   loop = false,
   controls = true,
   compact = false,
@@ -157,11 +157,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
 }, ref) {
   const playerRef = useRef<MediaPlayerInstance>(null);
   const [metadata, setMetadata] = useState<VideoPlayerMetadata | null>(null);
+  const startsMuted = muted ?? autoPlay;
 
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => playerRef.current?.currentTime ?? 0,
     seek: (seconds) => { if (playerRef.current) playerRef.current.currentTime = Math.max(0, seconds); },
-    play: async () => { await playerRef.current?.play(); },
+    play: async () => {
+      if (playerRef.current) playerRef.current.volume = 1;
+      await playerRef.current?.play();
+    },
     pause: () => { playerRef.current?.pause(); },
   }), []);
 
@@ -177,10 +181,12 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
     src={mimeType ? { src, type: mimeType as VideoMimeType } : src}
     title={title}
     autoPlay={autoPlay}
-    muted={muted}
+    muted={startsMuted}
+    volume={1}
     loop={loop}
     playsInline
     preload={preload}
+    onPlay={() => { if (playerRef.current) playerRef.current.volume = 1; }}
     style={{ ...style, aspectRatio: style?.aspectRatio ?? aspectRatio, "--ff-video-fit": fit } as PlayerStyle}
   >
     <MediaProvider />

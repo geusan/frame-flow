@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
 from .domain import ExperimentRunRequest
+from .motion_extraction import MOTION_EXTRACTOR_REVISION, MOTION_TRACK_VERSION, extract_holistic_motion
 from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services, get_speech_recognizer
 from .reference_analysis import REFERENCE_ANALYSIS_REVISION, analyze_reference_video
 from .service import create_artifact
@@ -31,6 +32,7 @@ LOCAL_MODELS: dict[str, tuple[str, str]] = {
     "script.fit_duration": ("local.script-fit", "script-fit.v1"),
     "shot.plan": ("local.shot-plan", "shot-plan.v1"),
     "reference.decompose": ("reference-analysis.pipeline", "reference-analysis.v1"),
+    "motion.extract": ("local.mediapipe.holistic", "mediapipe-holistic-landmarker"),
     "video.edit": ("local.ffmpeg", "ffmpeg"),
     "video.change_voice": ("local.ffmpeg", "ffmpeg"),
     "video.translate": ("google.localization.pipeline", "chirp_3+gemini-3.1-pro-preview+gemini-2.5-flash-tts"),
@@ -75,6 +77,8 @@ def executor_revision(node_key: str) -> str:
         mode = os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower()
         separator = os.getenv("REFERENCE_AUDIO_SEPARATOR", "demucs").strip().lower()
         return f"{REFERENCE_ANALYSIS_REVISION}:{mode}:{separator}"
+    if node_key == "motion.extract":
+        return MOTION_EXTRACTOR_REVISION
     if node_key == "video.translate":
         return LOCALIZATION_EXECUTOR_REVISION
     if node_key == "subtitle.align" and os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").lower() == "live":
@@ -633,6 +637,7 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
             "access_scope": "reference-analyzer-only",
             "storage_scope": "reference",
             "source_artifact_id": video.record.id,
+            "duration_ms": int(bundle.manifest["source"]["duration_ms"]),
             "immutable": True,
         }
         source_roles = {video.record.id: "source_video"}
@@ -721,6 +726,48 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
             manifest_inputs,
             metadata={**metadata, "component_artifact_ids": bundle.manifest["artifacts"]},
             input_artifact_roles=manifest_roles,
+        )
+
+    if node_key == "motion.extract":
+        video = _require(artifacts, "Video", "Video", "FinalVideo", "ProxyVideo", "ReferenceOriginal")
+        motion = extract_holistic_motion(
+            video.data,
+            video.content_type,
+            sample_fps=float(payload.parameters.get("motion_sample_fps") or os.getenv("MOTION_EXTRACT_FPS") or 12),
+            max_width=int(payload.parameters.get("motion_max_width") or os.getenv("MOTION_EXTRACT_MAX_WIDTH") or 640),
+            min_confidence=float(payload.parameters.get("motion_min_confidence") or 0.5),
+            output_face_blendshapes=bool(payload.parameters.get("motion_face_blendshapes", True)),
+        )
+        content = json.dumps(motion, ensure_ascii=False, separators=(",", ":")).encode()
+        summary = motion["summary"]
+        coverage = summary["coverage"]
+        return CanvasOperationResult(
+            {
+                "kind": "json",
+                "title": f"Holistic motion · {summary['frame_count']} frames",
+                "frameCount": summary["frame_count"],
+                "sampleFps": motion["source"]["sample_fps"],
+                "faceCoverage": coverage["face"],
+                "poseCoverage": coverage["pose"],
+                "leftHandCoverage": coverage["left_hand"],
+                "rightHandCoverage": coverage["right_hand"],
+            },
+            "MotionTrack",
+            MOTION_TRACK_VERSION,
+            f"local_{digest[:20]}",
+            content,
+            "application/json",
+            "motion-track.json",
+            input_ids,
+            metadata={
+                "source": "mediapipe_holistic",
+                "duration_ms": motion["source"]["duration_ms"],
+                "frame_count": summary["frame_count"],
+                "sample_fps": motion["source"]["sample_fps"],
+                "coverage": coverage,
+                "immutable": True,
+            },
+            input_artifact_roles={video.record.id: "source_video"},
         )
 
     if node_key in {"script.fit_duration", "shot.plan"}:

@@ -163,10 +163,14 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | Upload | 로컬 파일 또는 영상 URL | `ReferenceAsset` | 이미지·영상·오디오 파일 선택, 공개 영상 URL 가져오기 |
 | Assets | 저장 Asset 한 개 | `ReferenceAsset` | 미니 Popover에서 저장된 이미지·비디오 하나 선택 |
 | Video Reference Analyzer | `Video` | `ReferenceAnalysis` | STT·음악 구간/2-stem·컷·액션·화면 자막 위치·효과음을 하나의 타임라인으로 분석 |
+| Motion Extractor | `Video` | `MotionTrack` | MediaPipe Holistic로 포즈·얼굴·좌우 손가락 랜드마크 추출 |
+| Motion Control Video | `MotionTrack` | `Video` | 랜드마크를 생성 모델이 읽을 24/30fps 컬러 스켈레톤 영상으로 렌더 |
 
 `Video Reference Analyzer`는 Canvas에 보이는 하나의 composite 노드다. 내부에서는 FFmpeg 컷 검출과 오디오 추출, Chirp 3 STT, Gemini 영상·오디오 의미 분석을 수행하고 `reference.decomposition.v1` manifest를 주 Artifact로 저장한다. Transcript JSON, SRT, 원본 WAV와 선택적인 vocals/accompaniment WAV는 manifest의 component Artifact로 연결된다. Inspector에서 언어 힌트, 컷 민감도와 stem 생성 여부를 설정하고 분석 lane과 오디오 stem을 확인할 수 있다.
 
 운영 기본값은 `REFERENCE_ANALYSIS_MODE=live`이며 Google Provider 자격증명이 필요하다. `REFERENCE_AUDIO_SEPARATOR=demucs`일 때 `demucs` 실행 파일이 설치되어 있으면 vocals/accompaniment를 생성한다. Demucs가 없으면 STT·컷·액션·자막·음악 구간·효과음 분석은 유지되고 manifest는 music separation 경고와 함께 `partial`로 저장된다. accompaniment에는 효과음이 남을 수 있으므로 순수 음악이라고 간주하지 않는다. 분석 입력은 최대 10분이다.
+
+`Motion Control Video`는 Registry 기반 `motion.control_video@1` Node다. `data.motion_track.v1` 입력을 받아 몸·얼굴·손가락 좌표를 보간하고 무음 H.264 MP4를 만든다. 기본값은 720px 너비, 24fps, 어두운 배경이며 몸·얼굴·손을 각각 끌 수 있다. 결과 Artifact는 `motion.control_video.v1` Schema ID와 원본 MotionTrack의 `motion_track` lineage role을 기록한다. 생성된 제어 영상은 기존 Video Generator의 Video 입력에 연결해 캐릭터 이미지/Character와 함께 모션 가이드로 사용할 수 있다.
 
 사이드바의 Asset Library는 저장된 이미지와 비디오를 탭·검색·미리보기로 모아 보여준다. 비디오 플레이어에서 원하는 위치로 이동한 뒤 `Capture frame`을 누르면 해당 시점의 JPEG가 새 Image Artifact로 저장된다. `Prompt search`는 Google 또는 OpenAI Provider와 논리적 모델 별칭을 선택할 수 있다. 영상을 샘플링한 뒤 선택한 Vision 모델이 Prompt 관련도를 평가해 후보 썸네일·점수·타임스탬프를 반환한다. 후보를 누르면 플레이어가 해당 위치로 seek하며 선택 장면을 캡처할 수 있다. 캡처 이미지는 원본 Video Artifact ID, 정확한 타임스탬프, 검색 Prompt·점수·Provider·논리 모델·정확한 모델 ID와 FFmpeg 작업 버전을 lineage로 보존한다. Canvas의 Assets 노드는 같은 목록을 축소한 Popover를 열며, 이미지/비디오 탭에서 한 개를 선택해 해당 노드 출력으로 사용한다. ReferenceSet을 Canvas 생성 입력으로 직접 사용하지 않는다.
 
@@ -246,6 +250,17 @@ Video Generator A → Video ─┐
 Video Generator B → Video ─┼→ Video Editor → Video → Translate
 Video Generator C → Video ─┘                  └→ Change Voice
 ```
+
+### MotionTrack으로 캐릭터 모션 가이드 생성
+
+```text
+Reference Video → Motion Extractor → MotionTrack → Motion Control Video ─┐
+Character 선택 ───────────────────────────────────────────────── Character ─┤
+장면 시작 이미지 ─────────────────────────────────────────────────── Image ─┤
+Prompt ───────────────────────────────────────────────────────────── Prompt ─┴→ Video Generator → Video
+```
+
+Motion Control Video는 좌표를 캐릭터 Rig에 직접 적용하지 않는다. 현재 경로에서는 몸·얼굴·손가락이 그려진 제어 영상을 Gemini Omni의 모션 Reference로 사용한다. 프레임 단위의 결정적 리타게팅이 필요하면 별도의 Rigged Character와 AnimationClip Executor 계약이 필요하다.
 
 ## 8. Step 실행
 

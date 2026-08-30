@@ -65,6 +65,7 @@ function providerIcon(provider: ProviderSetting["provider"]): ReactNode {
   if (provider === "kling") return <WandSparkles size={19} />;
   if (provider === "minimax") return <Video size={19} />;
   if (provider === "fal") return <Zap size={19} />;
+  if (provider === "r2") return <Cloud size={19} />;
   return <ServerCog size={19} />;
 }
 

@@ -87,7 +87,7 @@ export interface ProviderAuthMethod {
 }
 
 export interface ProviderSetting {
-  provider: "openai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal";
+  provider: "openai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "r2";
   label: string;
   description: string;
   enabled: boolean;
@@ -117,6 +117,7 @@ export interface WorkspaceSummary {
   images: number;
   characters: number;
   videos: number;
+  audio: number;
   artifacts: number;
 }
 
@@ -137,6 +138,27 @@ export interface CharacterRecord {
   cover_url?: string;
   image_count: number;
   images: Array<{ artifact_id: string; role: string; url: string }>;
+  lora?: {
+    status: "UNTRAINED" | "IN_QUEUE" | "IN_PROGRESS" | "READY" | "FAILED" | "CANCELLED";
+    trigger_word: string;
+    training_artifact_id?: string;
+    artifact_id?: string;
+    weights_url?: string;
+    base_model: string;
+    error?: string;
+  };
+}
+
+export interface CharacterLoraTrainingState {
+  character_id: string;
+  status: NonNullable<CharacterRecord["lora"]>["status"];
+  trigger_word: string;
+  training_artifact_id?: string;
+  lora_artifact_id?: string;
+  weights_url?: string;
+  base_model: string;
+  request_id?: string;
+  error?: string;
 }
 
 export interface CanvasDocument {
@@ -150,6 +172,60 @@ export interface CanvasDocument {
   edge_count: number;
   active_run_id?: string;
   last_run?: { id: string; status: string; progress: number; created_at: string };
+}
+
+export interface NodeDefinitionRecord {
+  schema_version: "node.definition.v1";
+  type_key: string;
+  contract_version: number;
+  definition_digest: string;
+  lifecycle: "ACTIVE" | "DEPRECATED" | "RETIRED" | "BLOCKED";
+  display: {
+    label: string;
+    description: string;
+    category: "Quick" | "References" | "Image" | "Video" | "Audio" | "Utilities" | "Advanced";
+    icon: string;
+    cost_label?: string;
+    keywords: string[];
+  };
+  ports: {
+    inputs: Array<{ key: string; type: string; label: string; required: boolean; multiple: boolean }>;
+    outputs: Array<{ key: string; type: string; label: string; required: boolean; multiple: boolean }>;
+  };
+  config_schema: {
+    type: "object";
+    additionalProperties: false;
+    required?: string[];
+    properties: Record<string, {
+      type: "string" | "integer" | "number" | "boolean";
+      title?: string;
+      description?: string;
+      default?: string | number | boolean;
+      enum?: Array<string | number>;
+      minimum?: number;
+      maximum?: number;
+      exclusiveMinimum?: number;
+      minLength?: number;
+      maxLength?: number;
+      pattern?: string;
+      "x-workflow-input"?: { enabled: boolean; type: string };
+    }>;
+  };
+  binding_policy: { workflow_inputs: "schema" | "none" };
+  execution: {
+    kind: "source" | "provider" | "local" | "human_gate" | "utility" | "composite";
+    executor: string;
+    revision: string;
+    provider: string;
+    model_alias: string;
+  };
+  editor: { kind: string };
+  artifact_contract: {
+    primary_type: string;
+    schema_id: string;
+    input_roles: Record<string, string>;
+    output_role: string;
+  };
 }
 
 export interface WorkflowRunRecord {
@@ -202,6 +278,8 @@ export interface ExperimentOutput {
   url?: string;
   text?: string;
   mimeType?: string;
+  characterId?: string;
+  imageCount?: number;
 }
 
 export interface ExperimentRun {
@@ -400,9 +478,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
+  listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
   listSkills: () => request<ProjectSkillRecord[]>("/skills"),
   workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
   listCharacters: () => request<CharacterRecord[]>("/characters"),
+  startCharacterLoraTraining: (characterId: string, payload: { trigger_word: string; steps?: number; learning_rate?: number }) => request<CharacterLoraTrainingState>(`/characters/${characterId}/lora-training`, { method: "POST", body: JSON.stringify(payload) }),
+  getCharacterLoraTraining: (characterId: string) => request<CharacterLoraTrainingState>(`/characters/${characterId}/lora-training`),
   listCanvases: () => request<CanvasDocument[]>("/canvases"),
   createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
   getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),
@@ -448,6 +529,7 @@ export const frameflowApi = {
     }
   },
   getArtifact: (artifactId: string) => request<ArtifactDetail>(`/artifacts/${artifactId}`),
+  createAudioAsset: (artifactId: string) => request<UploadedArtifact>(`/artifacts/${artifactId}/audio-asset`, { method: "POST" }),
   saveManualImageEdit: (artifactId: string, image: Blob, document: ImageEditDocument) => {
     const body = new FormData();
     body.append("file", new File([image], `edited-${artifactId}.png`, { type: "image/png" }));
@@ -460,7 +542,7 @@ export const frameflowApi = {
     const query = new URLSearchParams({ direction, depth: String(depth) });
     return request<ArtifactLineageGraph>(`/artifacts/${artifactId}/lineage?${query}`);
   },
-  createCanvasRun: (payload: { canvas_id: string; name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
+  createCanvasRun: (payload: { canvas_id: string; name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; target_node_id?: string }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
   getCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}`),
   cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),
   selectCanvasCandidate: (runId: string, canvasNodeId: string, artifactId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/select`, { method: "POST", body: JSON.stringify({ artifact_id: artifactId }) }),

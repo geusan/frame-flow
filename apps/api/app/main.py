@@ -42,6 +42,7 @@ from .domain import (
     CanvasRunRequest,
     CanvasRunResponse,
     CanvasSelectionRequest,
+    CharacterLoraTrainRequest,
     ProviderSettingsUpdateRequest,
     ExperimentRunRequest,
     ExperimentRunResponse,
@@ -67,11 +68,15 @@ from .domain import (
 )
 from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
 from .artifact_lineage import artifact_lineage_graph
+from .character_lora import character_lora_state, refresh_character_lora_training, start_character_lora_training as submit_character_lora_training
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
 from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
 from .media_compat import BrowserVideoError
-from .providers import MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
+from .nodes import node_registry
+from .providers import FAL_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
+from .providers_fal import get_fal_generation_services
+from .r2_training_storage import get_r2_training_dataset_store
 from .provider_settings import (
     PROVIDER_DEFINITIONS,
     apply_provider_settings_to_environment,
@@ -178,6 +183,11 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
+@app.get("/node-definitions")
+def list_node_definitions() -> list[dict[str, Any]]:
+    return [definition.public_payload() for definition in node_registry.list(lifecycle="ACTIVE")]
+
+
 @app.get("/skills")
 def project_skills() -> list[dict[str, str]]:
     return [skill.public_payload() for skill in list_project_skills()]
@@ -215,6 +225,7 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "images": artifact_counts.get("Image", 0),
         "characters": artifact_counts.get("Character", 0),
         "videos": artifact_counts.get("Video", 0) + artifact_counts.get("FinalVideo", 0),
+        "audio": artifact_counts.get("Audio", 0),
         "artifacts": sum(artifact_counts.values()),
     }
 
@@ -350,7 +361,7 @@ def list_workflow_runs(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 def create_experiment(payload: ExperimentRunRequest, db: Session = Depends(get_db)) -> ExperimentRunResponse:
     try:
         record = run_experiment(db, payload)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(422, str(exc)) from exc
     return experiment_response(record)
 
@@ -359,7 +370,7 @@ def create_experiment(payload: ExperimentRunRequest, db: Session = Depends(get_d
 async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_db)) -> CanvasRunResponse:
     try:
         run = create_canvas_run(db, payload)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(422, str(exc)) from exc
     canvas = db.get(CanvasRecord, payload.canvas_id)
     if canvas:
@@ -544,7 +555,7 @@ def inspect_references(payload: ReferenceInspectRequest, db: Session = Depends(g
 def import_reference(payload: ReferenceImportRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
     try:
         canonical = canonicalize_url(payload.metadata.canonical_url)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(422, str(exc)) from exc
     existing = db.scalar(select(ReferenceRecord).where(ReferenceRecord.canonical_url == canonical))
     if existing:
@@ -895,7 +906,7 @@ async def select_candidate(node_run_id: str, payload: SelectionRequest, db: Sess
         return {"node_run_id": node_run_id, "selected_artifact_id": payload.artifact_id, "status": NodeStatus.WAITING_INPUT, "signal_accepted": True}
     try:
         await local_engine.resume_after_selection(run_id, node_run_id, payload.artifact_id)
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"node_run_id": node_run_id, "selected_artifact_id": payload.artifact_id, "status": NodeStatus.SUCCEEDED}
 
@@ -958,8 +969,51 @@ def list_characters(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
             "cover_url": artifact_content_url(cover_id) if cover_id else None,
             "image_count": len(images),
             "images": images,
+            "lora": {
+                "status": str(metadata.get("lora_status") or "UNTRAINED"),
+                "trigger_word": str(metadata.get("lora_trigger_word") or ""),
+                "training_artifact_id": metadata.get("lora_training_artifact_id"),
+                "artifact_id": metadata.get("lora_artifact_id"),
+                "weights_url": metadata.get("lora_url"),
+                "base_model": str(metadata.get("lora_base_model") or "fal-ai/flux-2"),
+                "error": metadata.get("lora_error"),
+            },
         })
     return result
+
+
+def _character_lora_response(character: ArtifactRecord) -> dict[str, Any]:
+    return character_lora_state(character)
+
+
+@app.post("/characters/{character_id}/lora-training", status_code=status.HTTP_202_ACCEPTED)
+def start_character_lora_training(
+    character_id: str,
+    payload: CharacterLoraTrainRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        return submit_character_lora_training(
+            db,
+            character_id,
+            trigger_word=payload.trigger_word,
+            steps=payload.steps,
+            learning_rate=payload.learning_rate,
+            service=get_fal_generation_services(),
+            dataset_store=get_r2_training_dataset_store(),
+        )
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "character not found" else 409 if "already running" in str(exc) else 422
+        raise HTTPException(status_code, str(exc)) from exc
+
+
+@app.get("/characters/{character_id}/lora-training")
+def get_character_lora_training(character_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    try:
+        return refresh_character_lora_training(db, character_id, service=get_fal_generation_services())
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "character not found" else 409 if "artifact is missing" in str(exc) else 422
+        raise HTTPException(status_code, str(exc)) from exc
 
 
 @app.get("/artifacts/{artifact_id}", response_model=ArtifactResponse)
@@ -968,6 +1022,80 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)) -> ArtifactRes
     if not artifact:
         raise HTTPException(404, "artifact not found")
     return artifact_response(artifact)
+
+
+@app.post("/artifacts/{artifact_id}/audio-asset", status_code=status.HTTP_201_CREATED)
+def create_audio_asset_from_reference(artifact_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    source = db.get(ArtifactRecord, artifact_id)
+    if not source:
+        raise HTTPException(404, "reference audio artifact not found")
+    allowed_types = {
+        "ReferenceAudioMix": "reference-audio.wav",
+        "ReferenceVocals": "vocals.wav",
+        "ReferenceAccompaniment": "accompaniment.wav",
+    }
+    if source.type not in allowed_types:
+        raise HTTPException(415, "only Reference Analyzer audio outputs can be saved as Audio assets")
+
+    existing = next((
+        artifact
+        for artifact in db.scalars(select(ArtifactRecord).where(ArtifactRecord.type == "Audio")).all()
+        if artifact.metadata_json.get("source") == "reference_audio_export"
+        and artifact.metadata_json.get("source_artifact_id") == source.id
+    ), None)
+    if existing:
+        storage_metadata = existing.metadata_json.get("storage") or {}
+        return {
+            "artifact_id": existing.id,
+            "type": existing.type,
+            "content_type": str(storage_metadata.get("content_type") or "audio/wav"),
+            "size_bytes": int(storage_metadata.get("size_bytes") or 0),
+            "filename": str(existing.metadata_json.get("filename") or allowed_types[source.type]),
+            "source": "reference_audio_export",
+            "url": artifact_content_url(existing.id),
+        }
+
+    storage = get_storage()
+    try:
+        bucket, key = storage_location(source.uri, source.metadata_json)
+        content = storage.get_bytes(bucket=bucket, key=key)
+    except StorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+    source_storage = source.metadata_json.get("storage") or {}
+    content_type = str(source_storage.get("content_type") or "audio/wav")
+    filename = str(source.metadata_json.get("filename") or allowed_types[source.type])
+    artifact = create_artifact(
+        db,
+        "Audio",
+        schema_id="audio.asset.v1",
+        input_artifact_ids=[source.id],
+        input_artifact_roles={source.id: "reference_audio_source"},
+        metadata={
+            "source": "reference_audio_export",
+            "source_artifact_id": source.id,
+            "reference_component_type": source.type,
+            "filename": filename,
+            "duration_ms": int(source.metadata_json.get("duration_ms") or 0),
+            "immutable": True,
+            "storage_scope": "generation",
+        },
+        content=content,
+        content_type=content_type,
+        filename=filename,
+    )
+    audit(db, "artifact.reference_audio_exported", artifact.id, {"source_artifact_id": source.id, "source_type": source.type})
+    db.commit()
+    artifact_storage = artifact.metadata_json.get("storage") or {}
+    return {
+        "artifact_id": artifact.id,
+        "type": artifact.type,
+        "content_type": str(artifact_storage.get("content_type") or content_type),
+        "size_bytes": int(artifact_storage.get("size_bytes") or len(content)),
+        "filename": filename,
+        "source": "reference_audio_export",
+        "url": artifact_content_url(artifact.id),
+    }
 
 
 @app.get("/artifacts/{artifact_id}/lineage")
@@ -1539,4 +1667,17 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         "configuration": "OPENAI_API_KEY configured" if openai_configured else "OPENAI_API_KEY is not set",
         **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in OPENAI_MODEL_REGISTRY.items())
+    fal_settings = get_provider_record(db, "fal")
+    fal_configured = bool(fal_settings and provider_is_configured(fal_settings))
+    rows.extend({
+        "logical_alias": alias,
+        "exact_model_id": model_id,
+        "provider": "fal.ai",
+        "modality": alias.split(".")[1],
+        "region": "fal Queue API",
+        "status": "active" if fal_configured else "disabled",
+        "configured": fal_configured,
+        "configuration": "FAL_KEY configured" if fal_configured else "FAL_KEY is not set",
+        **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
+    } for alias, model_id in FAL_MODEL_REGISTRY.items())
     return rows

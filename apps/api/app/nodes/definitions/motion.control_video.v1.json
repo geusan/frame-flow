@@ -1,0 +1,107 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "motion.control_video",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Motion Control Video",
+    "description": "MotionTrack의 포즈·얼굴·손가락 랜드마크를 생성 모델용 스켈레톤 영상으로 렌더",
+    "category": "References",
+    "icon": "motion",
+    "cost_label": "$0.00",
+    "keywords": ["motion", "control", "skeleton", "retarget", "hands", "fingers"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "motion", "type": "data.motion_track.v1", "label": "MotionTrack", "required": true }
+    ],
+    "outputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Control Video" }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["width", "output_fps", "theme", "draw_pose", "draw_face", "draw_hands", "line_width", "point_radius"],
+    "properties": {
+      "width": {
+        "type": "integer",
+        "enum": [540, 720, 1080],
+        "default": 720,
+        "title": "Render width",
+        "description": "원본 MotionTrack 비율을 유지하는 출력 영상 너비입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "output_fps": {
+        "type": "integer",
+        "enum": [24, 30],
+        "default": 24,
+        "title": "Output FPS",
+        "description": "랜드마크 사이를 보간해 생성할 제어 영상 프레임률입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "theme": {
+        "type": "string",
+        "enum": ["dark", "light"],
+        "default": "dark",
+        "title": "Background",
+        "description": "생성 모델이 읽을 스켈레톤 영상 배경입니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "draw_pose": {
+        "type": "boolean",
+        "default": true,
+        "title": "Body pose",
+        "description": "몸통과 사지 포즈를 포함합니다.",
+        "x-workflow-input": { "enabled": true, "type": "boolean" }
+      },
+      "draw_face": {
+        "type": "boolean",
+        "default": true,
+        "title": "Face contours",
+        "description": "얼굴 방향·눈·입 윤곽을 포함합니다.",
+        "x-workflow-input": { "enabled": true, "type": "boolean" }
+      },
+      "draw_hands": {
+        "type": "boolean",
+        "default": true,
+        "title": "Hands and fingers",
+        "description": "좌우 손과 손가락 21개 랜드마크를 포함합니다.",
+        "x-workflow-input": { "enabled": true, "type": "boolean" }
+      },
+      "line_width": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 12,
+        "default": 5,
+        "title": "Line width",
+        "description": "스켈레톤 선 두께입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "point_radius": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 12,
+        "default": 4,
+        "title": "Joint size",
+        "description": "관절과 손끝 점 크기입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "local",
+    "executor": "motion-control-video",
+    "revision": "motion-control-video.v1",
+    "provider": "local",
+    "model_alias": "local.motion-control-video"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Video",
+    "schema_id": "motion.control_video.v1",
+    "input_roles": { "data.motion_track.v1": "motion_track" },
+    "output_role": "motion_control_video"
+  }
+}

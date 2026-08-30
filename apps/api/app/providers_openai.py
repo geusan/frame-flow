@@ -10,7 +10,14 @@ from openai import OpenAI
 
 from .domain import ExperimentRunRequest
 from .providers import OPENAI_MODEL_REGISTRY
-from .providers_generation import GeneratedAsset, InputMedia, LiveGenerationResult
+from .providers_generation import (
+    CharacterGenerationResult,
+    CharacterImageAsset,
+    GeneratedAsset,
+    InputMedia,
+    LiveGenerationResult,
+    character_shot_prompts,
+)
 from .project_skills import project_skill_system_prompt
 
 
@@ -47,13 +54,58 @@ class OpenAIGenerationServices:
             project=self.config.project,
         )
 
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult:
+    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias
         try:
             exact_model = OPENAI_MODEL_REGISTRY[logical_model]
         except KeyError as exc:
             raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
         input_ids = [item.artifact_id for item in inputs]
+
+        if payload.node_key == "character.generate":
+            size = _image_size(str(payload.parameters.get("aspect_ratio") or "9:16"))
+            references = [item for item in inputs if item.artifact_type == "Image"][:3]
+            name = str(payload.parameters.get("character_name") or "Generated character").strip() or "Generated character"
+            shots = character_shot_prompts(payload.prompt, int(payload.parameters.get("shot_count") or 6))
+            generated_assets: list[CharacterImageAsset] = []
+            canonical: InputMedia | None = references[0] if references else None
+            supporting_references = references[1:] if references else []
+            request_id = ""
+            for index, (role, shot_prompt) in enumerate(shots):
+                image_inputs = [*([canonical] if canonical else []), *supporting_references][:4]
+                common = {
+                    "model": exact_model,
+                    "prompt": shot_prompt,
+                    "n": 1,
+                    "size": size,
+                    "quality": str(payload.parameters.get("quality") or "medium"),
+                    "output_format": "png",
+                }
+                response = self.client.images.edit(
+                    image=[(f"input-{item_index}.png", item.data, item.content_type) for item_index, item in enumerate(image_inputs, start=1)],
+                    **common,
+                ) if image_inputs else self.client.images.generate(**common)
+                images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
+                if not images:
+                    raise RuntimeError("OpenAI Images API returned no character image")
+                data = images[0]
+                request_id = request_id or f"openai_{hashlib.sha256((shot_prompt + str(response.created)).encode()).hexdigest()[:20]}"
+                canonical = canonical or InputMedia("generated-canonical", "Image", data, "image/png")
+                generated_assets.append(CharacterImageAsset(
+                    data,
+                    "image/png",
+                    f"character-{index + 1:02d}-{role}.png",
+                    role,
+                    shot_prompt,
+                ))
+            return CharacterGenerationResult(
+                {"kind": "image", "title": f"{name} · {len(generated_assets)} views", "mimeType": "image/png"},
+                request_id,
+                input_ids,
+                name,
+                payload.prompt,
+                tuple(generated_assets),
+            )
 
         if payload.node_key in {"llm.assistant", "script.generate", "skill.execute"}:
             if payload.node_key == "skill.execute":

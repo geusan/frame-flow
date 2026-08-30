@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -183,6 +184,99 @@ class GoogleImageProvider(GoogleProviderBase):
 
 
 class GoogleVideoProvider(GoogleProviderBase):
+    def generate_omni(
+        self,
+        *,
+        prompt: str,
+        logical_model: str = "google.video.omni",
+        aspect_ratio: str = "9:16",
+        resolution: str = "720p",
+        reference_images: list[tuple[bytes, str]] | None = None,
+        reference_videos: list[tuple[bytes, str]] | None = None,
+    ) -> list[GeneratedBinary]:
+        if not self.config.api_key:
+            raise GoogleProviderError("Gemini Omni video generation requires a Gemini API key")
+        images = (reference_images or [])[:4]
+        videos = (reference_videos or [])[:1]
+        exact_model = self.exact_model(logical_model)
+        inputs: list[dict[str, str]] = []
+        for data, mime_type in images:
+            inputs.append({"type": "image", "data": base64.b64encode(data).decode("ascii"), "mime_type": mime_type})
+        for data, mime_type in videos:
+            inputs.append({"type": "video", "data": base64.b64encode(data).decode("ascii"), "mime_type": mime_type})
+        reference_tags = " ".join(
+            [*(f"<IMAGE_REF_{index}>" for index in range(len(images))), *(f"<VIDEO_REF_{index}>" for index in range(len(videos)))]
+        )
+        role_instruction = (
+            f"[# References {reference_tags}] " if reference_tags else ""
+        ) + (
+            "Use the image references as the character identity and appearance source. " if images else ""
+        ) + (
+            "Use the video reference as motion, timing, expression, and performance guidance; do not copy its person's identity. " if videos else ""
+        )
+        rendered_prompt = (
+            f"{role_instruction}{prompt.strip()}\n\n"
+            "Preserve the referenced character's face, body proportions, hair, distinctive anatomy, accessories, outfit, palette, and rendering style in every frame. "
+            "Exactly one depiction of the character. Single continuous shot, no scene cuts, no identity drift, morphing, duplicate body, extra limbs, text, labels, or contact-sheet layout."
+        )
+        inputs.append({"type": "text", "text": rendered_prompt})
+        response = self.client.interactions.create(
+            model=exact_model,
+            input=inputs,
+            response_format={"type": "video", "aspect_ratio": aspect_ratio, "resolution": resolution},
+            generation_config={"video_config": {"task": "reference_to_video" if images or videos else "text_to_video"}},
+            store=False,
+            timeout=900,
+        )
+        generated: list[GeneratedBinary] = []
+        provider_request_id = str(
+            getattr(response, "id", "")
+            or _request_id(request_hash(logical_model, {"prompt": rendered_prompt}))
+        )
+
+        def append_video_output(output: Any) -> None:
+            data = getattr(output, "data", None)
+            if not data:
+                return
+            generated.append(GeneratedBinary(
+                base64.b64decode(data),
+                getattr(output, "mime_type", None) or "video/mp4",
+                exact_model,
+                provider_request_id,
+            ))
+
+        top_level_video = getattr(response, "output_video", None)
+        if top_level_video is not None:
+            append_video_output(top_level_video)
+        for output in getattr(response, "outputs", None) or []:
+            if getattr(output, "type", None) == "video":
+                append_video_output(output)
+        if not generated:
+            for step in getattr(response, "steps", None) or []:
+                for content in getattr(step, "content", None) or []:
+                    if getattr(content, "type", None) == "video":
+                        append_video_output(content)
+        if not generated:
+            raw_response = response.model_dump(exclude_none=True) if hasattr(response, "model_dump") else {
+                "response_type": type(response).__name__,
+                "output_types": [type(item).__name__ for item in (getattr(response, "outputs", None) or [])],
+            }
+
+            def redact_large_values(value: Any, key: str = "") -> Any:
+                if key.lower() in {"data", "input", "inline_data"}:
+                    return "<redacted>"
+                if isinstance(value, dict):
+                    return {item_key: redact_large_values(item_value, str(item_key)) for item_key, item_value in value.items()}
+                if isinstance(value, list):
+                    return [redact_large_values(item) for item in value]
+                if isinstance(value, str) and len(value) > 500:
+                    return f"<string:{len(value)} chars>"
+                return value
+
+            response_summary = json.dumps(redact_large_values(raw_response), ensure_ascii=False, default=str)[:6000]
+            raise GoogleProviderError(f"Gemini Omni provider returned no inline video output: {response_summary}")
+        return generated
+
     def submit(
         self,
         *,

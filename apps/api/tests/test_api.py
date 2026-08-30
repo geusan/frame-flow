@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from app.canvas_operations import executor_revision
 from app.database import ExperimentRunRecord
 from app.experiments import FIXTURE_EXECUTOR_REVISION
-from app.media_preview import render_audio_wav
+from app.media_preview import render_audio_wav, render_video_mp4
 from app.providers_localization import (
     LocalizationServices,
     SpeechSegment,
@@ -738,6 +738,23 @@ def test_video_reference_analyzer_creates_composite_manifest_and_component_artif
     assert set(analysis_artifact["input_artifact_ids"][1:]) == set(manifest["artifacts"].values())
     assert client.get(f"/artifacts/{manifest['artifacts']['subtitle']}/content").content.count(b"-->") >= 1
 
+    vocals_id = manifest["artifacts"]["vocals"]
+    exported_response = client.post(f"/artifacts/{vocals_id}/audio-asset")
+    assert exported_response.status_code == 201
+    exported = exported_response.json()
+    assert exported["type"] == "Audio"
+    assert exported["filename"] == "vocals.wav"
+    assert exported["source"] == "reference_audio_export"
+    assert client.get(f"/artifacts/{exported['artifact_id']}/content").content == client.get(f"/artifacts/{vocals_id}/content").content
+    exported_detail = client.get(f"/artifacts/{exported['artifact_id']}").json()
+    assert exported_detail["input_artifact_ids"] == [vocals_id]
+    assert exported_detail["metadata"]["storage"]["bucket"] == "project-generation-assets"
+    assert exported_detail["metadata"]["reference_component_type"] == "ReferenceVocals"
+    assert client.post(f"/artifacts/{vocals_id}/audio-asset").json()["artifact_id"] == exported["artifact_id"]
+    assert client.post(f"/artifacts/{video_result['output_artifact_ids'][0]}/audio-asset").status_code == 415
+    assert exported["artifact_id"] in {item["id"] for item in client.get("/artifacts", params={"types": "Audio"}).json()}
+    assert client.get("/workspace/summary").json()["audio"] == 1
+
     canvas_run = client.post("/canvas-runs", json={
         "canvas_id": "reference_analysis_graph",
         "name": "Reference analyzer graph",
@@ -774,6 +791,154 @@ def test_video_reference_analyzer_creates_composite_manifest_and_component_artif
     analyzer_run = next(item for item in graph_result["node_runs"] if item["canvas_node_id"] == "analyzer")
     assert analyzer_run["status"] == "SUCCEEDED"
     assert json.loads(analyzer_run["output"]["text"])["schema_version"] == "reference.decomposition.v1"
+
+
+def test_holistic_motion_extractor_creates_motion_track_artifact(client: TestClient, monkeypatch):
+    video = client.post("/experiments", json={
+        "canvas_id": "motion_canvas",
+        "node_id": "source-video",
+        "node_key": "video.generate",
+        "prompt": "Holistic motion fixture source",
+        "model_alias": "video.fast",
+        "parameters": {},
+        "inputs": [],
+    })
+    assert video.status_code == 201
+    video_result = video.json()
+    assert video_result["status"] == "SUCCEEDED"
+
+    def fake_extract(video_data: bytes, content_type: str, **options):
+        assert video_data
+        assert content_type == "video/mp4"
+        assert options["sample_fps"] == 12
+        assert options["min_confidence"] == 0.5
+        return {
+            "schema_version": "motion.track.v1",
+            "extractor": {
+                "name": "MediaPipe Holistic Landmarker",
+                "revision": "mediapipe.holistic.v1",
+                "model": "holistic_landmarker.task",
+                "min_confidence": 0.5,
+                "output_face_blendshapes": True,
+            },
+            "source": {
+                "duration_ms": 2000,
+                "width": 540,
+                "height": 960,
+                "sample_fps": 12,
+                "sample_width": 360,
+                "sample_height": 640,
+                "sha256": "a" * 64,
+            },
+            "summary": {
+                "frame_count": 24,
+                "coverage": {"face": 0.75, "pose": 1.0, "left_hand": 0.5, "right_hand": 0.25},
+            },
+            "frames": [{
+                "timestamp_ms": 0,
+                "face_landmarks": [],
+                "pose_landmarks": [],
+                "pose_world_landmarks": [],
+                "left_hand_landmarks": [],
+                "left_hand_world_landmarks": [],
+                "right_hand_landmarks": [],
+                "right_hand_world_landmarks": [],
+                "face_blendshapes": [],
+                "channels": {},
+            }],
+        }
+
+    monkeypatch.setattr("app.canvas_operations.extract_holistic_motion", fake_extract)
+    response = client.post("/experiments", json={
+        "canvas_id": "motion_canvas",
+        "node_id": "motion-extractor",
+        "node_key": "motion.extract",
+        "prompt": "Extract motion locally",
+        "model_alias": "local.mediapipe.holistic",
+        "parameters": {
+            "motion_sample_fps": 12,
+            "motion_max_width": 640,
+            "motion_min_confidence": 0.5,
+            "motion_face_blendshapes": True,
+        },
+        "inputs": [{"type": "Video", "artifact_ids": video_result["output_artifact_ids"]}],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["execution_mode"] == "mediapipe.holistic.v1"
+    assert result["exact_model_id"] == "mediapipe-holistic-landmarker"
+    assert result["cost_usd"] == 0
+    assert result["output"]["frameCount"] == 24
+    assert result["output"]["poseCoverage"] == 1.0
+    assert "text" not in result["output"]
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["type"] == "MotionTrack"
+    assert artifact["schema_id"] == "motion.track.v1"
+    assert artifact["input_artifact_ids"] == video_result["output_artifact_ids"]
+    assert json.loads(client.get(f"/artifacts/{artifact['id']}/content").content)["schema_version"] == "motion.track.v1"
+
+
+def test_canvas_worker_single_node_run_executes_only_target(client: TestClient, monkeypatch):
+    captured: list[str] = []
+
+    def fake_run_experiment(db, payload):
+        del db
+        captured.append(payload.node_id)
+        return SimpleNamespace(
+            status="SUCCEEDED",
+            provider_request_id=f"provider_{payload.node_id}",
+            request_hash=f"{payload.node_id:0<64}"[:64],
+            output_artifact_ids=[f"artifact_{payload.node_id}"],
+            output_payload={"kind": "text", "title": payload.node_id, "text": "done"},
+            duration_ms=20,
+            cost_usd=0.01,
+            cache_hit=False,
+            error=None,
+        )
+
+    monkeypatch.setattr("app.canvas_runs.run_experiment", fake_run_experiment)
+    graph = {
+        "canvas_id": "single_node_canvas",
+        "name": "Single node Canvas",
+        "target_node_id": "gen_b",
+        "nodes": [
+            {"id": "prompt", "data": {"key": "prompt.input", "label": "Prompt", "executable": False, "configText": "same prompt", "outputType": "Prompt"}},
+            {"id": "gen_a", "data": {"key": "llm.assistant", "label": "A", "model": "text.fast", "outputType": "Text", "outputArtifactIds": ["existing_a"], "output": {"kind": "text", "title": "existing A", "text": "keep"}}},
+            {"id": "gen_b", "data": {"key": "llm.assistant", "label": "B", "model": "text.fast", "outputType": "Text"}},
+        ],
+        "edges": [
+            {"id": "prompt-a", "source": "prompt", "target": "gen_a"},
+            {"id": "prompt-b", "source": "prompt", "target": "gen_b"},
+        ],
+    }
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    assert response.json()["graph"]["target_node_id"] == "gen_b"
+    run_id = response.json()["id"]
+    deadline = time.monotonic() + 3
+    run = response.json()
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run_id}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+    assert captured == ["gen_b"]
+    by_id = {node["canvas_node_id"]: node for node in run["node_runs"]}
+    assert by_id["gen_a"]["status"] == "SUCCEEDED"
+    assert by_id["gen_a"]["attempt_count"] == 0
+    assert by_id["gen_a"]["output_artifact_ids"] == ["existing_a"]
+    assert by_id["gen_b"]["status"] == "SUCCEEDED"
+    assert by_id["gen_b"]["attempt_count"] == 1
+    assert by_id["gen_b"]["output_artifact_ids"] == ["artifact_gen_b"]
+
+    missing = client.post("/canvas-runs", json={**graph, "target_node_id": "missing"})
+    assert missing.status_code == 422
+    assert missing.json()["detail"] == "Canvas target node is not present in the graph"
+    non_executable = client.post("/canvas-runs", json={**graph, "target_node_id": "prompt"})
+    assert non_executable.status_code == 422
+    assert non_executable.json()["detail"] == "Canvas target node is not executable"
 
 
 def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(client: TestClient, monkeypatch):
@@ -1063,6 +1228,114 @@ def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: Te
     assert image_model["configuration"]
 
 
+def test_lora_image_generator_experiment_uses_fal_model_contract(client: TestClient):
+    response = client.post("/experiments", json={
+        "canvas_id": "lora_canvas",
+        "node_id": "lora_image",
+        "node_key": "lora.image.generate",
+        "prompt": "mori walking through a rainy city",
+        "model_alias": "fal.image.flux2-lora",
+        "parameters": {
+            "provider": "fal",
+            "lora_url": "https://weights.example/mori.safetensors",
+            "lora_scale": 0.9,
+            "trigger_word": "mori_catgirl_v1",
+            "aspect_ratio": "9:16",
+        },
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["model_alias"] == "fal.image.flux2-lora"
+    assert result["exact_model_id"] == "fal-ai/flux-2/lora"
+    assert result["output"]["kind"] == "image"
+    model = next(item for item in client.get("/models").json() if item["logical_alias"] == "fal.image.flux2-lora")
+    assert model["provider"] == "fal.ai"
+    assert model["exact_model_id"] == "fal-ai/flux-2/lora"
+
+
+def test_character_lora_training_persists_weights_and_hydrates_lora_generator(client: TestClient, monkeypatch):
+    character_experiment = client.post("/experiments", json={
+        "canvas_id": "character_training_canvas",
+        "node_id": "character",
+        "node_key": "character.generate",
+        "prompt": "Black-haired anime cat-eared athlete",
+        "model_alias": "image.fast",
+        "parameters": {"character_name": "Mori", "shot_count": 4, "aspect_ratio": "9:16"},
+        "inputs": [],
+    }).json()
+    character_id = character_experiment["output_artifact_ids"][0]
+
+    class FakeTrainingService:
+        def submit_lora_training(self, **kwargs):
+            assert kwargs["image_data_url"].startswith("https://r2.test/")
+            assert kwargs["trigger_word"] == "mori_catgirl_v1"
+            return {
+                "request_id": "fal_train_1",
+                "status_url": "https://fal.test/status/fal_train_1",
+                "response_url": "https://fal.test/result/fal_train_1",
+                "status": "IN_QUEUE",
+            }
+
+        def get_queue_status(self, status_url):
+            assert status_url.endswith("fal_train_1")
+            return {"status": "COMPLETED"}
+
+        def get_queue_result(self, response_url):
+            assert response_url.endswith("fal_train_1")
+            return {
+                "diffusers_lora_file": {"url": "https://weights.fal.test/mori.safetensors"},
+                "config_file": {"url": "https://weights.fal.test/mori-config.json"},
+            }
+
+    class FakeDatasetStore:
+        def put_archive(self, **kwargs):
+            assert kwargs["character_id"] == character_id
+            assert kwargs["archive"].startswith(b"PK")
+            return type("Dataset", (), {
+                "bucket": "frameflow-lora-training",
+                "key": "lora-training/character.zip",
+                "uri": "r2://frameflow-lora-training/lora-training/character.zip",
+                "sha256": "dataset-sha",
+                "size_bytes": len(kwargs["archive"]),
+                "download_url": "https://r2.test/character.zip?X-Amz-Signature=test",
+                "expires_at": "2026-08-31T02:00:00+00:00",
+            })()
+
+    monkeypatch.setattr("app.main.get_fal_generation_services", lambda: FakeTrainingService())
+    monkeypatch.setattr("app.main.get_r2_training_dataset_store", lambda: FakeDatasetStore())
+    monkeypatch.setattr("app.character_lora.build_captioned_lora_archive", lambda images, trigger_word: b"PK-test-archive")
+    submitted = client.post(f"/characters/{character_id}/lora-training", json={
+        "trigger_word": "mori_catgirl_v1",
+        "steps": 1000,
+    })
+    assert submitted.status_code == 202
+    assert submitted.json()["status"] == "IN_QUEUE"
+
+    completed = client.get(f"/characters/{character_id}/lora-training")
+    assert completed.status_code == 200
+    assert completed.json()["status"] == "READY"
+    assert completed.json()["weights_url"] == "https://weights.fal.test/mori.safetensors"
+    listed = next(item for item in client.get("/characters").json() if item["id"] == character_id)
+    assert listed["lora"]["status"] == "READY"
+    assert listed["lora"]["trigger_word"] == "mori_catgirl_v1"
+
+    generated = client.post("/experiments", json={
+        "canvas_id": "character_training_canvas",
+        "node_id": "lora_image",
+        "node_key": "lora.image.generate",
+        "prompt": "working at a cafe",
+        "model_alias": "fal.image.flux2-lora",
+        "parameters": {"provider": "fal", "aspect_ratio": "9:16"},
+        "inputs": [{"type": "Character", "artifact_ids": [character_id]}],
+    })
+    assert generated.status_code == 201
+    assert generated.json()["status"] == "SUCCEEDED"
+    assert generated.json()["parameters"]["lora_url"] == "https://weights.fal.test/mori.safetensors"
+    assert generated.json()["parameters"]["trigger_word"] == "mori_catgirl_v1"
+
+
 def test_image_connected_through_prompt_reaches_image_generator(client: TestClient):
     uploaded = client.post(
         "/artifacts/upload",
@@ -1134,6 +1407,146 @@ def test_image_connected_through_prompt_reaches_image_generator(client: TestClie
     forwarded_artifact_ids = [artifact_id for item in experiments[0]["inputs"] for artifact_id in item["artifact_ids"]]
     assert uploaded["artifact_id"] in forwarded_artifact_ids
     assert uploaded_second["artifact_id"] in forwarded_artifact_ids
+
+
+def test_character_generator_persists_bundle_and_flows_with_reference_video(client: TestClient):
+    motion = render_video_mp4("abc123def4567890abc123def4567890abc123def4567890abc123def4567890")
+    uploaded_motion = client.post(
+        "/artifacts/upload",
+        files={"file": ("motion.mp4", motion, "video/mp4")},
+    ).json()
+    graph = {
+        "canvas_id": "character_bundle_canvas",
+        "name": "Character bundle to video",
+        "nodes": [
+            {
+                "id": "character_prompt",
+                "data": {
+                    "key": "prompt.input", "label": "Character synopsis", "kind": "input",
+                    "executable": False, "configText": "Black-haired anime cat-eared athlete with amber eyes",
+                    "outputType": "Prompt",
+                },
+            },
+            {
+                "id": "character",
+                "data": {
+                    "key": "character.generate", "label": "Character generator", "kind": "generate",
+                    "inputTypes": ["Prompt", "Image"], "requiredInputTypes": ["Prompt"],
+                    "multiInputTypes": ["Image"], "outputType": "Character", "model": "image.fast", "provider": "google",
+                    "characterName": "Mori", "shotCount": 4, "aspectRatio": "9:16", "resolution": "2K",
+                },
+            },
+            {
+                "id": "motion_prompt",
+                "data": {
+                    "key": "prompt.input", "label": "Motion prompt", "kind": "input",
+                    "executable": False, "configText": "She copies the warm-up motion and waves at the camera",
+                    "outputType": "Prompt",
+                },
+            },
+            {
+                "id": "motion_video",
+                "data": {
+                    "key": "asset.select", "label": "Reference motion", "kind": "input",
+                    "executable": False, "outputType": "Video", "outputArtifactIds": [uploaded_motion["artifact_id"]],
+                    "output": {"kind": "video", "title": "motion.mp4", "url": uploaded_motion["url"], "mimeType": "video/mp4"},
+                },
+            },
+            {
+                "id": "video",
+                "data": {
+                    "key": "video.generate", "label": "Video generator", "kind": "generate",
+                    "inputTypes": ["Prompt", "Character", "Video"], "requiredInputTypes": ["Prompt"],
+                    "outputType": "Video", "model": "video.omni", "provider": "google", "aspectRatio": "9:16", "resolution": "1080p",
+                },
+            },
+        ],
+        "edges": [
+            {"id": "prompt-character", "source": "character_prompt", "target": "character", "targetHandle": "input-Prompt-0"},
+            {"id": "motion-prompt-video", "source": "motion_prompt", "target": "video", "targetHandle": "input-Prompt-0"},
+            {"id": "character-video", "source": "character", "target": "video", "targetHandle": "input-Character-1"},
+            {"id": "motion-video", "source": "motion_video", "target": "video", "targetHandle": "input-Video-2"},
+        ],
+    }
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    run = response.json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run['id']}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+
+    character_run = next(item for item in run["node_runs"] if item["canvas_node_id"] == "character")
+    character_id = character_run["output_artifact_ids"][0]
+    character_artifact = client.get(f"/artifacts/{character_id}").json()
+    assert character_artifact["type"] == "Character"
+    assert character_artifact["schema_id"] == "character.bundle.v1"
+    assert character_artifact["metadata"]["name"] == "Mori"
+    assert len(character_artifact["metadata"]["image_artifact_ids"]) == 4
+
+    characters = client.get("/characters").json()
+    assert len(characters) == 1
+    assert characters[0]["id"] == character_id
+    assert characters[0]["image_count"] == 4
+    assert characters[0]["images"][0]["role"] == "baseline"
+    assert client.get("/workspace/summary").json()["characters"] == 1
+
+    video_experiment = client.get("/experiments", params={"canvas_id": graph["canvas_id"], "node_id": "video"}).json()[0]
+    input_types = {item["type"] for item in video_experiment["inputs"]}
+    assert {"Prompt", "Character", "Video"}.issubset(input_types)
+    forwarded = [artifact_id for item in video_experiment["inputs"] for artifact_id in item["artifact_ids"]]
+    assert character_id in forwarded
+    assert uploaded_motion["artifact_id"] in forwarded
+
+
+def test_character_generator_accepts_image_without_prompt_and_records_canonical_reference(client: TestClient):
+    uploaded = client.post(
+        "/artifacts/upload",
+        files={"file": ("canonical.png", b"\x89PNG\r\n\x1a\n-character-canonical", "image/png")},
+    ).json()
+    graph = {
+        "canvas_id": "image_only_character_canvas",
+        "name": "Image-only character",
+        "nodes": [
+            {
+                "id": "image",
+                "data": {
+                    "key": "asset.select", "label": "Canonical image", "kind": "input", "executable": False,
+                    "outputType": "Image", "outputArtifactIds": [uploaded["artifact_id"]],
+                    "output": {"kind": "image", "title": "canonical.png", "url": uploaded["url"], "mimeType": "image/png"},
+                },
+            },
+            {
+                "id": "character",
+                "data": {
+                    "key": "character.generate", "label": "Character generator", "kind": "generate",
+                    "inputTypes": ["Prompt", "Image"], "requiredInputTypes": [], "multiInputTypes": ["Image"],
+                    "outputType": "Character", "model": "image.fast", "provider": "google",
+                    "characterName": "Image Anchor", "shotCount": 4, "aspectRatio": "9:16",
+                },
+            },
+        ],
+        "edges": [
+            {"id": "image-character", "source": "image", "target": "character", "targetHandle": "input-Image-1"},
+        ],
+    }
+    response = client.post("/canvas-runs", json=graph)
+    assert response.status_code == 201
+    run = response.json()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        run = client.get(f"/canvas-runs/{run['id']}").json()
+        if run["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.03)
+    assert run["status"] == "SUCCEEDED"
+    character_run = next(item for item in run["node_runs"] if item["canvas_node_id"] == "character")
+    character = client.get(f"/artifacts/{character_run['output_artifact_ids'][0]}").json()
+    assert character["metadata"]["reference_image_artifact_ids"] == [uploaded["artifact_id"]]
+    assert len(character["metadata"]["image_artifact_ids"]) == 4
 
 
 def test_canvas_documents_list_save_open_and_track_latest_run(client: TestClient):

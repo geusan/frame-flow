@@ -194,6 +194,30 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         default_auth_method="api_key",
         order=7,
     ),
+    "r2": ProviderDefinition(
+        key="r2",
+        label="Cloudflare R2",
+        description="Private LoRA training datasets with time-limited download URLs",
+        fields=(
+            _field("account_id", "Cloudflare account ID", "R2_ACCOUNT_ID", placeholder="32-character account ID", help_text="R2 Overview에서 확인할 수 있습니다.", auth_methods=("s3_api",)),
+            _field("bucket", "Training bucket", "R2_TRAINING_BUCKET", default="frameflow-lora-training", placeholder="frameflow-lora-training", help_text="LoRA ZIP 전용 비공개 버킷 이름입니다.", auth_methods=("s3_api",)),
+            _field("access_key_id", "Access Key ID", "R2_ACCESS_KEY_ID", secret=True, placeholder="R2 S3 Access Key ID", auth_methods=("s3_api",)),
+            _field("secret_access_key", "Secret Access Key", "R2_SECRET_ACCESS_KEY", secret=True, placeholder="R2 S3 Secret Access Key", auth_methods=("s3_api",)),
+            _field("endpoint_url", "S3 endpoint override", "R2_ENDPOINT_URL", placeholder="https://<ACCOUNT_ID>.r2.cloudflarestorage.com", help_text="기본 jurisdiction이면 비워 두세요.", auth_methods=("s3_api",)),
+            _field("key_prefix", "Object key prefix", "R2_TRAINING_PREFIX", default="lora-training", placeholder="lora-training", auth_methods=("s3_api",)),
+            _field("signed_url_ttl_seconds", "Signed URL lifetime", "R2_PRESIGNED_URL_TTL_SECONDS", default="3600", placeholder="3600", help_text="fal이 ZIP을 내려받을 수 있는 시간(초)입니다.", auth_methods=("s3_api",)),
+        ),
+        auth_methods=(
+            ProviderAuthMethod(
+                "s3_api",
+                "R2 S3 API",
+                "Use an Object Read & Write token scoped only to the LoRA training bucket.",
+                required_fields=("account_id", "bucket", "access_key_id", "secret_access_key"),
+            ),
+        ),
+        default_auth_method="s3_api",
+        order=8,
+    ),
 }
 
 

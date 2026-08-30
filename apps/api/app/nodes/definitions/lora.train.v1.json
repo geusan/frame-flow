@@ -1,0 +1,80 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "lora.train",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "LoRA Trainer",
+    "description": "Character 이미지 묶음을 fal.ai FLUX.2 subject LoRA로 학습",
+    "category": "Image",
+    "icon": "lora",
+    "keywords": ["character", "training", "fal", "flux", "weights"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "character", "type": "artifact.character.v1", "label": "Character", "required": true }
+    ],
+    "outputs": [
+      { "key": "trained_character", "type": "artifact.character.v1", "label": "Character" }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["trigger_word", "steps", "learning_rate", "timeout_seconds"],
+    "properties": {
+      "trigger_word": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 80,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "default": "frameflow_character",
+        "title": "Trigger word",
+        "description": "생성 Prompt에서 동일 캐릭터를 호출할 고유 토큰입니다.",
+        "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "steps": {
+        "type": "integer",
+        "minimum": 500,
+        "maximum": 3000,
+        "default": 1000,
+        "title": "Training steps",
+        "description": "fal.ai 학습 Step 수입니다. 기본값 1000을 권장합니다.",
+        "enum": [800, 1000, 1200],
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "learning_rate": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 0.01,
+        "default": 0.00005,
+        "title": "Learning rate",
+        "description": "FLUX.2 subject LoRA 학습률입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 300,
+        "maximum": 3600,
+        "default": 1800,
+        "title": "Training timeout",
+        "description": "fal.ai Queue 완료를 기다리는 최대 시간입니다."
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "provider",
+    "executor": "fal-lora-training",
+    "revision": "fal-lora-training.v1",
+    "provider": "fal",
+    "model_alias": "fal.training.flux2-lora"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Character",
+    "schema_id": "character.lora.v1",
+    "input_roles": { "artifact.character.v1": "character_bundle" },
+    "output_role": "trained_character"
+  }
+}

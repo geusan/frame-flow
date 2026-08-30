@@ -13,6 +13,7 @@ function pageTitle(pathname: string): { eyebrow: string; title: string } {
   if (pathname.startsWith("/asset/images/") && pathname.endsWith("/edit")) return { eyebrow: "Image workspace", title: "Image Editor" };
   if (pathname.startsWith("/asset/images")) return { eyebrow: "Workspace assets", title: "Image Gallery" };
   if (pathname.startsWith("/asset/videos")) return { eyebrow: "Workspace assets", title: "Video Gallery" };
+  if (pathname.startsWith("/asset/audio")) return { eyebrow: "Workspace assets", title: "Audio Library" };
   if (pathname.startsWith("/reference-results")) return { eyebrow: "Reference intelligence", title: "Reference Results" };
   if (pathname === "/runs") return { eyebrow: "Execution & recovery", title: "Runs" };
   if (pathname === "/settings/models") return { eyebrow: "Provider abstraction", title: "Model Registry" };

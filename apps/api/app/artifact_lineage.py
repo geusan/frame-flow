@@ -229,9 +229,12 @@ def _derivation_payload(
 
 def _operation_title(node_key: str) -> str:
     return {
+        "lora.image.generate": "Generated image with LoRA",
+        "character.generate": "Generated character bundle",
         "image.generate": "Generated image",
         "image.edit": "AI edited image",
         "video.generate": "Generated video",
+        "motion.extract": "Extracted holistic motion",
         "video.edit": "Edited video",
         "video.change_voice": "Replaced video audio",
         "video.translate": "Translated video",
@@ -243,6 +246,10 @@ def _operation_title(node_key: str) -> str:
 
 def _operation_description(node_key: str, prompt: str) -> str:
     prompt_summary = prompt.strip().replace("\n", " ")[:180]
+    if node_key == "lora.image.generate":
+        return f"Generated an image with the configured LoRA adapter: {prompt_summary}"
+    if node_key == "character.generate":
+        return f"Generated a reusable multi-view character bundle from: {prompt_summary}"
     if node_key == "image.generate":
         return f"Generated an image from the recorded prompt: {prompt_summary}"
     if node_key == "video.generate":

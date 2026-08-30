@@ -1,9 +1,10 @@
 from types import SimpleNamespace
+import base64
 import json
 
 import pytest
 
-from app.providers_google import GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleTtsProvider, GoogleVideoProvider
+from app.providers_google import GeneratedBinary, GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleTtsProvider, GoogleVideoProvider
 from app import providers_localization
 from app.providers_localization import get_localization_services
 from app.format_extraction import FormatSource, GeminiFormatExtractor
@@ -11,7 +12,7 @@ from app.providers_openai import OpenAIProviderConfig
 from app.providers import ProviderSubmission, model_id_for_alias
 from app.experiments import resolve_model
 from app.domain import ExperimentRunRequest
-from app.providers_generation import GoogleGenerationServices
+from app.providers_generation import GoogleGenerationServices, InputMedia
 
 
 class FakeModels:
@@ -92,6 +93,30 @@ def test_google_skill_executor_uses_registered_skill_as_system_prompt():
     assert text.last["rendered_prompt"] == "비 오는 골목"
 
 
+def test_character_generator_uses_connected_image_as_canonical_reference():
+    class FakeCharacterImage:
+        def __init__(self):
+            self.calls = []
+
+        def generate(self, **kwargs):
+            self.calls.append(kwargs)
+            index = len(self.calls)
+            return [GeneratedBinary(f"generated-{index}".encode(), "image/png", "model", f"request-{index}")]
+
+    image = FakeCharacterImage()
+    service = GoogleGenerationServices(text=object(), image=image, video=object(), tts=object())
+    request = ExperimentRunRequest(
+        canvas_id="canvas", node_id="character", node_key="character.generate",
+        prompt="A black-haired anime cat-eared athlete", model_alias="google.image.fast",
+        parameters={"shot_count": 4}, inputs=[],
+    )
+    result = service.execute(request, [InputMedia("base-image", "Image", b"canonical-base", "image/png")])
+    assert len(result.images) == 4
+    assert [image.role for image in result.images] == ["baseline", "closeup", "daily_life", "work_scene"]
+    assert all(call["reference_images"][0] == (b"canonical-base", "image/png") for call in image.calls)
+    assert all(b"generated-" not in call["reference_images"][0][0] for call in image.calls)
+
+
 def test_veo_submission_snapshots_operation_and_request_hash():
     client = FakeClient()
     provider = GoogleVideoProvider(GoogleProviderConfig("demo", "us-central1"), client=client)
@@ -103,6 +128,38 @@ def test_veo_submission_snapshots_operation_and_request_hash():
     assert client.models.last["config"].number_of_videos == 2
     assert client.models.last["config"].generate_audio is True
     assert client.models.last["config"].enhance_prompt is True
+
+
+def test_gemini_omni_combines_character_images_reference_video_and_prompt():
+    class FakeInteractions:
+        def __init__(self):
+            self.last = None
+
+        def create(self, **kwargs):
+            self.last = kwargs
+            return SimpleNamespace(
+                id="omni_request_1",
+                outputs=[SimpleNamespace(type="video", data=base64.b64encode(b"omni-video").decode(), mime_type="video/mp4")],
+            )
+
+    client = FakeClient()
+    client.interactions = FakeInteractions()
+    provider = GoogleVideoProvider(GoogleProviderConfig(api_key="demo"), client=client)
+    result = provider.generate_omni(
+        prompt="The character waves and turns around",
+        reference_images=[(b"front", "image/png"), (b"profile", "image/png")],
+        reference_videos=[(b"driving-motion", "video/mp4")],
+        resolution="1080p",
+    )
+    assert result[0].data == b"omni-video"
+    assert result[0].provider_request_id == "omni_request_1"
+    assert client.interactions.last["model"] == "gemini-omni-1.1-flash"
+    assert client.interactions.last["generation_config"]["video_config"]["task"] == "reference_to_video"
+    assert client.interactions.last["response_format"] == {"type": "video", "aspect_ratio": "9:16", "resolution": "1080p"}
+    prompt = client.interactions.last["input"][-1]["text"]
+    assert "<IMAGE_REF_0>" in prompt
+    assert "<VIDEO_REF_0>" in prompt
+    assert "do not copy its person's identity" in prompt
 
 
 def test_image_generation_sends_reference_image_with_prompt():

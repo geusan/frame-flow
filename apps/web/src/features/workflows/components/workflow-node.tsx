@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
+  Activity,
   ArrowRight,
   AudioWaveform,
   BadgeCheck,
@@ -12,10 +13,13 @@ import {
   ChevronUp,
   CircleCheck,
   Clapperboard,
+  ContactRound,
+  Dna,
   Film,
   Folder,
   FolderOpen,
   GitFork,
+  Headphones,
   Image as ImageIcon,
   Languages,
   Layers3,
@@ -44,17 +48,21 @@ import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { PromptTokenEditor } from "@/features/workflows/components/prompt-token-editor";
-import type { ArtifactListItem } from "@/lib/api";
+import type { ArtifactListItem, CharacterRecord } from "@/lib/api";
 import { inputHandleId, type CanvasOutput, type IconName, type StickyColor, type StudioFlowNode } from "@/lib/canvas-model";
+import { maximizePlaybackVolume } from "@/lib/media";
 import type { PortType } from "@/lib/types";
 
 export const icons: Record<IconName, typeof Sparkles> = {
   brief: MessageSquareText,
   format: Braces,
   reference: Layers3,
+  motion: Activity,
   resolve: Workflow,
   script: ScrollText,
   shot: Clapperboard,
+  character: ContactRound,
+  lora: Dna,
   image: ImageIcon,
   video: Video,
   voice: Mic2,
@@ -90,11 +98,13 @@ export interface NodeActions {
   uploadAsset: (nodeId: string, file: File) => void;
   importAssetUrl: (nodeId: string, url: string) => void;
   selectAsset: (nodeId: string, artifactId: string) => void;
+  selectCharacter: (nodeId: string, characterId: string) => void;
   beginSpaceHold: (request: CanvasSpaceHoldRequest) => void;
   assetOptions: ArtifactListItem[];
+  characterOptions: CharacterRecord[];
 }
 
-export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [] });
+export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, selectCharacter: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [], characterOptions: [] });
 
 export function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
   return <StatusPill status={data.status} compact={compact} />;
@@ -152,6 +162,10 @@ export function isVideoAsset(asset: ArtifactListItem): boolean {
   return asset.type === "Video" || asset.type === "FinalVideo";
 }
 
+export function isAudioAsset(asset: ArtifactListItem): boolean {
+  return asset.type === "Audio";
+}
+
 export function storedAssetOutput(asset: ArtifactListItem): { outputType: PortType; output: CanvasOutput } {
   const outputType = (asset.type === "FinalVideo" ? "Video" : asset.type) as PortType;
   const kind: CanvasOutput["kind"] = outputType === "Image" ? "image" : outputType === "Video" ? "video" : outputType === "Text" ? "text" : "audio";
@@ -161,35 +175,42 @@ export function storedAssetOutput(asset: ArtifactListItem): { outputType: PortTy
   };
 }
 
-function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }) {
+type AssetPickerTab = "images" | "videos" | "audio";
+
+function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; value: string; preferredTab?: AssetPickerTab }) {
   const actions = useContext(NodeActionsContext);
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"images" | "videos">("images");
+  const [tab, setTab] = useState<AssetPickerTab>(preferredTab ?? "images");
   const [query, setQuery] = useState("");
   const selected = actions.assetOptions.find((asset) => asset.id === value);
   const imageCount = actions.assetOptions.filter((asset) => asset.type === "Image").length;
   const videoCount = actions.assetOptions.filter(isVideoAsset).length;
+  const audioCount = actions.assetOptions.filter(isAudioAsset).length;
   const visibleAssets = actions.assetOptions.filter((asset) => {
-    const matchesType = tab === "images" ? asset.type === "Image" : isVideoAsset(asset);
+    const matchesType = tab === "images" ? asset.type === "Image" : tab === "videos" ? isVideoAsset(asset) : isAudioAsset(asset);
     return matchesType && (!query.trim() || asset.filename.toLowerCase().includes(query.trim().toLowerCase()));
   });
 
   const openPicker = () => {
-    if (selected) setTab(isVideoAsset(selected) ? "videos" : "images");
+    if (selected) setTab(isAudioAsset(selected) ? "audio" : isVideoAsset(selected) ? "videos" : "images");
+    else if (preferredTab) setTab(preferredTab);
     else if (!imageCount && videoCount) setTab("videos");
+    else if (!imageCount && !videoCount && audioCount) setTab("audio");
   };
 
   return <Popover open={open} onOpenChange={(nextOpen) => { if (nextOpen) openPicker(); setOpen(nextOpen); }}>
     <div className="node-asset-picker nodrag nopan">
     <PopoverTrigger asChild><button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button">
-      <span className={`node-asset-trigger-thumb ${selected && isVideoAsset(selected) ? "video" : "image"}`}>
+      <span className={`node-asset-trigger-thumb ${selected && isAudioAsset(selected) ? "audio" : selected && isVideoAsset(selected) ? "video" : "image"}`}>
         {selected
-          ? isVideoAsset(selected)
+          ? isAudioAsset(selected)
+            ? <Headphones size={17} />
+            : isVideoAsset(selected)
             ? <VideoPlayer src={selected.url} mimeType={selected.content_type} title={selected.filename} controls={false} />
             : <i style={{ backgroundImage: `url(${selected.url})` }} />
           : <FolderOpen size={16} />}
       </span>
-      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos`}</small></span>
+      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isAudioAsset(selected) ? "Audio" : isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos · ${audioCount} audio`}</small></span>
       <ChevronDown size={14} />
     </button></PopoverTrigger>
     </div>
@@ -199,12 +220,13 @@ function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }
       <div className="node-asset-popover-tabs">
         <button type="button" className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}><ImageIcon size={12} /> Images <span>{imageCount}</span></button>
         <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}><Film size={12} /> Videos <span>{videoCount}</span></button>
+        <button type="button" className={tab === "audio" ? "active" : ""} onClick={() => setTab("audio")}><Headphones size={12} /> Audio <span>{audioCount}</span></button>
       </div>
       <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder={`Search ${tab}…`} /></label>
       <div className="node-asset-popover-grid nowheel">
         {visibleAssets.map((asset) => <button type="button" className={asset.id === value ? "selected" : ""} key={asset.id} onClick={() => { actions.selectAsset(nodeId, asset.id); setOpen(false); }} title={asset.filename}>
-          <span className="node-asset-popover-media">
-            {isVideoAsset(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
+          <span className={`node-asset-popover-media ${isAudioAsset(asset) ? "audio" : ""}`}>
+            {isAudioAsset(asset) ? <Headphones size={22} /> : isVideoAsset(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
             {isVideoAsset(asset) && <Film size={13} />}
             {asset.id === value && <b><CircleCheck size={13} /></b>}
           </span>
@@ -213,6 +235,36 @@ function AssetPickerPopover({ nodeId, value }: { nodeId: string; value: string }
         {!visibleAssets.length && <div className="node-asset-popover-empty">No {tab} found</div>}
       </div>
       <div className="node-asset-popover-foot"><span>{visibleAssets.length} assets</span>{selected && <button type="button" onClick={() => { actions.selectAsset(nodeId, ""); setOpen(false); }}>Clear selection</button>}</div>
+    </PopoverContent>
+  </Popover>;
+}
+
+function CharacterPickerPopover({ nodeId, value }: { nodeId: string; value: string }) {
+  const actions = useContext(NodeActionsContext);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = actions.characterOptions.find((character) => character.id === value);
+  const normalized = query.trim().toLowerCase();
+  const visible = actions.characterOptions.filter((character) => !normalized || `${character.name} ${character.synopsis}`.toLowerCase().includes(normalized));
+  return <Popover open={open} onOpenChange={setOpen}>
+    <div className="node-asset-picker node-character-picker nodrag nopan">
+      <PopoverTrigger asChild><button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button">
+        <span className="node-asset-trigger-thumb image">{selected?.cover_url ? <i style={{ backgroundImage: `url(${selected.cover_url})` }} /> : <ContactRound size={16} />}</span>
+        <span><strong>{selected?.name ?? "Choose a character"}</strong><small>{selected ? `${selected.image_count} identity views · Click to replace` : `${actions.characterOptions.length} saved characters`}</small></span>
+        <ChevronDown size={14} />
+      </button></PopoverTrigger>
+    </div>
+    <PopoverContent className="node-asset-popover nodrag nopan nowheel" align="start" side="bottom" sideOffset={7} aria-label="Choose a character">
+      <div className="node-asset-popover-head"><span><strong>Characters</strong><small>Select a reusable identity bundle</small></span><button type="button" onClick={() => setOpen(false)} aria-label="Close character picker"><X size={13} /></button></div>
+      <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Search characters…" /></label>
+      <div className="node-asset-popover-grid node-character-grid nowheel">
+        {visible.map((character) => <button type="button" className={character.id === value ? "selected" : ""} key={character.id} onClick={() => { actions.selectCharacter(nodeId, character.id); setOpen(false); }} title={character.name}>
+          <span className="node-asset-popover-media"><i style={{ backgroundImage: `url(${character.cover_url})` }} />{character.id === value && <b><CircleCheck size={13} /></b>}</span>
+          <strong>{character.name}</strong><small>{character.image_count} views</small>
+        </button>)}
+        {!visible.length && <div className="node-asset-popover-empty">No characters found</div>}
+      </div>
+      <div className="node-asset-popover-foot"><span>{visible.length} characters</span>{selected && <button type="button" onClick={() => { actions.selectCharacter(nodeId, ""); setOpen(false); }}>Clear selection</button>}</div>
     </PopoverContent>
   </Popover>;
 }
@@ -277,7 +329,7 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
   const inputs = data.inputTypes ?? [];
   const running = ["QUEUED", "CLAIMED", "SUBMITTED", "RUNNING"].includes(data.status);
   const progress = Math.max(0, Math.min(100, data.runProgress ?? 0));
-  const runningLabel = data.key === "image.generate" ? "Generating image" : data.key === "video.generate" ? "Generating video" : "Running step";
+  const runningLabel = data.key === "character.generate" ? "Generating character views" : ["image.generate", "lora.image.generate"].includes(data.key) ? "Generating image" : data.key === "video.generate" ? "Generating video" : "Running step";
   return (
     <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
       {inputs.map((type, index) => (
@@ -306,15 +358,18 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
       {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />}
       {data.key === "skill.execute" && <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>}
       {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
-      {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
+      {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} preferredTab={data.outputType === "Audio" ? "audio" : undefined} />}
+      {data.key === "character.select" && <CharacterPickerPopover nodeId={id} value={data.configText ?? ""} />}
       {data.configText !== undefined && !["asset.select", "asset.upload", "prompt.input"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
       {data.output ? data.key === "reference.decompose"
         ? <ReferenceAnalysisOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
-        : <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+        : data.key === "motion.extract"
+          ? <MotionTrackOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+          : <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
         : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
       <div className="node-meta">
         {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
-        {data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
+        {data.key === "character.generate" ? <span><GitFork size={10} /> {data.shotCount ?? 6} views</span> : data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
         {!!data.attemptCount && <span><RefreshCw size={10} /> {data.attemptCount}</span>}
         {data.cost && <span className="node-cost">{data.cost}</span>}
         {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={running || data.status === "BLOCKED"}>{running ? <><RefreshCw className="spin" size={13} /> Running</> : <><Play size={12} fill="currentColor" /> Run</>}</button>}
@@ -412,12 +467,17 @@ function NodePromptEditor({ nodeId, value, onCommit, className = "node-inline-pr
 
 function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
   const state = stateLabel && <b className="node-output-state">{stateLabel}</b>;
-  if (output.kind === "image") return <div className="node-output node-output-image"><div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} /><span>{output.title}</span>{state}</div>;
+  if (output.kind === "image") return <div className="node-output node-output-image">
+    {/* Artifact URLs are dynamic and their dimensions are only known once loaded. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {output.url && <img className="node-output-art" src={output.url} alt={output.title} />}
+    <span>{output.title}</span>{state}
+  </div>;
   if (output.kind === "video") {
     const playable = output.mimeType?.startsWith("video/");
     return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <VideoPlayer className="nodrag nowheel" src={output.url ?? ""} mimeType={output.mimeType} title={output.title} compact preload="auto" /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}{state}</div>;
   }
-  if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span>{state}</div>;
+  if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls onPlay={(event) => maximizePlaybackVolume(event.currentTarget)} /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span>{state}</div>;
   if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p>{state}</div>;
   return <div className="node-output node-output-json"><small>{output.title}</small><pre>{output.text}</pre>{state}</div>;
 }
@@ -447,6 +507,21 @@ function ReferenceAnalysisOutput({ output, stateLabel }: { output: CanvasOutput;
     <div><span><Layers3 size={13} /> Reference timeline</span><b className={analysis.quality?.completeness === "complete" ? "complete" : "partial"}>{analysis.quality?.completeness ?? "partial"}</b></div>
     <section>{stats.map(([label, value]) => <span key={label}><strong>{value}</strong><small>{label}</small></span>)}</section>
     {!!analysis.quality?.warnings?.length && <p>{analysis.quality.warnings.length} analysis warning{analysis.quality.warnings.length === 1 ? "" : "s"}</p>}
+    {stateLabel && <b className="node-output-state">{stateLabel}</b>}
+  </div>;
+}
+
+function MotionTrackOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
+  const coverage = [
+    ["Pose", output.poseCoverage ?? 0],
+    ["Face", output.faceCoverage ?? 0],
+    ["L hand", output.leftHandCoverage ?? 0],
+    ["R hand", output.rightHandCoverage ?? 0],
+  ] as const;
+  return <div className="node-output node-output-motion-track">
+    <div><span><Activity size={13} /> Motion track</span><b>{output.frameCount ?? 0} frames</b></div>
+    <section>{coverage.map(([label, value]) => <span key={label}><strong>{Math.round(value * 100)}%</strong><small>{label}</small></span>)}</section>
+    <p>{output.sampleFps ?? 0} fps · MediaPipe Holistic</p>
     {stateLabel && <b className="node-output-state">{stateLabel}</b>}
   </div>;
 }

@@ -15,6 +15,7 @@ import {
   FileChartColumnIncreasing,
   FileJson,
   Film,
+  FolderPlus,
   MessageSquareText,
   Music2,
   Play,
@@ -31,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { API_BASE, frameflowApi, type ArtifactDetail, type ArtifactListItem } from "@/lib/api";
+import { maximizePlaybackVolume } from "@/lib/media";
 
 interface TimedEvent {
   start_ms: number;
@@ -115,7 +117,7 @@ interface ReferenceManifest {
 }
 
 interface ReferenceResult {
-  asset: ArtifactListItem;
+  asset: Pick<ArtifactListItem, "id" | "created_at" | "filename">;
   detail: ArtifactDetail;
   manifest: ReferenceManifest;
 }
@@ -137,6 +139,34 @@ function parseManifest(detail: ArtifactDetail): ReferenceManifest | null {
   } catch {
     return null;
   }
+}
+
+function resultFromDetail(detail: ArtifactDetail): ReferenceResult | null {
+  const manifest = parseManifest(detail);
+  if (!manifest) return null;
+  return {
+    asset: {
+      id: detail.id,
+      created_at: detail.created_at,
+      filename: detail.metadata.filename ?? detail.metadata.output?.title ?? "Reference analysis",
+    },
+    detail,
+    manifest,
+  };
+}
+
+function resultFromOutput(title: string, text?: string): ReferenceResult | null {
+  if (!text) return null;
+  const detail: ArtifactDetail = {
+    id: "",
+    created_at: new Date().toISOString(),
+    type: "ReferenceAnalysis",
+    uri: "",
+    sha256: "",
+    input_artifact_ids: [],
+    metadata: { output: { kind: "json", title, text } },
+  };
+  return resultFromDetail(detail);
 }
 
 function formatTime(milliseconds: number): string {
@@ -236,6 +266,7 @@ function SourceVideoPlayer({
               controls
               playsInline
               preload="metadata"
+              onPlay={(event) => maximizePlaybackVolume(event.currentTarget)}
               onTimeUpdate={(event) => onTimeUpdate(event.currentTarget.currentTime * 1000)}
               onSeeked={(event) => onTimeUpdate(event.currentTarget.currentTime * 1000)}
             />
@@ -393,13 +424,33 @@ function ShotGallery({ manifest, sourceArtifactId, onSeek }: { manifest: Referen
 }
 
 function AudioCard({ manifest }: { manifest: ReferenceManifest }) {
-  const artifactLinks = [
+  const [exporting, setExporting] = useState<Record<string, boolean>>({});
+  const [exported, setExported] = useState<Record<string, string>>({});
+  const [exportError, setExportError] = useState<string | null>(null);
+  const audioArtifacts = [
     ["audio_mix", "Original mix", FileAudio],
     ["vocals", "Vocals stem", AudioLines],
     ["accompaniment", "Accompaniment", Music2],
+  ] as const;
+  const artifactLinks = [
     ["subtitle", "Subtitle SRT", Captions],
     ["transcript", "Transcript JSON", FileJson],
   ] as const;
+
+  const addToAudio = async (artifactId: string) => {
+    setExporting((current) => ({ ...current, [artifactId]: true }));
+    setExportError(null);
+    try {
+      const asset = await frameflowApi.createAudioAsset(artifactId);
+      setExported((current) => ({ ...current, [artifactId]: asset.artifact_id }));
+      window.dispatchEvent(new Event("frameflow:workspace-changed"));
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "Audio asset 저장에 실패했습니다.");
+    } finally {
+      setExporting((current) => ({ ...current, [artifactId]: false }));
+    }
+  };
+
   return (
     <Card className="reference-audio-card">
       <CardHeader className="reference-section-head">
@@ -413,6 +464,24 @@ function AudioCard({ manifest }: { manifest: ReferenceManifest }) {
           ))}
           {!manifest.audio.music_intervals.length && !manifest.audio.sound_effects.length && <p className="reference-empty-copy">음악 또는 효과음 이벤트가 없습니다.</p>}
         </div>
+        <div className="reference-audio-stems">
+          {audioArtifacts.map(([key, label, Icon]) => {
+            const artifactId = manifest.artifacts[key];
+            if (!artifactId) return null;
+            const savedId = exported[artifactId];
+            return <section key={key}>
+              <header><span><Icon size={14} /><strong>{label}</strong></span><small>{key.replaceAll("_", " ")}</small></header>
+              <audio controls preload="none" src={contentUrl(artifactId)} aria-label={`${label} preview`} onPlay={(event) => maximizePlaybackVolume(event.currentTarget)} />
+              <div>
+                <Button variant="ghost" size="sm" asChild><a href={contentUrl(artifactId)} target="_blank" rel="noreferrer"><Download size={12} /> Download</a></Button>
+                {savedId
+                  ? <Button variant="secondary" size="sm" asChild><Link href={`/asset/audio/${encodeURIComponent(savedId)}`}><CheckCircle2 size={12} /> Open Audio</Link></Button>
+                  : <Button size="sm" type="button" onClick={() => void addToAudio(artifactId)} disabled={exporting[artifactId]}>{exporting[artifactId] ? <RefreshCw size={12} className="spin" /> : <FolderPlus size={12} />}{exporting[artifactId] ? "Saving…" : "Add to Audio"}</Button>}
+              </div>
+            </section>;
+          })}
+        </div>
+        {exportError && <p className="reference-audio-export-error">{exportError}</p>}
         <div className="reference-download-grid">
           {artifactLinks.map(([key, label, Icon]) => manifest.artifacts[key] && (
             <Button variant="secondary" asChild key={key}><a href={contentUrl(manifest.artifacts[key])} target="_blank" rel="noreferrer"><Icon size={13} />{label}<Download size={12} /></a></Button>
@@ -452,7 +521,7 @@ function VisualFindings({ manifest }: { manifest: ReferenceManifest }) {
   );
 }
 
-function ResultDetail({ result, onBack }: { result: ReferenceResult; onBack: () => void }) {
+function ResultDetail({ result, onBack, backLabel = "All results", embedded = false }: { result: ReferenceResult; onBack: () => void; backLabel?: string; embedded?: boolean }) {
   const { manifest, detail } = result;
   const sourceArtifactId = detail.input_artifact_ids[0];
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -473,12 +542,12 @@ function ResultDetail({ result, onBack }: { result: ReferenceResult; onBack: () 
   }, []);
 
   return (
-    <div className="view-page reference-results-page reference-result-detail">
+    <div className={`view-page reference-results-page reference-result-detail${embedded ? " reference-result-detail-embedded" : ""}`}>
       <div className="reference-result-detail-nav">
-        <Button type="button" variant="ghost" onClick={onBack}><ArrowLeft size={15} /> All results</Button>
+        <Button type="button" variant="ghost" onClick={onBack}><ArrowLeft size={15} /> {backLabel}</Button>
         <span />
         {sourceArtifactId && <Button variant="secondary" asChild><Link href={`/asset/videos/${encodeURIComponent(sourceArtifactId)}`}><Film size={14} /> Open source video</Link></Button>}
-        <Button variant="secondary" asChild><a href={contentUrl(result.asset.id)} target="_blank" rel="noreferrer"><FileJson size={14} /> Analysis JSON</a></Button>
+        {result.asset.id && <Button variant="secondary" asChild><a href={contentUrl(result.asset.id)} target="_blank" rel="noreferrer"><FileJson size={14} /> Analysis JSON</a></Button>}
       </div>
 
       <header className="reference-result-detail-head">
@@ -505,9 +574,60 @@ function ResultDetail({ result, onBack }: { result: ReferenceResult; onBack: () 
           <span><strong>Model</strong><code>{manifest.provenance.semantic_model}</code></span>
           <span><strong>Analyzer</strong><code>{manifest.provenance.analyzer_revision}</code></span>
           <span><strong>Scene threshold</strong><code>{manifest.provenance.scene_threshold}</code></span>
-          <span><strong>Artifact</strong><code>{result.asset.id}</code></span>
+          <span><strong>Artifact</strong><code>{result.asset.id || "Preview only"}</code></span>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+export function ReferenceResultDetail({
+  artifactId,
+  fallbackTitle = "Reference analysis",
+  fallbackText,
+  onBack,
+}: {
+  artifactId?: string;
+  fallbackTitle?: string;
+  fallbackText?: string;
+  onBack: () => void;
+}) {
+  const fallbackResult = useMemo(() => resultFromOutput(fallbackTitle, fallbackText), [fallbackText, fallbackTitle]);
+  const [request, setRequest] = useState<{ artifactId: string; result: ReferenceResult | null; error: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!artifactId) return;
+    let active = true;
+
+    frameflowApi.getArtifact(artifactId)
+      .then((detail) => {
+        if (!active) return;
+        const loaded = resultFromDetail(detail);
+        if (!loaded) throw new Error("Reference analysis result could not be parsed.");
+        setRequest({ artifactId, result: loaded, error: null });
+      })
+      .catch((loadError) => {
+        if (!active) return;
+        setRequest({ artifactId, result: null, error: loadError instanceof Error ? loadError.message : "Reference result loading failed" });
+      });
+
+    return () => { active = false; };
+  }, [artifactId]);
+
+  const matchingRequest = artifactId && request?.artifactId === artifactId ? request : null;
+  const loading = Boolean(artifactId && !matchingRequest);
+  const error = matchingRequest?.error ?? null;
+  const result = artifactId ? matchingRequest?.result ?? (error ? fallbackResult : null) : fallbackResult;
+
+  if (result) return <ResultDetail result={result} onBack={onBack} backLabel="Canvas" embedded />;
+  return (
+    <div className="view-page reference-results-page reference-result-detail reference-result-detail-embedded">
+      <div className="reference-results-state">
+        {loading ? <RefreshCw size={20} className="spin" /> : <FileChartColumnIncreasing size={24} />}
+        <strong>{loading ? "Loading reference analysis…" : "Analysis result unavailable"}</strong>
+        {error && <small>{error}</small>}
+        {!loading && <Button type="button" variant="secondary" onClick={onBack}><ArrowLeft size={14} /> Canvas</Button>}
+      </div>
     </div>
   );
 }

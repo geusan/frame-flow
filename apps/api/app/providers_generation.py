@@ -30,6 +30,25 @@ class GeneratedAsset:
 
 
 @dataclass(frozen=True)
+class CharacterImageAsset:
+    data: bytes
+    content_type: str
+    filename: str
+    role: str
+    prompt: str
+
+
+@dataclass(frozen=True)
+class CharacterGenerationResult:
+    output: dict[str, object]
+    provider_request_id: str
+    input_artifact_ids: list[str]
+    name: str
+    synopsis: str
+    images: tuple[CharacterImageAsset, ...]
+
+
+@dataclass(frozen=True)
 class LiveGenerationResult:
     output: dict[str, object]
     artifact_type: str
@@ -50,6 +69,34 @@ class InputMedia:
     content_type: str
 
 
+CHARACTER_SHOTS: tuple[tuple[str, str], ...] = (
+    ("baseline", "clean full-body establishing portrait, relaxed neutral standing pose, eye-level camera, softly lit studio environment"),
+    ("closeup", "head-and-shoulders three-quarter portrait in warm window light, calm natural expression, facial details in sharp focus"),
+    ("daily_life", "candid daily-life scene at a quiet cafe table, seated naturally with hands visible, soft morning daylight"),
+    ("work_scene", "focused work scene at a desk appropriate to the character, medium shot, practical indoor lighting"),
+    ("action_scene", "single full-body action moment outdoors with readable limbs and balanced anatomy, dynamic side lighting"),
+    ("night_scene", "walking alone on a city street at night, three-quarter full-body view, controlled neon rim light and soft facial fill"),
+    ("emotional_scene", "emotionally vulnerable quiet moment near a rain-streaked window, medium close shot, subtle expression"),
+    ("hero_scene", "decisive full-body hero moment in an environment appropriate to the character, low camera angle, dramatic but coherent lighting"),
+)
+
+
+def character_shot_prompts(synopsis: str, count: int) -> list[tuple[str, str]]:
+    count = max(4, min(len(CHARACTER_SHOTS), count))
+    identity_lock = (
+        "Use the first supplied image as the canonical character identity and design source, never as a layout reference. "
+        "Create exactly one depiction of the same character in the entire image: one head, one torso, one pair of arms, and one pair of legs. "
+        "Preserve the same face, proportions, hair, eyes, distinctive anatomy, accessories, outfit, palette, and rendering medium in every view. "
+        "Use one coherent scene background appropriate to the requested shot while keeping the character as the only depicted subject. "
+        "No duplicate character, alternate pose, collage, contact sheet, split panel, inset, extra face, "
+        "body-part study, icon, label, arrow, typography, logo, or watermark."
+    )
+    return [
+        (role, f"Character identity specification:\n{synopsis.strip()}\n\nShot: {shot}.\n\n{identity_lock}")
+        for role, shot in CHARACTER_SHOTS[:count]
+    ]
+
+
 class GoogleGenerationServices:
     def __init__(
         self,
@@ -64,11 +111,51 @@ class GoogleGenerationServices:
         self.video = video
         self.tts = tts
 
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult:
+    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
         input_ids = [item.artifact_id for item in inputs]
         seed = payload.parameters.get("seed")
         seed_value = int(seed) if seed is not None else None
+
+        if payload.node_key == "character.generate":
+            reference_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
+            name = str(payload.parameters.get("character_name") or "Generated character").strip() or "Generated character"
+            shot_count = int(payload.parameters.get("shot_count") or 6)
+            shots = character_shot_prompts(payload.prompt, shot_count)
+            generated_assets: list[CharacterImageAsset] = []
+            canonical_reference: tuple[bytes, str] | None = (
+                (reference_inputs[0].data, reference_inputs[0].content_type) if reference_inputs else None
+            )
+            supporting_references = reference_inputs[1:] if reference_inputs else []
+            request_id = ""
+            for index, (role, shot_prompt) in enumerate(shots):
+                references = [*([canonical_reference] if canonical_reference else []), *((item.data, item.content_type) for item in supporting_references)][:4]
+                generated = self.image.generate(
+                    prompt=shot_prompt,
+                    logical_model=logical_model,
+                    candidate_count=1,
+                    aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+                    seed=(seed_value + index) if seed_value is not None else None,
+                    reference_images=references,
+                )[0]
+                request_id = request_id or generated.provider_request_id
+                canonical_reference = canonical_reference or (generated.data, generated.mime_type)
+                extension = ".png" if "png" in generated.mime_type else ".jpg"
+                generated_assets.append(CharacterImageAsset(
+                    generated.data,
+                    generated.mime_type,
+                    f"character-{index + 1:02d}-{role}{extension}",
+                    role,
+                    shot_prompt,
+                ))
+            return CharacterGenerationResult(
+                {"kind": "image", "title": f"{name} · {len(generated_assets)} views", "mimeType": generated_assets[0].content_type},
+                request_id,
+                input_ids,
+                name,
+                payload.prompt,
+                tuple(generated_assets),
+            )
 
         if payload.node_key in {"image.generate", "image.edit"}:
             candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
@@ -93,11 +180,29 @@ class GoogleGenerationServices:
 
         if payload.node_key == "video.generate":
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
+            video_inputs = [item for item in inputs if item.artifact_type in {"Video", "FinalVideo"}][:1]
             duration = int(payload.parameters.get("duration_seconds") or 6)
             resolution = str(payload.parameters.get("resolution") or "720p").lower()
             if resolution not in {"720p", "1080p"}:
                 resolution = "1080p"
             candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
+            if logical_model == "google.video.omni":
+                generated_videos = self.video.generate_omni(
+                    prompt=payload.prompt,
+                    logical_model=logical_model,
+                    aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+                    resolution=resolution,
+                    reference_images=[(item.data, item.content_type) for item in image_inputs],
+                    reference_videos=[(item.data, item.content_type) for item in video_inputs],
+                )
+                generated = generated_videos[0]
+                return LiveGenerationResult(
+                    {"kind": "video", "title": "Generated character video", "mimeType": generated.mime_type},
+                    "Video", "google.video.omni.v1", generated.provider_request_id, generated.data,
+                    generated.mime_type, "generated-character.mp4", input_ids,
+                )
+            if video_inputs:
+                raise ValueError("Reference Video input requires the Gemini Omni 1.1 Flash model")
             submission = self.video.submit(
                 prompt=payload.prompt,
                 logical_model=logical_model,

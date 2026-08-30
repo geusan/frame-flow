@@ -1,16 +1,64 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CircleCheck, ContactRound, Images, Maximize2, PanelRightClose, RefreshCw, Sparkles } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, CircleCheck, ContactRound, Dna, Images, Maximize2, PanelRightClose, Play, RefreshCw, Sparkles } from "lucide-react";
 import Image from "next/image";
 
 import { CharacterViewGallery, characterRoleLabel } from "@/components/characters/character-view-gallery";
 import { SearchField } from "@/components/shared/search-field";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { frameflowApi, type CharacterRecord } from "@/lib/api";
+import { frameflowApi, type CharacterLoraTrainingState, type CharacterRecord } from "@/lib/api";
 
-function CharacterDetail({ character, onClose }: { character: CharacterRecord; onClose: () => void }) {
+function CharacterDetail({ character, onClose, onRefresh }: { character: CharacterRecord; onClose: () => void; onRefresh: () => Promise<void> }) {
+  const savedLora = character.lora ?? { status: "UNTRAINED" as const, trigger_word: "", base_model: "fal-ai/flux-2" };
+  const [lora, setLora] = useState<CharacterLoraTrainingState>({
+    character_id: character.id,
+    status: savedLora.status,
+    trigger_word: savedLora.trigger_word,
+    training_artifact_id: savedLora.training_artifact_id,
+    lora_artifact_id: savedLora.artifact_id,
+    weights_url: savedLora.weights_url,
+    base_model: savedLora.base_model,
+    error: savedLora.error,
+  });
+  const [triggerWord, setTriggerWord] = useState(savedLora.trigger_word || `char_${character.id.slice(-8)}`);
+  const [steps, setSteps] = useState(1000);
+  const [submitting, setSubmitting] = useState(false);
+  const [trainingError, setTrainingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!["IN_QUEUE", "IN_PROGRESS"].includes(lora.status)) return;
+    let active = true;
+    const poll = async () => {
+      try {
+        const next = await frameflowApi.getCharacterLoraTraining(character.id);
+        if (!active) return;
+        setLora(next);
+        if (["READY", "FAILED", "CANCELLED"].includes(next.status)) await onRefresh();
+      } catch (error) {
+        if (active) setTrainingError(error instanceof Error ? error.message : "LoRA training status failed");
+      }
+    };
+    const timer = window.setInterval(() => { void poll(); }, 4000);
+    void poll();
+    return () => { active = false; window.clearInterval(timer); };
+  }, [character.id, lora.status, onRefresh]);
+
+  const startTraining = async () => {
+    setSubmitting(true);
+    setTrainingError(null);
+    try {
+      const next = await frameflowApi.startCharacterLoraTraining(character.id, { trigger_word: triggerWord, steps });
+      setLora(next);
+      await onRefresh();
+    } catch (error) {
+      setTrainingError(error instanceof Error ? error.message : "LoRA training submission failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
     <DialogContent className="node-detail-dialog has-media has-output character-library-detail-dialog" overlayClassName="node-detail-backdrop">
       <DialogDescription className="sr-only">View every generated identity image and the saved metadata for {character.name}.</DialogDescription>
@@ -44,6 +92,23 @@ function CharacterDetail({ character, onClose }: { character: CharacterRecord; o
             <span><small>Model alias</small><strong>{character.model_alias || "Generated"}</strong></span>
             <span><small>Exact model</small><strong title={character.exact_model_id}>{character.exact_model_id || "—"}</strong></span>
           </div>
+          <section className="character-lora-section" data-status={lora.status.toLowerCase()}>
+            <div className="character-lora-head"><span><Dna size={14} /> Character LoRA</span><b>{lora.status.replaceAll("_", " ")}</b></div>
+            {lora.status === "READY" ? <>
+              <p>FLUX.2 LoRA 학습이 완료되었습니다. LoRA Image Generator에 Character를 연결하면 자동으로 적용됩니다.</p>
+              <label className="field-label"><span>Trigger word</span><input value={lora.trigger_word} readOnly /></label>
+              <label className="field-label"><span>Weights URL</span><input value={lora.weights_url ?? ""} readOnly /></label>
+            </> : ["IN_QUEUE", "IN_PROGRESS"].includes(lora.status) ? <div className="character-lora-progress"><RefreshCw className="spin" size={17} /><span><strong>Training on fal.ai…</strong><small>{lora.status === "IN_QUEUE" ? "Waiting in the trainer queue" : "FLUX.2 LoRA weights are being optimized"}</small></span></div> : <>
+              <p>검수된 Character 이미지 묶음을 FLUX.2 [dev] subject LoRA로 학습합니다.</p>
+              {character.image_count < 10 && <div className="character-lora-warning"><AlertCircle size={13} /> fal은 10장 이상을 권장합니다. 현재 생성 뷰는 {character.image_count}장입니다.</div>}
+              <div className="generator-setting-grid character-lora-fields">
+                <label><span>Trigger word</span><input value={triggerWord} onChange={(event) => setTriggerWord(event.target.value.replace(/[^A-Za-z0-9_-]/g, ""))} /></label>
+                <label><span>Training steps</span><select value={steps} onChange={(event) => setSteps(Number(event.target.value))}><option value="800">800</option><option value="1000">1000</option><option value="1200">1200</option></select></label>
+              </div>
+              <Button type="button" className="character-lora-train" disabled={submitting || triggerWord.length < 2} onClick={() => void startTraining()}>{submitting ? <><RefreshCw className="spin" size={14} /> Submitting…</> : <><Play size={13} fill="currentColor" /> Train LoRA on fal.ai</>}</Button>
+            </>}
+            {(trainingError || lora.error) && <div className="character-lora-error"><AlertCircle size={13} /> {trainingError || lora.error}</div>}
+          </section>
           <div className="inspector-section-title"><span>Identity views</span><Images size={14} /></div>
           <div className="character-detail-view-list">
             {character.images.map((image, index) => <div key={image.artifact_id}>
@@ -63,6 +128,10 @@ export function CharacterLibrary({ selectedCharacterId, onOpenCharacter, onClose
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const refreshCharacters = useCallback(async () => {
+    const items = await frameflowApi.listCharacters();
+    setCharacters(items);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -108,6 +177,6 @@ export function CharacterLibrary({ selectedCharacterId, onOpenCharacter, onClose
         </div>
       </article>)}
     </div>}
-    {selectedCharacter && <CharacterDetail character={selectedCharacter} onClose={onCloseCharacter} key={selectedCharacter.id} />}
+    {selectedCharacter && <CharacterDetail character={selectedCharacter} onClose={onCloseCharacter} onRefresh={refreshCharacters} key={selectedCharacter.id} />}
   </div>;
 }

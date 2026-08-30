@@ -11,6 +11,7 @@
     "ui:check": "node scripts/check-ui-architecture.mjs"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^1.0.1",
     "@tiptap/core": "^3.30.5",
     "@tiptap/extensions": "^3.30.5",
     "@tiptap/pm": "^3.30.5",

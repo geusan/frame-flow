@@ -20,6 +20,7 @@ def test_provider_settings_are_created_and_secrets_are_write_only(client: TestCl
         "Kling",
         "MiniMax",
         "fal.ai",
+        "Cloudflare R2",
     ]
     initial_openai = initial.json()[0]
     assert initial_openai["auth_method"] == "api_key"
@@ -174,6 +175,35 @@ def test_fal_provider_uses_server_side_api_key(client: TestClient, monkeypatch):
     assert api_key["env_var"] == "FAL_KEY"
     assert api_key["value"] == ""
     assert api_key["has_value"] is True
+
+
+def test_r2_provider_applies_bucket_scoped_s3_credentials(client: TestClient, monkeypatch):
+    for key in ("R2_ACCOUNT_ID", "R2_TRAINING_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(key, raising=False)
+
+    saved = client.put("/settings/providers/r2", json={
+        "enabled": True,
+        "auth_method": "s3_api",
+        "values": {
+            "account_id": "account-test",
+            "bucket": "frameflow-lora-training",
+            "access_key_id": "r2-access-test",
+            "secret_access_key": "r2-secret-test",
+            "signed_url_ttl_seconds": "3600",
+        },
+    })
+
+    assert saved.status_code == 200
+    payload = saved.json()
+    assert payload["label"] == "Cloudflare R2"
+    assert payload["configured"] is True
+    assert os.environ["R2_ACCOUNT_ID"] == "account-test"
+    assert os.environ["R2_TRAINING_BUCKET"] == "frameflow-lora-training"
+    assert os.environ["R2_ACCESS_KEY_ID"] == "r2-access-test"
+    assert os.environ["R2_SECRET_ACCESS_KEY"] == "r2-secret-test"
+    secret = next(field for field in payload["fields"] if field["key"] == "secret_access_key")
+    assert secret["value"] == ""
+    assert secret["has_value"] is True
 
 
 def test_environment_values_seed_a_missing_provider_record(client: TestClient, monkeypatch):

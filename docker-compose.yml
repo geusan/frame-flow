@@ -108,9 +108,19 @@ services:
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
       FAL_KEY: ${FAL_KEY:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_TRAINING_PREFIX: ${R2_TRAINING_PREFIX:-lora-training}
+      R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
+      HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
+      HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
     ports: ["${API_PORT:-8000}:8000"]
     volumes:
       - demucs_cache:/root/.cache
+      - mediapipe_cache:/root/.cache/mediapipe
 
   temporal-worker:
     build:
@@ -164,8 +174,18 @@ services:
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
       FAL_KEY: ${FAL_KEY:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_TRAINING_PREFIX: ${R2_TRAINING_PREFIX:-lora-training}
+      R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
+      HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
+      HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
     volumes:
       - demucs_cache:/root/.cache
+      - mediapipe_cache:/root/.cache/mediapipe
 
   web:
     build:
@@ -180,3 +200,4 @@ volumes:
   postgres_data:
   minio_data:
   demucs_cache:
+  mediapipe_cache:
