@@ -213,6 +213,7 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "experiments": experiment_count,
         "recorded_cost_usd": recorded_cost,
         "images": artifact_counts.get("Image", 0),
+        "characters": artifact_counts.get("Character", 0),
         "videos": artifact_counts.get("Video", 0) + artifact_counts.get("FinalVideo", 0),
         "artifacts": sum(artifact_counts.values()),
     }
@@ -923,6 +924,40 @@ def list_artifacts(
             "source": str(row.metadata_json.get("source") or ("generated" if row.producer_node_run_id or row.metadata_json.get("experiment_id") else "artifact")),
             "duration_ms": int(row.metadata_json.get("duration_ms") or 0),
             "url": artifact_content_url(playback_id),
+        })
+    return result
+
+
+@app.get("/characters")
+def list_characters(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    rows = db.scalars(
+        select(ArtifactRecord).where(ArtifactRecord.type == "Character").order_by(ArtifactRecord.created_at.desc())
+    ).all()
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        metadata = row.metadata_json or {}
+        image_ids = [str(value) for value in metadata.get("image_artifact_ids") or []]
+        roles = [str(value) for value in metadata.get("image_roles") or []]
+        images = [
+            {
+                "artifact_id": artifact_id,
+                "role": roles[index] if index < len(roles) else f"view_{index + 1}",
+                "url": artifact_content_url(artifact_id),
+            }
+            for index, artifact_id in enumerate(image_ids)
+            if db.get(ArtifactRecord, artifact_id)
+        ]
+        cover_id = str(metadata.get("cover_artifact_id") or (image_ids[0] if image_ids else ""))
+        result.append({
+            "id": row.id,
+            "created_at": row.created_at,
+            "name": str(metadata.get("name") or metadata.get("filename") or f"Character {row.id[:8]}"),
+            "synopsis": str(metadata.get("synopsis") or ""),
+            "model_alias": str(metadata.get("model_alias") or ""),
+            "exact_model_id": str(metadata.get("exact_model_id") or ""),
+            "cover_url": artifact_content_url(cover_id) if cover_id else None,
+            "image_count": len(images),
+            "images": images,
         })
     return result
 

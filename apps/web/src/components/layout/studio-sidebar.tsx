@@ -11,6 +11,7 @@ import {
   Play,
   Settings,
   Sparkles,
+  ContactRound,
   WandSparkles,
   Workflow,
   type LucideIcon,
@@ -28,7 +29,7 @@ import {
 import { API_BASE, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type WorkspaceCount = "canvases" | "images" | "videos" | "runs";
+type WorkspaceCount = "canvases" | "characters" | "images" | "videos" | "runs";
 
 interface NavigationItem {
   href: string;
@@ -39,6 +40,7 @@ interface NavigationItem {
 
 const workspaceNavigation: NavigationItem[] = [
   { href: "/workflows", label: "Canvases", icon: Workflow, count: "canvases" },
+  { href: "/characters", label: "Characters", icon: ContactRound, count: "characters" },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
   { href: "/reference-results", label: "Reference results", icon: FileChartColumnIncreasing },

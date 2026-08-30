@@ -115,6 +115,7 @@ export interface WorkspaceSummary {
   experiments: number;
   recorded_cost_usd: number;
   images: number;
+  characters: number;
   videos: number;
   artifacts: number;
 }
@@ -124,6 +125,18 @@ export interface ProjectSkillRecord {
   display_name: string;
   description: string;
   version: string;
+}
+
+export interface CharacterRecord {
+  id: string;
+  created_at: string;
+  name: string;
+  synopsis: string;
+  model_alias: string;
+  exact_model_id: string;
+  cover_url?: string;
+  image_count: number;
+  images: Array<{ artifact_id: string; role: string; url: string }>;
 }
 
 export interface CanvasDocument {
@@ -389,6 +402,7 @@ export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listSkills: () => request<ProjectSkillRecord[]>("/skills"),
   workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
+  listCharacters: () => request<CharacterRecord[]>("/characters"),
   listCanvases: () => request<CanvasDocument[]>("/canvases"),
   createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
   getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),

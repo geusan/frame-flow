@@ -9,6 +9,7 @@ import { frameflowApi, type CanvasDocument, type WorkspaceSummary } from "@/lib/
 function pageTitle(pathname: string): { eyebrow: string; title: string } {
   if (pathname.startsWith("/workflows/")) return { eyebrow: "Canvas editor", title: "Workflow Canvas" };
   if (pathname === "/workflows") return { eyebrow: "Workspace canvases", title: "Canvases" };
+  if (pathname.startsWith("/characters")) return { eyebrow: "Reusable identity bundles", title: "Characters" };
   if (pathname.startsWith("/asset/images/") && pathname.endsWith("/edit")) return { eyebrow: "Image workspace", title: "Image Editor" };
   if (pathname.startsWith("/asset/images")) return { eyebrow: "Workspace assets", title: "Image Gallery" };
   if (pathname.startsWith("/asset/videos")) return { eyebrow: "Workspace assets", title: "Video Gallery" };
