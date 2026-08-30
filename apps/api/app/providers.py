@@ -19,8 +19,15 @@ class GenerationProvider(Protocol):
 
 
 MODEL_REGISTRY = {
-    "google.text.fast": "gemini-2.5-flash",
-    "google.text.quality": "gemini-2.5-pro",
+    "google.text.fast": "gemini-3.6-flash",
+    "google.text.quality": "gemini-3.1-pro-preview",
+    "google.text.3.6-flash": "gemini-3.6-flash",
+    "google.text.3.5-flash": "gemini-3.5-flash",
+    "google.text.3.5-flash-lite": "gemini-3.5-flash-lite",
+    "google.text.3.1-pro-preview": "gemini-3.1-pro-preview",
+    "google.text.3.1-flash-lite": "gemini-3.1-flash-lite",
+    "google.text.2.5-flash": "gemini-2.5-flash",
+    "google.text.2.5-flash-lite": "gemini-2.5-flash-lite",
     "google.image.fast": "gemini-3.1-flash-image",
     "google.image.quality": "gemini-3-pro-image",
     "google.image.edit.fast": "gemini-3.1-flash-lite-image",

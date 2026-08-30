@@ -73,6 +73,7 @@ export interface StudioNodeData extends Record<string, unknown> {
   lastRequestHash?: string;
   executionMode?: string;
   lastCostUsd?: number;
+  runProgress?: number;
   skillId?: string;
   promptEdited?: boolean;
   resolution?: string;
@@ -82,6 +83,8 @@ export interface StudioNodeData extends Record<string, unknown> {
   transition?: string;
   targetDurationSeconds?: number;
   sourceLanguage?: string;
+  separateMusic?: boolean;
+  sceneThreshold?: number;
   targetLanguage?: string;
   voiceName?: string;
   captionX?: number;
@@ -125,6 +128,8 @@ export interface NodeTemplate {
     transition?: string;
     targetDurationSeconds?: number;
     sourceLanguage?: string;
+    separateMusic?: boolean;
+    sceneThreshold?: number;
     targetLanguage?: string;
     voiceName?: string;
     captionX?: number;
@@ -144,12 +149,13 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
   { id: "voice", label: "Voiceover", group: "Quick", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
-  { id: "assistant", label: "LLM Assistant", group: "Quick", data: { key: "llm.assistant", label: "LLM assistant", description: "연결된 Prompt를 분석·변환", icon: "assistant", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Text", provider: "google", model: "text.quality", cost: "$0.03" } },
-  { id: "skill-executor", label: "Skill Executor", group: "Quick", data: { key: "skill.execute", label: "Skill executor", description: "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", icon: "skill", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Prompt", provider: "google", model: "text.quality", cost: "$0.03", skillId: "nottalggak-prompt-machine" } },
+  { id: "assistant", label: "LLM Assistant", group: "Quick", data: { key: "llm.assistant", label: "LLM assistant", description: "연결된 Prompt를 분석·변환", icon: "assistant", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Text", provider: "google", model: "text.3.1-pro-preview", cost: "$0.03" } },
+  { id: "skill-executor", label: "Skill Executor", group: "Quick", data: { key: "skill.execute", label: "Skill executor", description: "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", icon: "skill", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Prompt", provider: "google", model: "text.3.1-pro-preview", cost: "$0.03", skillId: "nottalggak-prompt-machine" } },
   { id: "folder", label: "Folders", group: "Advanced", visible: false, data: { key: "folder.group", label: "Folder", description: "Canvas 노드를 시각적으로 정리", icon: "folder", kind: "input", configText: "New folder", executable: false } },
 
   { id: "upload", label: "Upload", group: "References", data: { key: "asset.upload", label: "Upload", description: "로컬 이미지·영상·오디오 업로드", icon: "upload", kind: "input", outputType: "ReferenceAsset", executable: false } },
   { id: "assets", label: "Assets", group: "References", data: { key: "asset.select", label: "Assets", description: "저장된 이미지·비디오를 Popover에서 선택", icon: "assets", kind: "input", outputType: "ReferenceAsset", configText: "", executable: false } },
+  { id: "reference-analyzer", label: "Video Reference Analyzer", group: "References", data: { key: "reference.decompose", label: "Video reference analyzer", description: "STT·음악·컷·액션·화면 자막·효과음을 하나의 타임라인으로 분석", icon: "reference", kind: "logic", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "ReferenceAnalysis", model: "reference-analysis.pipeline.v1", cost: "$0.03", sourceLanguage: "auto", separateMusic: true, sceneThreshold: 0.28 } },
 
   { id: "image-category", label: "Image Generator", group: "Image", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
   { id: "video-category", label: "Video Generator", group: "Video", data: { key: "video.generate", label: "Video generator", description: "연결된 Prompt로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.fast", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", batchSize: 1 } },
@@ -165,7 +171,7 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "brief", label: "Generation brief", group: "Advanced", visible: false, data: { key: "generation.brief", label: "Generation brief", description: "주제, 메시지, 시청자와 목표 길이", icon: "brief", kind: "input", outputType: "Text", configText: "", executable: false } },
   { id: "format", label: "Format profile", group: "Advanced", visible: false, data: { key: "format.profile", label: "Format profile", description: "생성에 사용할 FormatCoreV1", icon: "format", kind: "input", outputType: "FormatProfile", preview: "Select a format", executable: false } },
   { id: "resolve", label: "Resolve spec", group: "Advanced", visible: false, data: { key: "generation.resolve", label: "Resolve specification", description: "Brief와 Format을 실행 명세로 해석", icon: "resolve", kind: "logic", inputTypes: ["Text", "FormatProfile"], outputType: "GenerationSpec", model: "local.policy", cost: "$0.00" } },
-  { id: "script", label: "Generate script", group: "Advanced", visible: false, data: { key: "script.generate", label: "Script generator", description: "연결된 Prompt로 내레이션 대본 생성", icon: "script", kind: "generate", inputTypes: ["Prompt", "GenerationSpec"], requiredInputTypes: ["Prompt"], outputType: "Script", provider: "google", model: "text.quality", cost: "$0.06" } },
+  { id: "script", label: "Generate script", group: "Advanced", visible: false, data: { key: "script.generate", label: "Script generator", description: "연결된 Prompt로 내레이션 대본 생성", icon: "script", kind: "generate", inputTypes: ["Prompt", "GenerationSpec"], requiredInputTypes: ["Prompt"], outputType: "Script", provider: "google", model: "text.3.1-pro-preview", cost: "$0.06" } },
   { id: "fit-script", label: "Fit duration", group: "Advanced", visible: false, data: { key: "script.fit_duration", label: "Fit script duration", description: "목표 길이에 맞춰 발화 시간을 보정", icon: "script", kind: "logic", inputTypes: ["Script"], outputType: "Script", model: "local.script-fit", cost: "$0.00" } },
   { id: "shot-plan", label: "Shot planner", group: "Advanced", visible: false, data: { key: "shot.plan", label: "Plan shots", description: "4·6·8초 단위의 Shot Plan", icon: "shot", kind: "logic", inputTypes: ["Script"], outputType: "ShotPlan", model: "local.shot-plan", cost: "$0.00" } },
   { id: "candidate", label: "Candidate select", group: "Advanced", visible: false, data: { key: "candidate.select", label: "Choose candidate", description: "연결된 실제 Video 후보 중 하나를 선택", icon: "select", kind: "review", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video" } },

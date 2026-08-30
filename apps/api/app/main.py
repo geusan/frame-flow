@@ -169,6 +169,8 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "reference_provider_mode": os.getenv("REFERENCE_PROVIDER_MODE", "live"),
         "video_downloader_provider": configured_video_downloader_name(),
         "scene_search_provider_mode": os.getenv("SCENE_SEARCH_PROVIDER_MODE", "live"),
+        "reference_analysis_mode": os.getenv("REFERENCE_ANALYSIS_MODE", "live"),
+        "reference_audio_separator": os.getenv("REFERENCE_AUDIO_SEPARATOR", "demucs"),
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
         "google_configured": bool(settings.get("google") and provider_is_configured(settings["google"])),
         "openai_configured": bool(settings.get("openai") and provider_is_configured(settings["openai"])),
@@ -1081,6 +1083,37 @@ def capture_artifact_frame(
     }
 
 
+@app.get("/artifacts/{artifact_id}/frame-preview")
+def preview_artifact_frame(
+    artifact_id: str,
+    timestamp_ms: int = Query(ge=0),
+    db: Session = Depends(get_db),
+) -> Response:
+    source = db.get(ArtifactRecord, artifact_id)
+    if not source:
+        raise HTTPException(404, "source video artifact not found")
+    if source.type not in {"Video", "FinalVideo"}:
+        raise HTTPException(415, "only video artifacts support frame previews")
+    storage = get_storage()
+    try:
+        bucket, key = storage_location(source.uri, source.metadata_json)
+        content_type = str((source.metadata_json.get("storage") or {}).get("content_type") or "video/mp4")
+        captured = capture_video_frame(storage.get_bytes(bucket=bucket, key=key), content_type, timestamp_ms)
+    except StorageError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except MediaCaptureError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return Response(
+        content=captured.content,
+        media_type=captured.content_type,
+        headers={
+            "Cache-Control": "public, max-age=86400, immutable",
+            "X-Frame-Timestamp-Ms": str(captured.timestamp_ms),
+            "X-Source-Duration-Ms": str(captured.source_duration_ms),
+        },
+    )
+
+
 @app.post("/artifacts/upload-url")
 def artifact_upload_url(payload: SignedUrlRequest) -> dict[str, Any]:
     upload_id = new_id("upload")
@@ -1269,7 +1302,7 @@ async def save_manual_image_edit(
     safe_stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "-", source_stem).strip(" .") or source.id
     extension = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}[content_type]
     filename = f"{safe_stem[:170]}-edited{extension}"
-    document_payload = document.model_dump()
+    document_payload = document.model_dump(exclude_none=True)
     artifact = create_artifact(
         db,
         "Image",
@@ -1429,7 +1462,7 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     google_auth_method = str(google_configuration.get("_auth_method") or "vertex")
     using_gemini_api = google_auth_method == "api_key"
     location = "Gemini API" if using_gemini_api else str(google_configuration.get("location") or "global")
-    speech_location = str(google_configuration.get("speech_location") or "global")
+    speech_location = str(google_configuration.get("speech_location") or "us")
     rows = [{
         "logical_alias": alias,
         "exact_model_id": model_id_for_alias(alias, gemini_api=using_gemini_api) or model_id,
@@ -1449,7 +1482,7 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     } for alias, model_id in MODEL_REGISTRY.items()]
     rows.append({
         "logical_alias": "google.localization.pipeline",
-        "exact_model_id": "chirp_3 + gemini-2.5-pro + gemini-2.5-flash-tts",
+        "exact_model_id": "chirp_3 + gemini-3.1-pro-preview + gemini-2.5-flash-tts",
         "provider": "Google",
         "modality": "video",
         "region": f"{speech_location} / {location}",

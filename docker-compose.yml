@@ -25,10 +25,18 @@ services:
       POSTGRES_PWD: frameflow
       POSTGRES_SEEDS: postgres
     ports: ["${TEMPORAL_PORT:-7233}:7233"]
+    healthcheck:
+      test: ["CMD", "temporal", "task-queue", "describe", "--address", "temporal:7233", "--task-queue", "frameflow-generation-v1", "--command-timeout", "5s"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
 
   temporal-ui:
     image: temporalio/ui:2.41.0
-    depends_on: [temporal]
+    depends_on:
+      temporal:
+        condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:${WEB_PORT:-3001}
@@ -59,6 +67,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      temporal:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://frameflow:frameflow@postgres:5432/frameflow
       TEMPORAL_ADDRESS: temporal:7233
@@ -83,16 +93,24 @@ services:
       SCENE_SEARCH_PROVIDER_MODE: ${SCENE_SEARCH_PROVIDER_MODE:-live}
       FORMAT_PROVIDER_MODE: ${FORMAT_PROVIDER_MODE:-live}
       SUBTITLE_ALIGNMENT_MODE: ${SUBTITLE_ALIGNMENT_MODE:-live}
+      REFERENCE_ANALYSIS_MODE: ${REFERENCE_ANALYSIS_MODE:-live}
+      REFERENCE_ANALYSIS_MODEL: ${REFERENCE_ANALYSIS_MODEL:-google.text.fast}
+      REFERENCE_AUDIO_SEPARATOR: ${REFERENCE_AUDIO_SEPARATOR:-demucs}
+      DEMUCS_EXECUTABLE: ${DEMUCS_EXECUTABLE:-demucs}
+      DEMUCS_MODEL: ${DEMUCS_MODEL:-htdemucs}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
-      GOOGLE_SPEECH_LOCATION: ${GOOGLE_SPEECH_LOCATION:-global}
+      GOOGLE_SPEECH_LOCATION: ${GOOGLE_SPEECH_LOCATION:-us}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       GOOGLE_VIDEO_OUTPUT_GCS_URI: ${GOOGLE_VIDEO_OUTPUT_GCS_URI:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      FAL_KEY: ${FAL_KEY:-}
     ports: ["${API_PORT:-8000}:8000"]
+    volumes:
+      - demucs_cache:/root/.cache
 
   temporal-worker:
     build:
@@ -104,7 +122,7 @@ services:
       postgres:
         condition: service_healthy
       temporal:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_healthy
     environment:
@@ -131,15 +149,23 @@ services:
       SCENE_SEARCH_PROVIDER_MODE: ${SCENE_SEARCH_PROVIDER_MODE:-live}
       FORMAT_PROVIDER_MODE: ${FORMAT_PROVIDER_MODE:-live}
       SUBTITLE_ALIGNMENT_MODE: ${SUBTITLE_ALIGNMENT_MODE:-live}
+      REFERENCE_ANALYSIS_MODE: ${REFERENCE_ANALYSIS_MODE:-live}
+      REFERENCE_ANALYSIS_MODEL: ${REFERENCE_ANALYSIS_MODEL:-google.text.fast}
+      REFERENCE_AUDIO_SEPARATOR: ${REFERENCE_AUDIO_SEPARATOR:-demucs}
+      DEMUCS_EXECUTABLE: ${DEMUCS_EXECUTABLE:-demucs}
+      DEMUCS_MODEL: ${DEMUCS_MODEL:-htdemucs}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
-      GOOGLE_SPEECH_LOCATION: ${GOOGLE_SPEECH_LOCATION:-global}
+      GOOGLE_SPEECH_LOCATION: ${GOOGLE_SPEECH_LOCATION:-us}
       GOOGLE_APPLICATION_CREDENTIALS: ${GOOGLE_APPLICATION_CREDENTIALS:-}
       GOOGLE_VIDEO_OUTPUT_GCS_URI: ${GOOGLE_VIDEO_OUTPUT_GCS_URI:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      FAL_KEY: ${FAL_KEY:-}
+    volumes:
+      - demucs_cache:/root/.cache
 
   web:
     build:
@@ -153,3 +179,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  demucs_cache:

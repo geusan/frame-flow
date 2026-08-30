@@ -27,6 +27,7 @@ const PEN_COLORS = [
 
 const PEN_WIDTHS = [2, 4, 6, 8, 10, 12, 16, 20, 26, 34] as const;
 const MIN_IMAGE_SIZE = 48;
+const IMAGE_LOAD_TIMEOUT_MS = 15_000;
 
 type EditorTool = "select" | "pen";
 
@@ -40,6 +41,7 @@ const imageCache = new Map<string, Promise<HTMLImageElement>>();
 interface DrawingCanvasDialogProps {
   document: DrawingDocument;
   nodeName: string;
+  previewUrl?: string;
   onAddImage: (file: File) => Promise<string>;
   onClose: () => void;
   onSave: (document: DrawingDocument, image: Blob) => Promise<void>;
@@ -54,9 +56,17 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   if (cached) return cached;
   const pending = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
+    const timeout = window.setTimeout(() => {
+      imageCache.delete(src);
+      reject(new Error("이미지 로딩 시간이 초과되었습니다."));
+    }, IMAGE_LOAD_TIMEOUT_MS);
     image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      window.clearTimeout(timeout);
+      resolve(image);
+    };
     image.onerror = () => {
+      window.clearTimeout(timeout);
       imageCache.delete(src);
       reject(new Error("이미지를 불러오지 못했습니다."));
     };
@@ -66,28 +76,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return pending;
 }
 
-async function paintDocument(canvas: HTMLCanvasElement, document: DrawingDocument, selectedImageId?: string | null, strict = false) {
-  if (canvas.width !== document.width) canvas.width = document.width;
-  if (canvas.height !== document.height) canvas.height = document.height;
-  const context = canvas.getContext("2d");
-  if (!context) return;
+function clearCanvas(context: CanvasRenderingContext2D, document: DrawingDocument) {
   context.clearRect(0, 0, document.width, document.height);
   context.fillStyle = "#ffffff";
   context.fillRect(0, 0, document.width, document.height);
+}
 
-  for (const item of document.images) {
-    try {
-      const image = await loadImage(item.src);
-      context.drawImage(image, item.x, item.y, item.width, item.height);
-    } catch (imageError) {
-      if (strict) throw imageError;
-      context.fillStyle = "#f1f1ed";
-      context.fillRect(item.x, item.y, item.width, item.height);
-      context.strokeStyle = "#d7d8d2";
-      context.strokeRect(item.x, item.y, item.width, item.height);
-    }
-  }
-
+function paintStrokes(context: CanvasRenderingContext2D, document: DrawingDocument) {
   for (const stroke of document.strokes) {
     if (!stroke.points.length) continue;
     context.beginPath();
@@ -101,22 +96,76 @@ async function paintDocument(canvas: HTMLCanvasElement, document: DrawingDocumen
     for (const point of points) context.lineTo(point.x, point.y);
     context.stroke();
   }
+}
 
+function paintSelection(context: CanvasRenderingContext2D, document: DrawingDocument, selectedImageId?: string | null) {
   const selected = document.images.find((item) => item.id === selectedImageId);
-  if (selected) {
-    const handleSize = 18;
-    context.save();
-    context.strokeStyle = "#675cf6";
-    context.lineWidth = 3;
-    context.setLineDash([10, 7]);
-    context.strokeRect(selected.x, selected.y, selected.width, selected.height);
-    context.setLineDash([]);
-    context.fillStyle = "#ffffff";
-    context.fillRect(selected.x + selected.width - handleSize / 2, selected.y + selected.height - handleSize / 2, handleSize, handleSize);
-    context.strokeStyle = "#675cf6";
-    context.strokeRect(selected.x + selected.width - handleSize / 2, selected.y + selected.height - handleSize / 2, handleSize, handleSize);
-    context.restore();
+  if (!selected) return;
+  const handleSize = 18;
+  context.save();
+  context.strokeStyle = "#675cf6";
+  context.lineWidth = 3;
+  context.setLineDash([10, 7]);
+  context.strokeRect(selected.x, selected.y, selected.width, selected.height);
+  context.setLineDash([]);
+  context.fillStyle = "#ffffff";
+  context.fillRect(selected.x + selected.width - handleSize / 2, selected.y + selected.height - handleSize / 2, handleSize, handleSize);
+  context.strokeStyle = "#675cf6";
+  context.strokeRect(selected.x + selected.width - handleSize / 2, selected.y + selected.height - handleSize / 2, handleSize, handleSize);
+  context.restore();
+}
+
+interface PaintDocumentOptions {
+  strict?: boolean;
+  isCurrent?: () => boolean;
+  onEditableReady?: () => void;
+}
+
+async function paintDocument(
+  canvas: HTMLCanvasElement,
+  document: DrawingDocument,
+  selectedImageId?: string | null,
+  { strict = false, isCurrent = () => true, onEditableReady }: PaintDocumentOptions = {},
+) {
+  if (canvas.width !== document.width) canvas.width = document.width;
+  if (canvas.height !== document.height) canvas.height = document.height;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  // Keep saved annotations visible while source images are restored. Previously
+  // the first stroke was not painted until every image request had completed.
+  if (!strict && isCurrent()) {
+    clearCanvas(context, document);
+    paintStrokes(context, document);
+    paintSelection(context, document, selectedImageId);
+    if (!document.images.length) onEditableReady?.();
   }
+
+  const images = await Promise.all(document.images.map(async (item) => {
+    try {
+      return await loadImage(item.src);
+    } catch (imageError) {
+      if (strict) throw imageError;
+      return null;
+    }
+  }));
+  if (!isCurrent()) return;
+
+  clearCanvas(context, document);
+  document.images.forEach((item, index) => {
+    const image = images[index];
+    if (image) {
+      context.drawImage(image, item.x, item.y, item.width, item.height);
+    } else {
+      context.fillStyle = "#f1f1ed";
+      context.fillRect(item.x, item.y, item.width, item.height);
+      context.strokeStyle = "#d7d8d2";
+      context.strokeRect(item.x, item.y, item.width, item.height);
+    }
+  });
+  paintStrokes(context, document);
+  paintSelection(context, document, selectedImageId);
+  onEditableReady?.();
 }
 
 function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -135,7 +184,7 @@ function pointInResizeHandle(point: DrawingPoint, image: DrawingImage) {
   return Math.abs(point.x - (image.x + image.width)) <= hitSize && Math.abs(point.y - (image.y + image.height)) <= hitSize;
 }
 
-export function DrawingCanvasDialog({ document: initialDocument, nodeName, onAddImage, onClose, onSave }: DrawingCanvasDialogProps) {
+export function DrawingCanvasDialog({ document: initialDocument, nodeName, previewUrl, onAddImage, onClose, onSave }: DrawingCanvasDialogProps) {
   const [document, setDocument] = useState(() => cloneDocument(initialDocument));
   const [tool, setTool] = useState<EditorTool>("pen");
   const [penColor, setPenColor] = useState<(typeof PEN_COLORS)[number]["value"]>(PEN_COLORS[0].value);
@@ -146,17 +195,11 @@ export function DrawingCanvasDialog({ document: initialDocument, nodeName, onAdd
   const [saving, setSaving] = useState(false);
   const [addingImage, setAddingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restoringPreview, setRestoringPreview] = useState(Boolean(previewUrl));
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gestureRef = useRef<PointerGesture | null>(null);
   const renderVersionRef = useRef(0);
-  const latestDocumentRef = useRef(document);
-  const latestSelectedImageRef = useRef(selectedImageId);
-
-  useEffect(() => {
-    latestDocumentRef.current = document;
-    latestSelectedImageRef.current = selectedImageId;
-  }, [document, selectedImageId]);
 
   const commitHistory = useCallback((before = document) => {
     setHistory((current) => [...current, cloneDocument(before)].slice(-40));
@@ -166,10 +209,16 @@ export function DrawingCanvasDialog({ document: initialDocument, nodeName, onAdd
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    let active = true;
     const version = ++renderVersionRef.current;
-    void paintDocument(canvas, document, selectedImageId).then(() => {
-      if (version !== renderVersionRef.current) void paintDocument(canvas, latestDocumentRef.current, latestSelectedImageRef.current);
+    const isCurrent = () => active && version === renderVersionRef.current;
+    void paintDocument(canvas, document, selectedImageId, {
+      isCurrent,
+      onEditableReady: () => { if (isCurrent()) setRestoringPreview(false); },
+    }).catch(() => {
+      if (isCurrent()) setRestoringPreview(false);
     });
+    return () => { active = false; };
   }, [document, selectedImageId]);
 
   const addImageFile = useCallback(async (file: File) => {
@@ -365,7 +414,7 @@ export function DrawingCanvasDialog({ document: initialDocument, nodeName, onAdd
     setError(null);
     try {
       const exportCanvas = window.document.createElement("canvas");
-      await paintDocument(exportCanvas, document, null, true);
+      await paintDocument(exportCanvas, document, null, { strict: true });
       await onSave(cloneDocument(document), await canvasBlob(exportCanvas));
       onClose();
     } catch (saveError) {
@@ -437,14 +486,21 @@ export function DrawingCanvasDialog({ document: initialDocument, nodeName, onAdd
           onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
           onDrop={(event) => { event.preventDefault(); const file = [...event.dataTransfer.files].find((item) => item.type.startsWith("image/")); if (file) void addImageFile(file); }}
         >
+          {restoringPreview && previewUrl && <>
+            {/* The artifact URL is intentionally reused without Next image transformation so the node preview stays cache-hot. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="drawing-stage-snapshot" src={previewUrl} alt="" draggable={false} onError={() => setRestoringPreview(false)} />
+          </>}
           <canvas
             ref={canvasRef}
+            className={restoringPreview ? "restoring" : undefined}
             width={document.width}
             height={document.height}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
+            aria-busy={restoringPreview}
             aria-label="이미지 배치와 자유 그리기 캔버스"
           />
           {!document.images.length && !document.strokes.length && <div className="drawing-stage-empty"><ImagePlus size={25} /><strong>이미지를 붙여넣거나 바로 그려보세요</strong><span>선택 도구로 이미지를 이동하고 우측 아래 핸들로 크기를 조절합니다.</span></div>}

@@ -5,11 +5,13 @@
 @import "../styles/integrations/vidstack.css";
 @import "../styles/integrations/react-flow.css";
 @import "../styles/features/reference-library.css";
+@import "../styles/features/reference-results.css";
 @import "../styles/features/asset-library.css";
 @import "../styles/features/image-editor.css";
 @import "../styles/features/canvas-library.css";
 @import "../styles/features/format-lab.css";
 @import "../styles/features/runs-models.css";
 @import "../styles/features/settings.css";
+@import "../styles/features/skill-registry.css";
 @import "../styles/features/generation-canvas.css";
 @import "../styles/responsive.css";

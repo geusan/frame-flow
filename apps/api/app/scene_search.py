@@ -53,7 +53,7 @@ class SceneRanker(Protocol):
 
 
 SCENE_SEARCH_MODELS: dict[str, tuple[str, ...]] = {
-    "google": ("google.text.fast", "google.text.quality"),
+    "google": tuple(alias for alias in ALL_MODEL_REGISTRY if alias.startswith("google.text.")),
     "openai": ("openai.text.fast", "openai.text.quality", "openai.chat.latest"),
 }
 

@@ -42,6 +42,8 @@ def test_storage_settings_switch_from_minio_to_r2(monkeypatch):
 def test_artifact_bucket_and_keys_are_deterministic_and_path_safe():
     settings = StorageSettings.from_env()
     assert bucket_for_artifact(settings, "ReferenceOriginal") == settings.buckets.reference
+    assert bucket_for_artifact(settings, "ReferenceAnalysis") == settings.buckets.reference
+    assert bucket_for_artifact(settings, "ReferenceAccompaniment") == settings.buckets.reference
     assert bucket_for_artifact(settings, "Image") == settings.buckets.generation
     assert artifact_object_key("Video", "art_123", "video/mp4") == "artifacts/video/art_123.mp4"
     assert safe_upload_key("upload_123", "../../my clip.mp4") == "uploads/upload_123/my-clip.mp4"

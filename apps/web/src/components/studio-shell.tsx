@@ -10,10 +10,12 @@ function pageTitle(pathname: string): { eyebrow: string; title: string } {
   if (pathname.startsWith("/workflows/")) return { eyebrow: "Canvas editor", title: "Workflow Canvas" };
   if (pathname === "/workflows") return { eyebrow: "Workspace canvases", title: "Canvases" };
   if (pathname.startsWith("/asset/images/") && pathname.endsWith("/edit")) return { eyebrow: "Image workspace", title: "Image Editor" };
-  if (pathname === "/asset/images") return { eyebrow: "Workspace assets", title: "Image Gallery" };
-  if (pathname === "/asset/videos") return { eyebrow: "Workspace assets", title: "Video Gallery" };
+  if (pathname.startsWith("/asset/images")) return { eyebrow: "Workspace assets", title: "Image Gallery" };
+  if (pathname.startsWith("/asset/videos")) return { eyebrow: "Workspace assets", title: "Video Gallery" };
+  if (pathname.startsWith("/reference-results")) return { eyebrow: "Reference intelligence", title: "Reference Results" };
   if (pathname === "/runs") return { eyebrow: "Execution & recovery", title: "Runs" };
   if (pathname === "/settings/models") return { eyebrow: "Provider abstraction", title: "Model Registry" };
+  if (pathname === "/settings/skills") return { eyebrow: "Trusted execution", title: "Skill Registry" };
   return { eyebrow: "Workspace configuration", title: "Settings" };
 }
 

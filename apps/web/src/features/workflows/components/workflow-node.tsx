@@ -20,6 +20,7 @@ import {
   Languages,
   Layers3,
   Link2,
+  LoaderCircle,
   MessageSquareText,
   Mic2,
   Paintbrush,
@@ -274,6 +275,9 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
   if (data.key === "utility.drawing") return <DrawingCanvasNode {...props} />;
   const Icon = icons[data.icon];
   const inputs = data.inputTypes ?? [];
+  const running = ["QUEUED", "CLAIMED", "SUBMITTED", "RUNNING"].includes(data.status);
+  const progress = Math.max(0, Math.min(100, data.runProgress ?? 0));
+  const runningLabel = data.key === "image.generate" ? "Generating image" : data.key === "video.generate" ? "Generating video" : "Running step";
   return (
     <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
       {inputs.map((type, index) => (
@@ -294,18 +298,26 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
         <CanvasNodeStatus data={data} compact />
       </div>
       <p className="node-description">{data.description}</p>
+      {running && <div className="node-running-indicator" aria-live="polite">
+        <LoaderCircle className="spin" size={16} />
+        <span><strong>{runningLabel}…</strong><small>{progress > 5 ? `${progress}% complete` : "Provider request in progress"}</small></span>
+        <i className="node-running-track"><b className={progress > 5 ? "determinate" : "indeterminate"} style={progress > 5 ? { width: `${progress}%` } : undefined} /></i>
+      </div>}
       {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />}
       {data.key === "skill.execute" && <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>}
       {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
       {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} />}
       {data.configText !== undefined && !["asset.select", "asset.upload", "prompt.input"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
-      {data.output ? <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} /> : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
+      {data.output ? data.key === "reference.decompose"
+        ? <ReferenceAnalysisOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+        : <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+        : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
       <div className="node-meta">
         {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
         {data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
         {!!data.attemptCount && <span><RefreshCw size={10} /> {data.attemptCount}</span>}
         {data.cost && <span className="node-cost">{data.cost}</span>}
-        {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={data.status === "RUNNING" || data.status === "BLOCKED"}>{data.status === "RUNNING" ? <RefreshCw className="spin" size={13} /> : <Play size={12} fill="currentColor" />} Run</button>}
+        {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={running || data.status === "BLOCKED"}>{running ? <><RefreshCw className="spin" size={13} /> Running</> : <><Play size={12} fill="currentColor" /> Run</>}</button>}
       </div>
       {data.outputType && (
         <Handle type="source" position={Position.Right} id="output" className={`typed-handle type-${data.outputType.toLowerCase()}`}>
@@ -408,6 +420,35 @@ function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?:
   if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span>{state}</div>;
   if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p>{state}</div>;
   return <div className="node-output node-output-json"><small>{output.title}</small><pre>{output.text}</pre>{state}</div>;
+}
+
+function ReferenceAnalysisOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
+  let analysis: {
+    speech?: { segments?: unknown[] };
+    audio?: { music_intervals?: unknown[]; sound_effects?: unknown[] };
+    visual?: { shots?: unknown[]; actions?: unknown[]; text_tracks?: unknown[] };
+    quality?: { completeness?: string; warnings?: unknown[] };
+  } | null = null;
+  try {
+    analysis = output.text ? JSON.parse(output.text) : null;
+  } catch {
+    analysis = null;
+  }
+  if (!analysis) return <NodeOutput output={output} stateLabel={stateLabel} />;
+  const stats = [
+    ["Speech", analysis.speech?.segments?.length ?? 0],
+    ["Shots", analysis.visual?.shots?.length ?? 0],
+    ["Actions", analysis.visual?.actions?.length ?? 0],
+    ["Captions", analysis.visual?.text_tracks?.length ?? 0],
+    ["Music", analysis.audio?.music_intervals?.length ?? 0],
+    ["SFX", analysis.audio?.sound_effects?.length ?? 0],
+  ];
+  return <div className="node-output node-output-reference-analysis">
+    <div><span><Layers3 size={13} /> Reference timeline</span><b className={analysis.quality?.completeness === "complete" ? "complete" : "partial"}>{analysis.quality?.completeness ?? "partial"}</b></div>
+    <section>{stats.map(([label, value]) => <span key={label}><strong>{value}</strong><small>{label}</small></span>)}</section>
+    {!!analysis.quality?.warnings?.length && <p>{analysis.quality.warnings.length} analysis warning{analysis.quality.warnings.length === 1 ? "" : "s"}</p>}
+    {stateLabel && <b className="node-output-state">{stateLabel}</b>}
+  </div>;
 }
 
 export const nodeTypes = { studio: WorkflowNode };

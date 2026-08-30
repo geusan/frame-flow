@@ -28,8 +28,16 @@ from .storage import artifact_content_url, get_storage, storage_location
 
 
 MODEL_COSTS = {
+    "reference-analysis.pipeline": 0.03,
     "google.text.fast": 0.01,
     "google.text.quality": 0.03,
+    "google.text.3.6-flash": 0.01,
+    "google.text.3.5-flash": 0.01,
+    "google.text.3.5-flash-lite": 0.005,
+    "google.text.3.1-pro-preview": 0.03,
+    "google.text.3.1-flash-lite": 0.005,
+    "google.text.2.5-flash": 0.01,
+    "google.text.2.5-flash-lite": 0.005,
     "google.image.fast": 0.067,
     "google.image.quality": 0.134,
     "google.image.edit.fast": 0.0336,

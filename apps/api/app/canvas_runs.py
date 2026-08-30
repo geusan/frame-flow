@@ -335,6 +335,8 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
     parameters.setdefault("transition", data.get("transition"))
     parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
     parameters.setdefault("source_language", data.get("sourceLanguage"))
+    parameters.setdefault("separate_music", data.get("separateMusic"))
+    parameters.setdefault("scene_threshold", data.get("sceneThreshold"))
     parameters.setdefault("target_language", data.get("targetLanguage"))
     parameters.setdefault("voice_name", data.get("voiceName"))
     parameters.setdefault("caption_x", data.get("captionX"))

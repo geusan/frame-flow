@@ -282,7 +282,18 @@ class S3CompatibleObjectStorage:
         )
 
 
-REFERENCE_TYPES = {"ReferenceOriginal", "ProxyVideo", "Thumbnail", "Subtitle"}
+REFERENCE_TYPES = {
+    "ReferenceOriginal",
+    "ProxyVideo",
+    "Thumbnail",
+    "Subtitle",
+    "ReferenceAnalysis",
+    "ReferenceAudioMix",
+    "ReferenceTranscript",
+    "ReferenceSubtitle",
+    "ReferenceVocals",
+    "ReferenceAccompaniment",
+}
 FORMAT_TYPES = {"FormatProfile", "GenerationSpec", "Script", "TimedScript", "ShotPlan", "Timeline"}
 RENDER_TYPES = {"QCReport", "FinalVideo"}
 

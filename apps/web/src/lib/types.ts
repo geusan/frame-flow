@@ -16,6 +16,7 @@ export type PortType =
   | "Text"
   | "Prompt"
   | "ReferenceAsset"
+  | "ReferenceAnalysis"
   | "ReferenceSet"
   | "Transcript"
   | "SceneList"

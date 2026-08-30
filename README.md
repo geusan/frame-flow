@@ -22,6 +22,7 @@
 - Prompt·모델·입력·파라미터 Snapshot을 보존하는 단일 Experiment 실행 이력
 - Gemini Image·Veo·Gemini-TTS 결과를 MinIO에 저장하고 Canvas에서 재생하는 실제 생성 경로
 - 교체 가능한 Video Downloader Adapter(`yt-dlp` 기본)를 통한 Canvas URL 업로드 Artifact와 FFmpeg 기반 Video Editor·오디오 교체·드래그 자막 배치·승인 후 이어지는 하드 자막 최종 렌더·ffprobe QC
+- Canvas `Video Reference Analyzer` composite 노드의 STT·음악 구간/선택적 Demucs 2-stem·컷·액션·화면 자막 위치 변화·효과음 타임라인과 `reference.decomposition.v1` Artifact
 - `curl_cffi` Chrome impersonation, 제한 재시도, 성공한 메타데이터 재사용을 이용한 TikTok TLS/JS 챌린지 대응
 - Asset Library 비디오 seek·현재 프레임 캡처와 원본 Video → Image Artifact lineage
 - Images의 브라우저 Canvas 수동 편집과 Nano Banana/GPT Image 자연어 편집, 원본을 보존하는 파생 Image Artifact lineage
@@ -136,17 +137,17 @@ PostgreSQL이 사용자에게 보이는 상태의 기준입니다. 일반 Genera
 
 ## 실제 Google Provider 연결
 
-Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 수 있고, Video·Format extraction·Speech Subtitle·Translate Video는 실제 Google API를 사용합니다. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `GOOGLE_SPEECH_LOCATION`과 Application Default Credentials를 설정하고 Speech-to-Text 및 Vertex AI API 권한을 부여해야 합니다. Translate Video는 현재 60초 이하를 지원하며 Transcript, 번역문, WAV, SRT와 최종 MP4를 각각 불변 Artifact로 저장합니다.
+Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 수 있고, Video·Format extraction·Speech Subtitle·Translate Video는 실제 Google API를 사용합니다. Vertex AI 없이 사용할 때는 Gemini API key를 유지하면서 `GOOGLE_CLOUD_PROJECT`, Chirp 3 지원 리전의 `GOOGLE_SPEECH_LOCATION`과 Application Default Credentials를 설정하고 Speech-to-Text API 권한을 부여합니다. Translate Video는 현재 60초 이하를 지원하며 Transcript, 번역문, WAV, SRT와 최종 MP4를 각각 불변 Artifact로 저장합니다.
 
 Canvas의 Image, Voiceover, LLM Assistant와 Script 노드는 모델 선택에서 OpenAI를 선택할 수 있습니다. Voiceover는 Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS와 OpenAI GPT-4o Mini TTS, TTS-1, TTS-1 HD를 지원합니다. Gemini API 키 인증에서는 2.5 TTS 별칭이 Developer API의 Preview 모델 ID로, Vertex AI 인증에서는 Google Cloud 모델 ID로 자동 해석됩니다. `OPENAI_API_KEY`를 설정하면 Responses API의 GPT-5.6/ChatGPT Latest, GPT Image 2와 OpenAI TTS 모델이 활성화됩니다. Video Generator는 Veo를 사용합니다.
 
 1. `.env.example`을 `.env`로 복사합니다.
 2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다. API 최초 시작 시 Google/OpenAI 연결 값이 `provider_settings` 테이블로 자동 이관됩니다.
-3. `GENERATION_PROVIDER_MODE`, `REFERENCE_PROVIDER_MODE`, `FORMAT_PROVIDER_MODE`, `SUBTITLE_ALIGNMENT_MODE`가 `live`인지 확인하고 `VIDEO_DOWNLOADER_PROVIDER=yt-dlp`를 설정합니다.
+3. `GENERATION_PROVIDER_MODE`, `REFERENCE_PROVIDER_MODE`, `FORMAT_PROVIDER_MODE`, `SUBTITLE_ALIGNMENT_MODE`, `REFERENCE_ANALYSIS_MODE`가 `live`인지 확인하고 `VIDEO_DOWNLOADER_PROVIDER=yt-dlp`를 설정합니다. 음악 stem이 필요하면 `REFERENCE_AUDIO_SEPARATOR=demucs`와 `demucs` 실행 파일도 준비합니다.
 4. Provider 결과를 반환하기 전에 `provider_request_id`, `provider_operation_id`, `request_hash`를 NodeRun에 저장합니다.
 5. video operation은 제출과 완료를 분리하고 Reconciler가 operation ID로 재연결하게 합니다.
 
-이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다.
+이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다. fal.ai 연결은 서버 전용 `FAL_KEY`를 사용합니다.
 
 Workflow에는 실제 모델 ID를 넣지 않습니다. 논리적 별칭만 사용하고 Run 생성 시점에 정확한 모델 ID를 Snapshot합니다.
 

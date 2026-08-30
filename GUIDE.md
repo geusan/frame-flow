@@ -162,6 +162,11 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | --- | --- | --- | --- |
 | Upload | 로컬 파일 또는 영상 URL | `ReferenceAsset` | 이미지·영상·오디오 파일 선택, 공개 영상 URL 가져오기 |
 | Assets | 저장 Asset 한 개 | `ReferenceAsset` | 미니 Popover에서 저장된 이미지·비디오 하나 선택 |
+| Video Reference Analyzer | `Video` | `ReferenceAnalysis` | STT·음악 구간/2-stem·컷·액션·화면 자막 위치·효과음을 하나의 타임라인으로 분석 |
+
+`Video Reference Analyzer`는 Canvas에 보이는 하나의 composite 노드다. 내부에서는 FFmpeg 컷 검출과 오디오 추출, Chirp 3 STT, Gemini 영상·오디오 의미 분석을 수행하고 `reference.decomposition.v1` manifest를 주 Artifact로 저장한다. Transcript JSON, SRT, 원본 WAV와 선택적인 vocals/accompaniment WAV는 manifest의 component Artifact로 연결된다. Inspector에서 언어 힌트, 컷 민감도와 stem 생성 여부를 설정하고 분석 lane과 오디오 stem을 확인할 수 있다.
+
+운영 기본값은 `REFERENCE_ANALYSIS_MODE=live`이며 Google Provider 자격증명이 필요하다. `REFERENCE_AUDIO_SEPARATOR=demucs`일 때 `demucs` 실행 파일이 설치되어 있으면 vocals/accompaniment를 생성한다. Demucs가 없으면 STT·컷·액션·자막·음악 구간·효과음 분석은 유지되고 manifest는 music separation 경고와 함께 `partial`로 저장된다. accompaniment에는 효과음이 남을 수 있으므로 순수 음악이라고 간주하지 않는다. 분석 입력은 최대 10분이다.
 
 사이드바의 Asset Library는 저장된 이미지와 비디오를 탭·검색·미리보기로 모아 보여준다. 비디오 플레이어에서 원하는 위치로 이동한 뒤 `Capture frame`을 누르면 해당 시점의 JPEG가 새 Image Artifact로 저장된다. `Prompt search`는 Google 또는 OpenAI Provider와 논리적 모델 별칭을 선택할 수 있다. 영상을 샘플링한 뒤 선택한 Vision 모델이 Prompt 관련도를 평가해 후보 썸네일·점수·타임스탬프를 반환한다. 후보를 누르면 플레이어가 해당 위치로 seek하며 선택 장면을 캡처할 수 있다. 캡처 이미지는 원본 Video Artifact ID, 정확한 타임스탬프, 검색 Prompt·점수·Provider·논리 모델·정확한 모델 ID와 FFmpeg 작업 버전을 lineage로 보존한다. Canvas의 Assets 노드는 같은 목록을 축소한 Popover를 열며, 이미지/비디오 탭에서 한 개를 선택해 해당 노드 출력으로 사용한다. ReferenceSet을 Canvas 생성 입력으로 직접 사용하지 않는다.
 

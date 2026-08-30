@@ -241,9 +241,11 @@ class YtDlpVideoDownloaderAdapter:
             command = [
                 *self._base(safe_url),
                 "--match-filter",
-                f"duration <= {max_duration_seconds}",
+                f"duration <=? {max_duration_seconds}",
                 "--format",
-                "bv*[height<=1080]+ba/b[height<=1080]",
+                "bv*+ba/b/bv*",
+                "--format-sort",
+                "res:1080",
                 "--merge-output-format",
                 "mp4",
                 "--write-info-json",
@@ -279,6 +281,11 @@ class YtDlpVideoDownloaderAdapter:
             )
             if not video_path:
                 raise VideoDownloaderError("video downloader did not produce a video")
+            duration_seconds = _probe_video_duration_seconds(video_path)
+            if duration_seconds > max_duration_seconds:
+                raise VideoDownloaderError(
+                    f"video duration exceeds the {max_duration_seconds} second limit"
+                )
             info_path = next((path for path in files if path.name.endswith(".info.json")), None)
             info = json.loads(info_path.read_text()) if info_path else {}
             thumbnail_path = next(
@@ -348,6 +355,35 @@ class FixtureVideoDownloaderAdapter:
             "application/x-subrip",
             {},
         )
+
+
+def _probe_video_duration_seconds(video_path: Path) -> float:
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                str(video_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        duration = float((json.loads(result.stdout).get("format") or {}).get("duration") or 0)
+    except FileNotFoundError as exc:
+        raise VideoDownloaderError("ffprobe is not installed") from exc
+    except (json.JSONDecodeError, TypeError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        detail = (getattr(exc, "stderr", "") or str(exc))[-1200:]
+        raise VideoDownloaderError(f"could not determine downloaded video duration: {detail}") from exc
+    if duration <= 0:
+        raise VideoDownloaderError("could not determine downloaded video duration")
+    return duration
 
 
 def _source_id(url: str) -> str:

@@ -7,7 +7,6 @@ import {
   Check,
   ChevronDown,
   CircleAlert,
-  Clapperboard,
   Cloud,
   Copy,
   Database,
@@ -23,6 +22,7 @@ import {
   Video,
   Volume2,
   WandSparkles,
+  Zap,
 } from "lucide-react";
 
 import { ConfirmAction } from "@/components/shared/confirm-action";
@@ -59,12 +59,12 @@ function sourceLabel(source: ProviderSetting["source"]): string {
 function providerIcon(provider: ProviderSetting["provider"]): ReactNode {
   if (provider === "openai") return <KeyRound size={19} />;
   if (provider === "google") return <Sparkles size={19} />;
-  if (provider === "veo3") return <Clapperboard size={19} />;
   if (provider === "claude") return <Bot size={19} />;
   if (provider === "elevenlabs") return <Volume2 size={19} />;
   if (provider === "seedance") return <Film size={19} />;
   if (provider === "kling") return <WandSparkles size={19} />;
   if (provider === "minimax") return <Video size={19} />;
+  if (provider === "fal") return <Zap size={19} />;
   return <ServerCog size={19} />;
 }
 

@@ -244,6 +244,18 @@ class ImageEditAdjustments(BaseModel):
     sepia: float = Field(default=0, ge=0, le=1)
 
 
+class ImageEditLighting(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.35, ge=0, le=1)
+    intensity: float = Field(default=0.9, ge=0, le=2)
+    radius: float = Field(default=0.45, ge=0.05, le=1.5)
+    softness: float = Field(default=0.75, ge=0, le=1)
+    color: str = Field(default="#ffd6a3", pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
 class ImageEditDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -251,6 +263,7 @@ class ImageEditDocument(BaseModel):
     aspect_ratio: Literal["original", "1:1", "4:5", "9:16", "16:9"] = "original"
     transform: ImageEditTransform = Field(default_factory=ImageEditTransform)
     adjustments: ImageEditAdjustments = Field(default_factory=ImageEditAdjustments)
+    lighting: ImageEditLighting | None = None
 
 
 class ExperimentRunRequest(BaseModel):

@@ -87,7 +87,7 @@ export interface ProviderAuthMethod {
 }
 
 export interface ProviderSetting {
-  provider: "openai" | "google" | "veo3" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax";
+  provider: "openai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal";
   label: string;
   description: string;
   enabled: boolean;
@@ -240,7 +240,7 @@ export interface UploadedArtifact {
 export interface ArtifactListItem {
   id: string;
   created_at: string;
-  type: "Image" | "Video" | "Audio" | "Text" | "FinalVideo";
+  type: "Image" | "Video" | "Audio" | "Text" | "FinalVideo" | "ReferenceAnalysis" | "ReferenceAudioMix" | "ReferenceTranscript" | "ReferenceSubtitle" | "ReferenceVocals" | "ReferenceAccompaniment";
   content_type: string;
   size_bytes: number;
   filename: string;
@@ -261,7 +261,7 @@ export interface ArtifactDetail {
   metadata: Record<string, unknown> & {
     filename?: string;
     source?: string;
-    output?: { title?: string };
+    output?: { title?: string; text?: string; kind?: string };
     storage?: { content_type?: string; size_bytes?: number };
   };
 }
@@ -284,6 +284,15 @@ export interface ImageEditDocument {
     blur: number;
     grayscale: number;
     sepia: number;
+  };
+  lighting: {
+    enabled: boolean;
+    x: number;
+    y: number;
+    intensity: number;
+    radius: number;
+    softness: number;
+    color: string;
   };
 }
 

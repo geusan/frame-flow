@@ -74,7 +74,7 @@ def test_tiktok_extraction_retries_the_whole_yt_dlp_process(monkeypatch):
     assert calls == 2
 
 
-def test_download_command_does_not_use_max_downloads_exit_code(monkeypatch):
+def test_download_command_is_vertical_safe_and_does_not_use_max_downloads_exit_code(monkeypatch):
     adapter = YtDlpVideoDownloaderAdapter(impersonate_attempts=1)
     captured_command: list[str] = []
 
@@ -88,10 +88,15 @@ def test_download_command_does_not_use_max_downloads_exit_code(monkeypatch):
 
     monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
     monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+    monkeypatch.setattr(video_downloaders, "_probe_video_duration_seconds", lambda path: 30.0)
 
     adapter.download("https://www.tiktok.com/@creator/video/123")
 
     assert "--max-downloads" not in captured_command
+    assert "duration <=? 600" in captured_command
+    assert captured_command[captured_command.index("--format") + 1] == "bv*+ba/b/bv*"
+    assert captured_command[captured_command.index("--format-sort") + 1] == "res:1080"
+    assert not any("[height<=" in argument for argument in captured_command)
 
 
 def test_download_reuses_successful_inspection_metadata(monkeypatch):
@@ -115,6 +120,7 @@ def test_download_reuses_successful_inspection_metadata(monkeypatch):
 
     monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
     monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+    monkeypatch.setattr(video_downloaders, "_probe_video_duration_seconds", lambda path: 30.0)
     url = "https://www.tiktok.com/@creator/video/123"
 
     adapter.inspect(url)
@@ -122,6 +128,23 @@ def test_download_reuses_successful_inspection_metadata(monkeypatch):
 
     assert "--load-info-json" in commands[1]
     assert url not in commands[1]
+
+
+def test_download_rejects_media_over_the_duration_limit(monkeypatch):
+    adapter = YtDlpVideoDownloaderAdapter(impersonate_attempts=1)
+
+    def fake_run(command, **kwargs):
+        directory = kwargs["cwd"]
+        (directory / "123.mp4").write_bytes(b"video")
+        (directory / "123.jpg").write_bytes(b"thumbnail")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(video_downloaders, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(video_downloaders.subprocess, "run", fake_run)
+    monkeypatch.setattr(video_downloaders, "_probe_video_duration_seconds", lambda path: 601.0)
+
+    with pytest.raises(VideoDownloaderError, match="duration exceeds the 600 second limit"):
+        adapter.download("https://www.instagram.com/reel/123")
 
 
 def test_a_new_video_downloader_can_be_registered_and_selected(monkeypatch):

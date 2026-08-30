@@ -6,10 +6,12 @@ import {
   ChevronDown,
   CircleHelp,
   Film,
+  FileChartColumnIncreasing,
   Image as ImageIcon,
   Play,
   Settings,
   Sparkles,
+  WandSparkles,
   Workflow,
   type LucideIcon,
 } from "lucide-react";
@@ -39,17 +41,20 @@ const workspaceNavigation: NavigationItem[] = [
   { href: "/workflows", label: "Canvases", icon: Workflow, count: "canvases" },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
+  { href: "/reference-results", label: "Reference results", icon: FileChartColumnIncreasing },
   { href: "/runs", label: "Runs", icon: Play, count: "runs" },
 ];
 
 const settingsNavigation: NavigationItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/settings/models", label: "Models", icon: Boxes },
+  { href: "/settings/skills", label: "Skills", icon: WandSparkles },
 ];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/workflows") return pathname === href || pathname.startsWith("/workflows/");
   if (href.startsWith("/asset/")) return pathname === href || pathname.startsWith(`${href}/`);
+  if (href === "/reference-results") return pathname === href || pathname.startsWith("/reference-results/");
   return pathname === href;
 }
 

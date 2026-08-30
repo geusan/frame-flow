@@ -137,7 +137,7 @@ class ExperimentRunRecord(Timestamped, Base):
     node_id: Mapped[str] = mapped_column(String(128), index=True)
     node_key: Mapped[str] = mapped_column(String(128), index=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
-    execution_mode: Mapped[str] = mapped_column(String(32), default="google-live.v1")
+    execution_mode: Mapped[str] = mapped_column(String(64), default="google-live.v1")
     prompt: Mapped[str] = mapped_column(Text)
     model_alias: Mapped[str] = mapped_column(String(128))
     exact_model_id: Mapped[str] = mapped_column(String(255))

@@ -4,10 +4,11 @@ import json
 import pytest
 
 from app.providers_google import GoogleImageProvider, GoogleProviderConfig, GoogleTextProvider, GoogleTtsProvider, GoogleVideoProvider
+from app import providers_localization
 from app.providers_localization import get_localization_services
 from app.format_extraction import FormatSource, GeminiFormatExtractor
 from app.providers_openai import OpenAIProviderConfig
-from app.providers import ProviderSubmission
+from app.providers import ProviderSubmission, model_id_for_alias
 from app.experiments import resolve_model
 from app.domain import ExperimentRunRequest
 from app.providers_generation import GoogleGenerationServices
@@ -31,6 +32,27 @@ class FakeClient:
         self.models = FakeModels()
 
 
+@pytest.mark.parametrize(("logical_alias", "exact_model_id"), [
+    ("google.text.3.6-flash", "gemini-3.6-flash"),
+    ("google.text.3.5-flash", "gemini-3.5-flash"),
+    ("google.text.3.5-flash-lite", "gemini-3.5-flash-lite"),
+    ("google.text.3.1-pro-preview", "gemini-3.1-pro-preview"),
+    ("google.text.3.1-flash-lite", "gemini-3.1-flash-lite"),
+    ("google.text.2.5-flash", "gemini-2.5-flash"),
+    ("google.text.2.5-flash-lite", "gemini-2.5-flash-lite"),
+])
+def test_selectable_google_text_models_resolve_to_current_model_ids(
+    logical_alias: str,
+    exact_model_id: str,
+):
+    assert model_id_for_alias(logical_alias) == exact_model_id
+    assert model_id_for_alias(logical_alias, gemini_api=True) == exact_model_id
+
+
+def test_fast_text_alias_tracks_latest_stable_flash_model():
+    assert model_id_for_alias("google.text.fast") == "gemini-3.6-flash"
+
+
 def test_structured_text_uses_schema_and_exact_registered_model():
     client = FakeClient()
     provider = GoogleTextProvider(GoogleProviderConfig("demo"), client=client)
@@ -43,7 +65,7 @@ def test_structured_text_uses_schema_and_exact_registered_model():
     )
     assert result == {"result": "ok"}
     assert request_id.startswith("google_")
-    assert client.models.last["model"] == "gemini-2.5-pro"
+    assert client.models.last["model"] == "gemini-3.1-pro-preview"
     assert client.models.last["config"].response_mime_type == "application/json"
     assert client.models.last["config"].seed == 9
 
@@ -231,6 +253,34 @@ def test_localization_requires_live_google_project_without_mock_fallback(monkeyp
         get_localization_services()
 
 
+def test_localization_uses_speech_adc_with_gemini_api_generation(monkeypatch):
+    captured: dict[str, object] = {}
+    recognizer = object()
+    text_provider = object()
+    tts_provider = object()
+
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "speech-project")
+    monkeypatch.setenv("GOOGLE_SPEECH_LOCATION", "us")
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setattr(providers_localization, "GoogleChirp3Recognizer", lambda project, location: captured.update(project=project, location=location) or recognizer)
+    monkeypatch.setattr(providers_localization, "GoogleTextProvider", lambda config: captured.update(text_config=config) or text_provider)
+    monkeypatch.setattr(providers_localization, "GoogleTtsProvider", lambda config: captured.update(tts_config=config) or tts_provider)
+
+    services = get_localization_services()
+
+    assert services.recognizer is recognizer
+    assert captured["project"] == "speech-project"
+    assert captured["location"] == "us"
+    assert captured["text_config"].api_key == "gemini-test-key"
+    assert captured["text_config"].project is None
+    assert captured["tts_config"].api_key == "gemini-test-key"
+
+
+def test_chirp3_rejects_unsupported_global_location():
+    with pytest.raises(RuntimeError, match="not available in global"):
+        providers_localization.GoogleChirp3Recognizer("speech-project", "global")
+
+
 def test_openai_provider_requires_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
@@ -260,4 +310,4 @@ def test_gemini_format_extractor_parses_real_structured_contract():
     result = GeminiFormatExtractor(provider).extract([FormatSource("ref_1", "Title", "Creator", 30_000, b"video")])
     assert result.profile.core.duration["target_ms"] == 30_000
     assert result.profile.core.editing["cuts_per_10_seconds"] == 5.2
-    assert result.exact_model_id == "gemini-2.5-pro"
+    assert result.exact_model_id == "gemini-3.1-pro-preview"

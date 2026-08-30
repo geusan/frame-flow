@@ -22,15 +22,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { frameflowApi, type ArtifactLineageGraph, type ArtifactListItem, type CapturedFrameArtifact, type SceneSearchCandidate, type SceneSearchResult } from "@/lib/api";
+import { qualifiedGoogleTextModelOptions } from "@/lib/model-options";
 
 type AssetTab = "images" | "videos";
 type SceneSearchProvider = "google" | "openai";
 
 const sceneSearchModels: Record<SceneSearchProvider, Array<{ value: string; label: string }>> = {
-  google: [
-    { value: "google.text.fast", label: "Gemini Flash" },
-    { value: "google.text.quality", label: "Gemini Pro" },
-  ],
+  google: qualifiedGoogleTextModelOptions,
   openai: [
     { value: "openai.text.fast", label: "GPT-5.6 Luna" },
     { value: "openai.text.quality", label: "GPT-5.6 Terra" },
@@ -197,7 +195,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const videoStageRef = useRef<HTMLDivElement>(null);
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<SceneSearchProvider>("google");
-  const [modelAlias, setModelAlias] = useState("google.text.fast");
+  const [modelAlias, setModelAlias] = useState("google.text.3.6-flash");
   const [result, setResult] = useState<SceneSearchResult | null>(null);
   const [selected, setSelected] = useState<SceneSearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
@@ -407,15 +405,27 @@ function AssetCard({ asset, onInspect, onOpenVideo, onOpenImage }: { asset: Arti
   </article>;
 }
 
-export function AssetLibrary({ tab, onOpenImages, onEditImage }: { tab: AssetTab; onOpenImages?: () => void; onEditImage?: (artifactId: string) => void }) {
+export function AssetLibrary({
+  tab,
+  selectedAssetId,
+  onOpenAsset,
+  onCloseAsset,
+  onOpenImages,
+  onEditImage,
+}: {
+  tab: AssetTab;
+  selectedAssetId?: string;
+  onOpenAsset: (artifactId: string) => void;
+  onCloseAsset: () => void;
+  onOpenImages?: () => void;
+  onEditImage?: (artifactId: string) => void;
+}) {
   const [assets, setAssets] = useState<ArtifactListItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [capturedAsset, setCapturedAsset] = useState<CapturedFrameArtifact | null>(null);
   const [inspectedAsset, setInspectedAsset] = useState<ArtifactListItem | null>(null);
-  const [sceneSearchAsset, setSceneSearchAsset] = useState<ArtifactListItem | null>(null);
-  const [previewedImage, setPreviewedImage] = useState<ArtifactListItem | null>(null);
 
   const loadAssets = useCallback(async () => {
     setLoading(true);
@@ -450,6 +460,13 @@ export function AssetLibrary({ tab, onOpenImages, onEditImage }: { tab: AssetTab
     });
   }, [assets, query, tab]);
 
+  const selectedAsset = useMemo(
+    () => selectedAssetId ? assets.find((asset) => asset.id === selectedAssetId) ?? null : null,
+    [assets, selectedAssetId],
+  );
+  const sceneSearchAsset = selectedAsset && isVideo(selectedAsset) ? selectedAsset : null;
+  const previewedImage = selectedAsset?.type === "Image" ? selectedAsset : null;
+
   const handleCaptured = useCallback((captured: CapturedFrameArtifact) => {
     setAssets((current) => [captured, ...current.filter((asset) => asset.id !== captured.id)]);
     setCapturedAsset(captured);
@@ -472,12 +489,12 @@ export function AssetLibrary({ tab, onOpenImages, onEditImage }: { tab: AssetTab
 
       {!error && !loading && visibleAssets.length > 0 && (
         <div className="asset-grid">
-          {visibleAssets.map((asset) => <AssetCard asset={asset} onInspect={() => setInspectedAsset(asset)} onOpenVideo={() => setSceneSearchAsset(asset)} onOpenImage={() => setPreviewedImage(asset)} key={asset.id} />)}
+          {visibleAssets.map((asset) => <AssetCard asset={asset} onInspect={() => setInspectedAsset(asset)} onOpenVideo={() => onOpenAsset(asset.id)} onOpenImage={() => onOpenAsset(asset.id)} key={asset.id} />)}
         </div>
       )}
       {inspectedAsset && <AssetLineageDrawer asset={inspectedAsset} onClose={() => setInspectedAsset(null)} key={inspectedAsset.id} />}
-      {sceneSearchAsset && <SceneSearchDialog asset={sceneSearchAsset} onClose={() => setSceneSearchAsset(null)} onCaptured={handleCaptured} key={sceneSearchAsset.id} />}
-      {previewedImage && <ImagePreviewDialog asset={previewedImage} onClose={() => setPreviewedImage(null)} onEdit={onEditImage ? () => onEditImage(previewedImage.id) : undefined} key={previewedImage.id} />}
+      {sceneSearchAsset && <SceneSearchDialog asset={sceneSearchAsset} onClose={onCloseAsset} onCaptured={handleCaptured} key={sceneSearchAsset.id} />}
+      {previewedImage && <ImagePreviewDialog asset={previewedImage} onClose={onCloseAsset} onEdit={onEditImage ? () => onEditImage(previewedImage.id) : undefined} key={previewedImage.id} />}
     </div>
   );
 }

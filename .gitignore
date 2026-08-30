@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .env.local
+compose.override.yaml
 .venv/
 __pycache__/
 .pytest_cache/

@@ -17,12 +17,14 @@ import {
   Save,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   Undo2,
   WandSparkles,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -35,6 +37,9 @@ import {
 } from "@/lib/api";
 
 type AiProvider = "google" | "openai";
+type CanvasDrag =
+  | { mode: "image"; x: number; y: number; offsetX: number; offsetY: number }
+  | { mode: "light" };
 
 const DEFAULT_EDIT: ImageEditDocument = {
   version: "image-edit.v1",
@@ -55,7 +60,23 @@ const DEFAULT_EDIT: ImageEditDocument = {
     grayscale: 0,
     sepia: 0,
   },
+  lighting: {
+    enabled: false,
+    x: 0.5,
+    y: 0.35,
+    intensity: 0.9,
+    radius: 0.45,
+    softness: 0.75,
+    color: "#ffd6a3",
+  },
 };
+
+const LIGHT_COLOR_PRESETS = [
+  { label: "Warm", value: "#ffd6a3" },
+  { label: "Daylight", value: "#fff4dd" },
+  { label: "Cool", value: "#b9d9ff" },
+  { label: "Rose", value: "#ffc2ca" },
+];
 
 const AI_MODELS: Record<AiProvider, Array<{ value: string; label: string; description: string }>> = {
   google: [
@@ -114,7 +135,72 @@ function outputSize(image: HTMLImageElement, document: ImageEditDocument, maxSid
   return { width, height };
 }
 
-function paintImage(canvas: HTMLCanvasElement, image: HTMLImageElement, document: ImageEditDocument, maxSide = 1_600): void {
+function hexToRgb(color: string): { red: number; green: number; blue: number } {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!match) return { red: 255, green: 214, blue: 163 };
+  return {
+    red: Number.parseInt(match[1], 16),
+    green: Number.parseInt(match[2], 16),
+    blue: Number.parseInt(match[3], 16),
+  };
+}
+
+function paintLighting(context: CanvasRenderingContext2D, document: ImageEditDocument, width: number, height: number): void {
+  const light = document.lighting;
+  if (!light.enabled || light.intensity <= 0) return;
+
+  const centerX = light.x * width;
+  const centerY = light.y * height;
+  const radius = Math.max(1, light.radius * Math.max(width, height));
+  const coreStop = Math.max(0.03, Math.min(0.78, (1 - light.softness) * 0.72));
+  const alpha = Math.min(0.9, light.intensity * 0.48);
+  const { red, green, blue } = hexToRgb(light.color);
+  const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+  gradient.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${alpha})`);
+  gradient.addColorStop(coreStop, `rgba(${red}, ${green}, ${blue}, ${alpha * 0.72})`);
+  gradient.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+  context.restore();
+}
+
+function paintLightHandle(context: CanvasRenderingContext2D, document: ImageEditDocument, width: number, height: number): void {
+  const centerX = document.lighting.x * width;
+  const centerY = document.lighting.y * height;
+  const markerRadius = Math.max(11, Math.min(width, height) * 0.018);
+
+  context.save();
+  context.globalCompositeOperation = "source-over";
+  context.lineWidth = Math.max(2, markerRadius * 0.12);
+  context.strokeStyle = "rgba(20, 21, 18, 0.75)";
+  context.fillStyle = document.lighting.color;
+  context.beginPath();
+  context.arc(centerX, centerY, markerRadius, 0, Math.PI * 2);
+  context.fill();
+  context.stroke();
+  context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  context.beginPath();
+  context.arc(centerX, centerY, markerRadius * 0.68, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.moveTo(centerX - markerRadius * 1.45, centerY);
+  context.lineTo(centerX + markerRadius * 1.45, centerY);
+  context.moveTo(centerX, centerY - markerRadius * 1.45);
+  context.lineTo(centerX, centerY + markerRadius * 1.45);
+  context.stroke();
+  context.restore();
+}
+
+function paintImage(
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  document: ImageEditDocument,
+  maxSide = 1_600,
+  showLightHandle = false,
+): void {
   const size = outputSize(image, document, maxSide);
   if (canvas.width !== size.width) canvas.width = size.width;
   if (canvas.height !== size.height) canvas.height = size.height;
@@ -150,6 +236,10 @@ function paintImage(canvas: HTMLCanvasElement, image: HTMLImageElement, document
   );
   context.drawImage(image, -image.naturalWidth / 2, -image.naturalHeight / 2);
   context.restore();
+  paintLighting(context, document, size.width, size.height);
+  if (showLightHandle && document.lighting.enabled) {
+    paintLightHandle(context, document, size.width, size.height);
+  }
 }
 
 function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -178,7 +268,7 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  const dragRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const dragRef = useRef<CanvasDrag | null>(null);
   const [artifact, setArtifact] = useState<ArtifactDetail | null>(null);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -189,6 +279,7 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
   const [saving, setSaving] = useState(false);
   const [savedAsset, setSavedAsset] = useState<ArtifactListItem | null>(null);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [interactionMode, setInteractionMode] = useState<"image" | "light">("image");
   const [aiProvider, setAiProvider] = useState<AiProvider>("google");
   const [aiModel, setAiModel] = useState(AI_MODELS.google[0].value);
   const [aiPrompt, setAiPrompt] = useState("");
@@ -232,8 +323,10 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     const image = imageRef.current;
-    if (canvas && image && imageReady) paintImage(canvas, image, edit);
-  }, [edit, imageReady]);
+    if (canvas && image && imageReady) {
+      paintImage(canvas, image, edit, 1_600, interactionMode === "light");
+    }
+  }, [edit, imageReady, interactionMode]);
 
   const commitEdit = useCallback((next: ImageEditDocument) => {
     setHistory((current) => [...current, cloneEdit(edit)].slice(-40));
@@ -251,6 +344,11 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
   const updateAdjustments = (patch: Partial<ImageEditDocument["adjustments"]>) => commitEdit({
     ...edit,
     adjustments: { ...edit.adjustments, ...patch },
+  });
+
+  const updateLighting = (patch: Partial<ImageEditDocument["lighting"]>) => commitEdit({
+    ...edit,
+    lighting: { ...edit.lighting, ...patch },
   });
 
   const undo = () => {
@@ -336,16 +434,38 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
     }
   };
 
+  const lightPositionFromPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height)),
+    };
+  };
+
   const onCanvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { x: event.clientX, y: event.clientY, offsetX: edit.transform.offset_x, offsetY: edit.transform.offset_y };
     setHistory((current) => [...current, cloneEdit(edit)].slice(-40));
     setFuture([]);
+    if (edit.lighting.enabled && interactionMode === "light") {
+      dragRef.current = { mode: "light" };
+      const position = lightPositionFromPointer(event);
+      setEdit((current) => ({ ...current, lighting: { ...current.lighting, ...position } }));
+    } else {
+      dragRef.current = { mode: "image", x: event.clientX, y: event.clientY, offsetX: edit.transform.offset_x, offsetY: edit.transform.offset_y };
+    }
+    setSavedAsset(null);
+    setManualError(null);
   };
 
   const onCanvasPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.mode === "light") {
+      const position = lightPositionFromPointer(event);
+      setEdit((current) => ({ ...current, lighting: { ...current.lighting, ...position } }));
+      setSavedAsset(null);
+      return;
+    }
     const bounds = event.currentTarget.getBoundingClientRect();
     setEdit((current) => ({
       ...current,
@@ -384,13 +504,13 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
           {!imageReady && <span className="image-editor-pixel-loading"><LoaderCircle className="spin" size={18} /> Loading image pixels…</span>}
           <canvas
             ref={canvasRef}
-            className={imageReady ? "ready" : ""}
+            className={`${imageReady ? "ready" : ""}${edit.lighting.enabled && interactionMode === "light" ? " light-positioning" : ""}`}
             onPointerDown={onCanvasPointerDown}
             onPointerMove={onCanvasPointerMove}
             onPointerUp={onCanvasPointerUp}
             onPointerCancel={onCanvasPointerUp}
           />
-          {imageReady && <span className="image-editor-drag-hint"><Move size={12} /> Drag image to reposition</span>}
+          {imageReady && <span className="image-editor-drag-hint"><Move size={12} /> {edit.lighting.enabled && interactionMode === "light" ? "Drag to reposition light" : "Drag image to reposition"}</span>}
         </div>
         {manualError && <div className="image-editor-notice error"><CircleAlert size={15} /><span>{manualError}</span></div>}
         {savedAsset && <div className="image-editor-notice success"><BadgeCheck size={15} /><span><strong>새 이미지로 저장했습니다.</strong><small>{savedAsset.filename}</small></span><button type="button" onClick={() => router.push(`/asset/images/${savedAsset.id}/edit`)}>Continue editing</button></div>}
@@ -423,6 +543,49 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
               <RangeControl label="Blur" value={edit.adjustments.blur} min={0} max={20} step={0.25} display={`${edit.adjustments.blur.toFixed(1)}px`} onChange={(blur) => updateAdjustments({ blur })} />
               <RangeControl label="Grayscale" value={edit.adjustments.grayscale} min={0} max={1} step={0.01} display={`${Math.round(edit.adjustments.grayscale * 100)}%`} onChange={(grayscale) => updateAdjustments({ grayscale })} />
               <RangeControl label="Sepia" value={edit.adjustments.sepia} min={0} max={1} step={0.01} display={`${Math.round(edit.adjustments.sepia * 100)}%`} onChange={(sepia) => updateAdjustments({ sepia })} />
+            </section>
+
+            <section className="image-editor-control-section">
+              <div className="image-editor-control-head"><span><Sun size={14} /> Lighting</span><small>Soft light</small></div>
+              <div className="image-editor-light-toggle">
+                <span><strong>Add light</strong><small>밝기와 색을 입히는 2D 광원</small></span>
+                <Switch
+                  checked={edit.lighting.enabled}
+                  onCheckedChange={(enabled) => {
+                    setInteractionMode(enabled ? "light" : "image");
+                    updateLighting({ enabled });
+                  }}
+                  aria-label="Toggle lighting effect"
+                />
+              </div>
+              {edit.lighting.enabled && <>
+                <div className="image-editor-light-tools">
+                  <Button size="sm" variant={interactionMode === "light" ? "default" : "secondary"} type="button" onClick={() => setInteractionMode("light")}><Sun size={13} /> Move light</Button>
+                  <Button size="sm" variant={interactionMode === "image" ? "default" : "secondary"} type="button" onClick={() => setInteractionMode("image")}><Move size={13} /> Move image</Button>
+                </div>
+                <div className="image-editor-light-color">
+                  <span><strong>Light color</strong><small>{edit.lighting.color.toUpperCase()}</small></span>
+                  <div>
+                    <input type="color" value={edit.lighting.color} onChange={(event) => updateLighting({ color: event.target.value })} aria-label="Custom light color" />
+                    {LIGHT_COLOR_PRESETS.map((preset) => <button
+                      key={preset.value}
+                      className={edit.lighting.color === preset.value ? "selected" : ""}
+                      type="button"
+                      style={{ backgroundColor: preset.value }}
+                      aria-label={`${preset.label} light`}
+                      title={preset.label}
+                      onClick={() => updateLighting({ color: preset.value })}
+                    />)}
+                  </div>
+                </div>
+                <RangeControl label="Intensity" value={edit.lighting.intensity} min={0} max={2} step={0.01} display={`${Math.round(edit.lighting.intensity * 100)}%`} onChange={(intensity) => updateLighting({ intensity })} />
+                <RangeControl label="Radius" value={edit.lighting.radius} min={0.05} max={1.5} step={0.01} display={`${Math.round(edit.lighting.radius * 100)}%`} onChange={(radius) => updateLighting({ radius })} />
+                <RangeControl label="Softness" value={edit.lighting.softness} min={0} max={1} step={0.01} display={`${Math.round(edit.lighting.softness * 100)}%`} onChange={(softness) => updateLighting({ softness })} />
+                <div className="image-editor-light-position">
+                  <RangeControl label="X position" value={edit.lighting.x} min={0} max={1} step={0.01} display={`${Math.round(edit.lighting.x * 100)}%`} onChange={(x) => updateLighting({ x })} />
+                  <RangeControl label="Y position" value={edit.lighting.y} min={0} max={1} step={0.01} display={`${Math.round(edit.lighting.y * 100)}%`} onChange={(y) => updateLighting({ y })} />
+                </div>
+              </>}
             </section>
           </TabsContent>
 

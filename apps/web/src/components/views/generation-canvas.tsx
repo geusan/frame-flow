@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -74,15 +74,18 @@ import {
   type StudioFlowNode,
 } from "@/lib/canvas-model";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { VideoPlayer } from "@/components/ui/video-player";
 import { SearchField } from "@/components/shared/search-field";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
 import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type ProjectSkillRecord, type UploadedArtifact } from "@/lib/api";
+import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type ExperimentRun, type ProjectSkillRecord, type UploadedArtifact } from "@/lib/api";
+import { googleTextModelOptions, migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
@@ -107,6 +110,105 @@ interface GraphSnapshot {
   edges: Edge[];
   name?: string;
   activeRunId?: string;
+}
+
+interface ReferenceAnalysisManifest {
+  schema_version: "reference.decomposition.v1";
+  source: { duration_ms: number; has_audio: boolean };
+  speech: { language_code?: string; text: string; segments: Array<{ start_ms: number; end_ms: number; text: string }> };
+  audio: {
+    music_intervals: Array<{ start_ms: number; end_ms: number; label: string }>;
+    sound_effects: Array<{ start_ms: number; end_ms: number; label: string }>;
+    separation: { status: string };
+  };
+  visual: {
+    shots: Array<{ index: number; start_ms: number; end_ms: number; transition_in: string }>;
+    actions: Array<{ start_ms: number; end_ms: number; label: string }>;
+    text_tracks: Array<{ start_ms: number; end_ms: number; text: string; kind: string; movement: string }>;
+  };
+  artifacts: Record<string, string>;
+  quality: { completeness: "complete" | "partial"; warnings: string[] };
+}
+
+function referenceAnalysisFromOutput(output?: CanvasOutput): ReferenceAnalysisManifest | null {
+  if (output?.kind !== "json" || !output.text) return null;
+  try {
+    const parsed = JSON.parse(output.text) as Partial<ReferenceAnalysisManifest>;
+    return parsed.schema_version === "reference.decomposition.v1" ? parsed as ReferenceAnalysisManifest : null;
+  } catch {
+    return null;
+  }
+}
+
+function analysisTime(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function ReferenceAnalysisInspector({ analysis }: { analysis: ReferenceAnalysisManifest }) {
+  const lanes = [
+    { label: "Speech", events: analysis.speech.segments.map((event) => ({ ...event, label: event.text })) },
+    { label: "Shots", events: analysis.visual.shots.map((event) => ({ ...event, label: `Shot ${event.index + 1} · ${event.transition_in}` })) },
+    { label: "Actions", events: analysis.visual.actions },
+    { label: "Captions", events: analysis.visual.text_tracks.map((event) => ({ ...event, label: event.text })) },
+    { label: "Music", events: analysis.audio.music_intervals },
+    { label: "SFX", events: analysis.audio.sound_effects },
+  ];
+  const stems = [
+    ["audio_mix", "Original mix"],
+    ["vocals", "Vocals"],
+    ["accompaniment", "Accompaniment"],
+  ] as const;
+  return <div className="reference-analysis-inspector">
+    <div className="reference-analysis-result-head">
+      <span><small>Analysis result</small><strong>{analysis.quality.completeness === "complete" ? "Complete" : "Partial"}</strong></span>
+      <b>{analysisTime(analysis.source.duration_ms)}</b>
+    </div>
+    <div className="reference-analysis-counts">
+      <span><b>{analysis.speech.segments.length}</b><small>Speech</small></span>
+      <span><b>{analysis.visual.shots.length}</b><small>Shots</small></span>
+      <span><b>{analysis.visual.actions.length}</b><small>Actions</small></span>
+      <span><b>{analysis.visual.text_tracks.length}</b><small>Text</small></span>
+      <span><b>{analysis.audio.music_intervals.length}</b><small>Music</small></span>
+      <span><b>{analysis.audio.sound_effects.length}</b><small>SFX</small></span>
+    </div>
+    <div className="reference-analysis-timeline">
+      {lanes.map((lane) => <div className="reference-analysis-lane" key={lane.label}>
+        <strong>{lane.label}</strong>
+        <span>{lane.events.length ? lane.events.slice(0, 4).map((event, index) => <i key={`${event.start_ms}-${index}`} title={event.label}>{analysisTime(event.start_ms)} {event.label}</i>) : <em>None</em>}</span>
+      </div>)}
+    </div>
+    {stems.some(([key]) => analysis.artifacts[key]) && <div className="reference-analysis-stems">
+      <strong>Audio stems</strong>
+      {stems.map(([key, label]) => analysis.artifacts[key] && <label key={key}><span>{label}</span><audio controls preload="none" src={`${API_BASE}/artifacts/${analysis.artifacts[key]}/content`} /></label>)}
+    </div>}
+    {!!analysis.quality.warnings.length && <div className="reference-analysis-warnings">{analysis.quality.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+  </div>;
+}
+
+function NodeDetailSurface({ node, open, onClose, children }: { node: StudioFlowNode; open: boolean; onClose: () => void; children: ReactNode }) {
+  if (!open) return children;
+  const output = node.data.output;
+  const hasMedia = Boolean(output?.url && ["image", "video"].includes(output.kind));
+  return <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+    <DialogContent className={`node-detail-dialog ${hasMedia ? "has-media" : "settings-only"}`} overlayClassName="node-detail-backdrop">
+      <DialogTitle className="sr-only">{node.data.label} node details</DialogTitle>
+      <DialogDescription className="sr-only">Preview and edit the selected canvas node.</DialogDescription>
+      {hasMedia && output && <section className="node-detail-media">
+        <header><span><small>{output.kind} output</small><strong title={output.title}>{output.title}</strong></span><b>{node.data.outputType}</b></header>
+        <div>
+          {output.kind === "image" && <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={output.url} alt={output.title} />
+          </>}
+          {output.kind === "video" && <VideoPlayer src={output.url ?? ""} mimeType={output.mimeType} title={output.title} />}
+        </div>
+      </section>}
+      {children}
+    </DialogContent>
+  </Dialog>;
 }
 
 function cloneGraph(nodes: StudioFlowNode[], edges: Edge[]): GraphSnapshot {
@@ -181,7 +283,7 @@ function modelOptionsForNode(nodeKey: string, provider: ProviderName): Array<{ v
     { value: "tts.latest", label: "Gemini 3.1 Flash TTS · Preview" },
     { value: "tts.quality", label: "Gemini 2.5 Pro TTS" },
   ];
-  return provider === "openai" ? [{ value: "openai.text.fast", label: "GPT-5.6 Luna" }, { value: "openai.text.quality", label: "GPT-5.6 Terra" }, { value: "openai.chat.latest", label: "ChatGPT Latest" }] : [{ value: "text.fast", label: "Gemini Flash" }, { value: "text.quality", label: "Gemini Pro" }];
+  return provider === "openai" ? [{ value: "openai.text.fast", label: "GPT-5.6 Luna" }, { value: "openai.text.quality", label: "GPT-5.6 Terra" }, { value: "openai.chat.latest", label: "ChatGPT Latest" }] : googleTextModelOptions;
 }
 
 function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
@@ -209,7 +311,7 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         inputsRequired: template.data.inputsRequired,
         outputType: ["asset.upload", "asset.select"].includes(migratedKey) ? node.data.outputType ?? template.data.outputType : template.data.outputType,
         provider: node.data.kind === "generate" ? node.data.provider ?? providerFromModel(node.data.model ?? template.data.model) : node.data.provider,
-        model: template.data.model?.startsWith("local.") || node.data.key === "video.translate" ? template.data.model : node.data.model ?? template.data.model,
+        model: template.data.model?.startsWith("local.") || node.data.key === "video.translate" ? template.data.model : migrateLegacyGoogleTextModelAlias(node.data.model ?? template.data.model),
         resolution: node.data.resolution ?? template.data.resolution,
         aspectRatio: node.data.aspectRatio ?? template.data.aspectRatio,
         batchSize: node.data.batchSize ?? template.data.batchSize,
@@ -217,6 +319,8 @@ function migrateStoredGraph(graph: GraphSnapshot): GraphSnapshot {
         transition: node.data.transition ?? template.data.transition,
         targetDurationSeconds: node.data.targetDurationSeconds ?? template.data.targetDurationSeconds,
         sourceLanguage: node.data.sourceLanguage ?? template.data.sourceLanguage,
+        separateMusic: node.data.separateMusic ?? template.data.separateMusic,
+        sceneThreshold: node.data.sceneThreshold ?? template.data.sceneThreshold,
         targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
         voiceName: node.data.voiceName ?? template.data.voiceName,
         captionX: node.data.captionX ?? template.data.captionX,
@@ -284,6 +388,7 @@ function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experi
         lastRequestHash: experiment.request_hash,
         executionMode: experiment.execution_mode,
         lastCostUsd: experiment.cost_usd,
+        runProgress: experiment.status === "RUNNING" ? 5 : experiment.status === "SUCCEEDED" ? 100 : undefined,
         logs: logs.some((entry) => entry.includes(logMarker)) ? logs : [...logs, recoveryLog],
       },
     };
@@ -304,11 +409,11 @@ function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): C
   };
 }
 
-export function GenerationCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => void }) {
-  return <ReactFlowProvider><EditableCanvas canvasId={canvasId} onBack={onBack} /></ReactFlowProvider>;
+export function GenerationCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeDetail, onBack }: { canvasId: string; nodeDetailId?: string; onOpenNodeDetail: (nodeId: string) => void; onCloseNodeDetail: () => void; onBack: () => void }) {
+  return <ReactFlowProvider><EditableCanvas canvasId={canvasId} nodeDetailId={nodeDetailId} onOpenNodeDetail={onOpenNodeDetail} onCloseNodeDetail={onCloseNodeDetail} onBack={onBack} /></ReactFlowProvider>;
 }
 
-function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => void }) {
+function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeDetail, onBack }: { canvasId: string; nodeDetailId?: string; onOpenNodeDetail: (nodeId: string) => void; onCloseNodeDetail: () => void; onBack: () => void }) {
   const [nodes, setNodes, applyNodeChanges] = useNodesState<StudioFlowNode>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const [compileOpen, setCompileOpen] = useState(false);
@@ -353,6 +458,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   const cancelRunRef = useRef(false);
   const canvasRunEventsRef = useRef<EventSource | null>(null);
   const waitingInputNodeRef = useRef<string | null>(null);
+  const previousNodeDetailIdRef = useRef(nodeDetailId);
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
 
@@ -363,6 +469,12 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
+
+  useEffect(() => {
+    const previousNodeDetailId = previousNodeDetailIdRef.current;
+    previousNodeDetailIdRef.current = nodeDetailId;
+    if (previousNodeDetailId && !nodeDetailId) setInspectorOpen(true);
+  }, [nodeDetailId, setInspectorOpen]);
 
   const finishSpaceHold = useCallback((commitPending: boolean) => {
     if (spaceHoldTimerRef.current !== null) {
@@ -730,7 +842,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize", "skillId"]);
+    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "transition", "targetDurationSeconds", "sourceLanguage", "separateMusic", "sceneThreshold", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize", "skillId"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -753,7 +865,17 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           const immediateSource = ["prompt.input", "asset.select", "utility.sticky"].includes(node.data.key);
           const promptStatus: NodeStatus = immediateSource ? (value.trim() ? "SUCCEEDED" : "READY") : node.data.status === "SUCCEEDED" ? "STALE" : node.data.status;
           const selectedAssetOutput: CanvasOutput | undefined = node.data.key === "asset.select" && value.trim() ? { kind: "json", title: "Selected asset", text: JSON.stringify({ asset: value, reference_mode: "single" }, null, 2) } : undefined;
-          return { ...node, data: { ...node.data, configText: value, status: promptStatus, output: selectedAssetOutput, preview: node.data.key === "asset.select" && value ? value : undefined, promptEdited: node.data.key === "prompt.input" ? true : node.data.promptEdited } };
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              configText: value,
+              status: promptStatus,
+              output: selectedAssetOutput,
+              preview: node.data.key === "asset.select" && value ? value : undefined,
+              promptEdited: node.data.key === "prompt.input" ? true : node.data.promptEdited,
+            },
+          };
         }
         return node;
       });
@@ -998,6 +1120,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           lastRequestHash: experiment.request_hash,
           executionMode: experiment.execution_mode,
           lastCostUsd: experiment.cost_usd,
+          runProgress: 100,
           logs: [...(node.data.logs ?? []), `${new Date(experiment.created_at).toLocaleTimeString("ko-KR")} · Experiment ${experiment.id} succeeded${experiment.cache_hit ? " · cache hit" : ""}`],
         },
       } : node);
@@ -1023,7 +1146,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       notify("후보를 선택하면 다음 Step을 실행할 수 있습니다.", "info");
       return false;
     }
-    setNodes((current) => current.map((candidate) => candidate.id === nodeId ? { ...candidate, data: { ...candidate.data, status: "RUNNING", logs: [...(candidate.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Step started`] } } : candidate));
+    setNodes((current) => current.map((candidate) => candidate.id === nodeId ? { ...candidate, data: { ...candidate.data, status: "RUNNING", runProgress: 5, logs: [...(candidate.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Step started`] } } : candidate));
     notify(`${node.data.label} 실행 중…`, "info");
     const promptIndex = node.data.inputTypes?.indexOf("Prompt") ?? -1;
     const promptEdge = promptIndex >= 0 ? edgesRef.current.find((edge) => edge.target === nodeId && edge.targetHandle === inputHandleId("Prompt", promptIndex)) : undefined;
@@ -1069,6 +1192,8 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           transition: node.data.transition,
           target_duration_seconds: node.data.targetDurationSeconds,
           source_language: node.data.sourceLanguage,
+          separate_music: node.data.separateMusic,
+          scene_threshold: node.data.sceneThreshold,
           target_language: node.data.targetLanguage,
           voice_name: node.data.voiceName,
           caption_x: node.data.captionX,
@@ -1092,7 +1217,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Canvas step execution failed";
-      setNodes((current) => current.map((candidate) => candidate.id === nodeId ? { ...candidate, data: { ...candidate.data, status: "FAILED", logs: [...(candidate.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · ${message}`] } } : candidate));
+      setNodes((current) => current.map((candidate) => candidate.id === nodeId ? { ...candidate, data: { ...candidate.data, status: "FAILED", runProgress: undefined, logs: [...(candidate.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · ${message}`] } } : candidate));
       setExperimentHistoryError(message);
       markUnsaved();
       notify(message, "error");
@@ -1111,26 +1236,27 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     const byNodeId = new Map(run.node_runs.map((node) => [node.canvas_node_id, node]));
     setNodes((current) => {
       const updated = current.map((node) => {
-      const server = byNodeId.get(node.id);
-      if (!server) return node;
-      const output = Object.keys(server.output ?? {}).length ? server.output as CanvasOutput : undefined;
-      const status = server.status as NodeStatus;
-      const statusChanged = node.data.status !== status;
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          status,
-          preview: output?.title ?? node.data.preview,
-          output: output ?? node.data.output,
-          outputArtifactIds: server.output_artifact_ids.length ? server.output_artifact_ids : node.data.outputArtifactIds,
-          duration: server.duration_ms ? `${server.duration_ms}ms` : node.data.duration,
-          attemptCount: server.attempt_count,
-          lastRequestHash: server.request_hash ?? node.data.lastRequestHash,
-          lastCostUsd: server.cost_usd,
-          logs: statusChanged ? [...(node.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Worker ${status}${server.error ? ` · ${server.error}` : ""}`] : node.data.logs,
-        },
-      };
+        const server = byNodeId.get(node.id);
+        if (!server) return node;
+        const output = Object.keys(server.output ?? {}).length ? server.output as CanvasOutput : undefined;
+        const status = server.status as NodeStatus;
+        const statusChanged = node.data.status !== status;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            status,
+            preview: output?.title ?? node.data.preview,
+            output: output ?? node.data.output,
+            outputArtifactIds: server.output_artifact_ids.length ? server.output_artifact_ids : node.data.outputArtifactIds,
+            duration: server.duration_ms ? `${server.duration_ms}ms` : node.data.duration,
+            attemptCount: server.attempt_count,
+            lastRequestHash: server.request_hash ?? node.data.lastRequestHash,
+            lastCostUsd: server.cost_usd,
+            runProgress: server.progress,
+            logs: statusChanged ? [...(node.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Worker ${status}${server.error ? ` · ${server.error}` : ""}`] : node.data.logs,
+          },
+        };
       });
       return refreshReadyStatuses(propagateConnectedPrompts(updated, edgesRef.current, undefined, true), edgesRef.current);
     });
@@ -1195,7 +1321,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
     setGraphRunning(true);
     setGraphProgress(0);
     cancelRunRef.current = false;
-    setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus } }));
+    setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus, runProgress: 0 } }));
     try {
       const run = await frameflowApi.createCanvasRun({
         canvas_id: canvasId,
@@ -1287,6 +1413,16 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   };
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+  const detailNode = nodeDetailId ? nodes.find((node) => node.id === nodeDetailId) : undefined;
+  useEffect(() => {
+    if (!detailNode || selectedNodeId === detailNode.id) return;
+    selectNode(detailNode.id);
+    setInspectorOpen(false);
+  }, [detailNode, selectNode, selectedNodeId, setInspectorOpen]);
+  const closeNodeDetail = useCallback(() => {
+    setInspectorOpen(true);
+    onCloseNodeDetail();
+  }, [onCloseNodeDetail, setInspectorOpen]);
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
   const selectedProvider = selectedNode ? selectedNode.data.provider ?? providerFromModel(selectedNode.data.model) : "google";
   const selectedModelOptions = selectedNode ? modelOptionsForNode(selectedNode.data.key, selectedProvider) : [];
@@ -1350,7 +1486,8 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
   }, [pickerQuery]);
   const cost = graphCost(nodes);
   const successfulCount = nodes.filter((node) => node.data.status === "SUCCEEDED").length;
-  const showInspector = Boolean(inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key));
+  const nodeDetailOpen = Boolean(nodeDetailId && selectedNode?.id === nodeDetailId);
+  const showInspector = Boolean(!nodeDetailId && inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key));
   const nodeActions = useMemo<NodeActions>(() => ({
     runStep: (nodeId) => void runStep(nodeId),
     updateConfig: updateNodeConfig,
@@ -1419,7 +1556,13 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           onDrop={handleDrop}
           onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
           onNodeClick={(_, node) => { selectNode(node.id); if (["utility.sticky", "utility.drawing"].includes(node.data.key)) setInspectorOpen(false); }}
-          onNodeDoubleClick={(_, node) => void runStep(node.id)}
+          onNodeDoubleClick={(event, node) => {
+            if ((event.target as HTMLElement).closest("button, input, textarea, select, a, [contenteditable='true']")) return;
+            event.preventDefault();
+            selectNode(node.id);
+            setInspectorOpen(false);
+            onOpenNodeDetail(node.id);
+          }}
           onNodeDragStart={() => { dragStartRef.current = cloneGraph(nodesRef.current, edgesRef.current); }}
           onNodeDragStop={() => { if (dragStartRef.current) pushHistory(dragStartRef.current); dragStartRef.current = null; markUnsaved(); }}
           onPaneClick={(event) => { selectNode(null); if (event.detail === 2) { setPickerInsertPosition(screenToFlowPosition({ x: event.clientX, y: event.clientY })); setPickerOpen(true); } }}
@@ -1439,14 +1582,15 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#c9cbc4" />
           <Controls position="bottom-right" showInteractive={false} />
           <MiniMap position="bottom-right" pannable zoomable nodeColor={(node) => node.id === selectedNodeId ? "#675cf6" : node.data.status === "SUCCEEDED" ? "#79b9a0" : "#d3d4ce"} maskColor="rgba(246,246,243,.7)" />
-          <div className="canvas-legend"><span><i className="port-format" /> Format</span><span><i className="port-media" /> Media</span><span><i className="port-data" /> Data</span><span>Double-click: Run step</span></div>
+          <div className="canvas-legend"><span><i className="port-format" /> Format</span><span><i className="port-media" /> Media</span><span><i className="port-data" /> Data</span><span>Double-click: Edit details</span></div>
         </ReactFlow></NodeActionsContext.Provider>
         {!nodes.length && <div className="canvas-empty-state"><span className="empty-spark"><Sparkles size={22} /></span><h2>Start with a blank canvas</h2><p>저장된 실제 Asset과 Prompt 노드를 추가해 Workflow를 구성하세요.</p><div><Button type="button" onClick={() => setPickerOpen(true)}><Plus size={15} /> Add first step</Button></div></div>}
       </div>
 
-      {showInspector && selectedNode && (
-        <aside className="node-inspector">
-          <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><Button variant="ghost" size="icon-sm" className="size-[25px] min-h-[25px]" type="button" onClick={() => setInspectorOpen(false)} aria-label="Close node inspector"><PanelRightClose size={16} /></Button></div>
+      {(showInspector || nodeDetailOpen) && selectedNode && (
+        <NodeDetailSurface node={selectedNode} open={nodeDetailOpen} onClose={closeNodeDetail}>
+        <aside className={`node-inspector ${nodeDetailOpen ? "node-detail-inspector" : ""}`}>
+          <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><Button variant="ghost" size="icon-sm" className="size-[25px] min-h-[25px]" type="button" onClick={nodeDetailOpen ? closeNodeDetail : () => setInspectorOpen(false)} aria-label="Close node inspector"><PanelRightClose size={16} /></Button></div>
           <div className="inspector-status"><CanvasNodeStatus data={selectedNode.data} /><span>{selectedNode.data.key}</span></div>
           <div className="inspector-tabs"><span className="active">Settings</span></div>
           <div className="inspector-content">
@@ -1502,6 +1646,15 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
               </div>
               <label className="field-label"><span>Gemini voice</span><NativeSelect value={selectedNode.data.voiceName ?? "Kore"} onChange={(event) => updateSelectedData({ voiceName: event.target.value })}><option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Charon">Charon</option><option value="Puck">Puck</option></NativeSelect><small>Google Cloud ADC와 Speech-to-Text·Vertex AI 권한이 필요합니다.</small></label>
             </div>}
+            {selectedNode.data.key === "reference.decompose" && <div className="reference-analysis-settings">
+              <div className="editor-input-count connected"><span>Composite analysis</span><strong>6</strong><small>STT · music · shots · actions · on-screen text · SFX</small></div>
+              <div className="generator-setting-grid">
+                <label><span>Speech language</span><NativeSelect value={selectedNode.data.sourceLanguage ?? "auto"} onChange={(event) => updateSelectedData({ sourceLanguage: event.target.value })}><option value="auto">Auto detect</option><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
+                <label><span>Scene sensitivity</span><NativeSelect value={String(selectedNode.data.sceneThreshold ?? 0.28)} onChange={(event) => updateSelectedData({ sceneThreshold: Number(event.target.value) })}><option value="0.18">High</option><option value="0.28">Balanced</option><option value="0.4">Low</option></NativeSelect></label>
+              </div>
+              <label className="reference-analysis-toggle"><input type="checkbox" checked={selectedNode.data.separateMusic ?? true} onChange={(event) => updateSelectedData({ separateMusic: event.target.checked })} /><span><strong>Create music stems</strong><small>Demucs가 있으면 vocals와 accompaniment WAV를 생성합니다.</small></span></label>
+              {referenceAnalysisFromOutput(selectedNode.data.output) && <ReferenceAnalysisInspector analysis={referenceAnalysisFromOutput(selectedNode.data.output)!} />}
+            </div>}
             <label className="field-label"><span>Node name</span><Input value={selectedNode.data.label} onChange={(event) => updateSelectedData({ label: event.target.value })} /></label>
             <label className="field-label"><span>Description</span><Textarea value={selectedNode.data.description} onChange={(event) => updateSelectedData({ description: event.target.value })} /></label>
             {selectedNode.data.model && selectedNode.data.kind !== "generate" && <label className="field-label"><span>Runtime engine</span><Input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
@@ -1534,6 +1687,7 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
           <div className="inspector-edit-actions"><Button variant="secondary" type="button" onClick={duplicateSelected}><Copy size={14} /> Duplicate</Button><Button variant="danger" type="button" onClick={deleteSelected}><Trash2 size={14} /> Delete</Button></div>
           {selectedNode.data.executable !== false && <div className="inspector-actions"><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={() => void runStep(selectedNode.id)} disabled={!!selectedInputError}><ListRestart size={13} /> Retry</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" disabled={!!selectedInputError} onClick={() => { updateSelectedData({ status: selectedNode.data.requiredInputTypes?.length || (selectedNode.data.inputTypes?.length && selectedNode.data.inputsRequired !== false) ? "BLOCKED" : "READY" }); window.setTimeout(() => void runStep(selectedNode.id), 0); }}><RefreshCw size={13} /> Regenerate</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={duplicateSelected}><GitFork size={13} /> Fork</Button></div>}
         </aside>
+        </NodeDetailSurface>
       )}
 
       {!inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key) && <button className="open-inspector" type="button" onClick={() => setInspectorOpen(true)}><ChevronRight size={16} /></button>}
@@ -1557,8 +1711,10 @@ function EditableCanvas({ canvasId, onBack }: { canvasId: string; onBack: () => 
       {compileOpen && <CompileDialog errors={compileErrors} nodeCount={nodes.length} edgeCount={edges.length} estimatedCost={cost} onClose={() => setCompileOpen(false)} onRun={() => void runGraph()} />}
       {candidateOpen && <CandidateDialog candidates={candidateOptions} selected={selectedCandidate} setSelected={setSelectedCandidate} onClose={() => setCandidateOpen(false)} onApprove={() => void approveCandidates()} />}
       {drawingNode && <DrawingCanvasDialog
+        key={drawingNode.id}
         document={drawingNode.data.drawing ?? { version: 1, width: 1280, height: 720, images: [], strokes: [] }}
         nodeName={drawingNode.data.label}
+        previewUrl={drawingNode.data.output?.kind === "image" ? drawingNode.data.output.url : undefined}
         onAddImage={uploadDrawingSource}
         onClose={() => setDrawingNodeId(null)}
         onSave={(drawing, image) => saveDrawing(drawingNode.id, drawing, image)}

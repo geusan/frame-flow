@@ -73,9 +73,11 @@ def _duration_ms(value: Any) -> int:
 
 
 class GoogleChirp3Recognizer:
-    def __init__(self, project: str, location: str = "global", client: Any | None = None) -> None:
+    def __init__(self, project: str, location: str = "us", client: Any | None = None) -> None:
         if not project:
             raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Chirp 3 speech recognition")
+        if location == "global":
+            raise RuntimeError("Chirp 3 is not available in global; set GOOGLE_SPEECH_LOCATION to a supported region such as us")
         self.project = project
         self.location = location
         if client is not None:
@@ -199,17 +201,18 @@ class GeminiSpeechSynthesizer:
         return SynthesizedSpeech(generated.data, generated.mime_type, generated.provider_request_id)
 
 
-def get_localization_services() -> LocalizationServices:
+def get_speech_recognizer() -> SpeechRecognizer:
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
     if not project:
-        raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Translate Video")
-    speech_location = os.getenv("GOOGLE_SPEECH_LOCATION", "global").strip() or "global"
-    vertex_config = GoogleProviderConfig(
-        project=project,
-        location=os.getenv("GOOGLE_CLOUD_LOCATION", "global").strip() or "global",
-    )
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Chirp 3 Speech-to-Text")
+    speech_location = os.getenv("GOOGLE_SPEECH_LOCATION", "us").strip() or "us"
+    return GoogleChirp3Recognizer(project, speech_location)
+
+
+def get_localization_services() -> LocalizationServices:
+    generation_config = GoogleProviderConfig.from_env()
     return LocalizationServices(
-        recognizer=GoogleChirp3Recognizer(project, speech_location),
-        translator=GeminiSegmentTranslator(GoogleTextProvider(vertex_config)),
-        synthesizer=GeminiSpeechSynthesizer(GoogleTtsProvider(vertex_config)),
+        recognizer=get_speech_recognizer(),
+        translator=GeminiSegmentTranslator(GoogleTextProvider(generation_config)),
+        synthesizer=GeminiSpeechSynthesizer(GoogleTtsProvider(generation_config)),
     )

@@ -57,7 +57,11 @@ def test_openai_scene_ranker_sends_images_and_structured_output():
 def test_scene_search_model_must_match_selected_provider():
     assert resolve_scene_search_model("google", None) == (
         "google.text.fast",
-        "gemini-2.5-flash",
+        "gemini-3.6-flash",
+    )
+    assert resolve_scene_search_model("google", "google.text.3.5-flash-lite") == (
+        "google.text.3.5-flash-lite",
+        "gemini-3.5-flash-lite",
     )
     with pytest.raises(SceneSearchError, match="not available for google"):
         resolve_scene_search_model("google", "openai.chat.latest")

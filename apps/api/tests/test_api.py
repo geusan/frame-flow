@@ -5,6 +5,8 @@ import threading
 import time
 from types import SimpleNamespace
 
+from app.canvas_operations import executor_revision
+from app.database import ExperimentRunRecord
 from app.experiments import FIXTURE_EXECUTOR_REVISION
 from app.media_preview import render_audio_wav
 from app.providers_localization import (
@@ -17,8 +19,15 @@ from app.providers_localization import (
 from app.providers_generation import LiveGenerationResult
 
 
-def test_executor_revision_fits_persisted_execution_mode():
-    assert len(FIXTURE_EXECUTOR_REVISION) <= 32
+def test_executor_revision_fits_persisted_execution_mode(monkeypatch):
+    max_length = ExperimentRunRecord.__table__.c.execution_mode.type.length
+    assert max_length == 64
+    assert len(FIXTURE_EXECUTOR_REVISION) <= max_length
+
+    for analysis_mode, audio_separator in (("live", "demucs"), ("fixture", "fixture")):
+        monkeypatch.setenv("REFERENCE_ANALYSIS_MODE", analysis_mode)
+        monkeypatch.setenv("REFERENCE_AUDIO_SEPARATOR", audio_separator)
+        assert len(executor_revision("reference.decompose")) <= max_length
 
 
 def test_project_skill_registry_and_executor_snapshot_are_available(client: TestClient):
@@ -33,13 +42,15 @@ def test_project_skill_registry_and_executor_snapshot_are_available(client: Test
         "node_id": "skill_executor",
         "node_key": "skill.execute",
         "prompt": "비 오는 밤의 작은 골목",
-        "model_alias": "text.quality",
+        "model_alias": "text.3.1-pro-preview",
         "parameters": {"skill_id": registered["id"], "provider": "google"},
         "inputs": [],
     })
     assert executed.status_code == 201
     result = executed.json()
     assert result["status"] == "SUCCEEDED"
+    assert result["model_alias"] == "google.text.3.1-pro-preview"
+    assert result["exact_model_id"] == "gemini-3.1-pro-preview"
     assert result["parameters"]["skill_version"] == registered["version"]
     assert result["output"]["title"] == "Generated master prompt"
     assert "### 1. English Master Prompt" in result["output"]["text"]
@@ -310,6 +321,15 @@ def test_manual_image_edit_creates_an_immutable_derived_artifact(client: TestCli
             "grayscale": 0,
             "sepia": 0,
         },
+        "lighting": {
+            "enabled": True,
+            "x": 0.68,
+            "y": 0.3,
+            "intensity": 1.15,
+            "radius": 0.52,
+            "softness": 0.8,
+            "color": "#ffd6a3",
+        },
     }
     response = client.post(
         f"/artifacts/{uploaded['artifact_id']}/image-edits",
@@ -419,6 +439,27 @@ def test_video_frame_capture_creates_a_derived_image_artifact(client: TestClient
     assert past_end.status_code == 422
 
 
+def test_video_frame_preview_returns_cached_jpeg_without_creating_artifact(client: TestClient):
+    imported = client.post(
+        "/artifacts/import-url",
+        json={"url": "https://youtube.com/watch?v=frame-preview"},
+    ).json()
+    images_before = client.get("/artifacts", params={"types": "Image", "limit": 500, "offset": 0}).json()
+
+    response = client.get(
+        f"/artifacts/{imported['artifact_id']}/frame-preview",
+        params={"timestamp_ms": 500},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.headers["cache-control"] == "public, max-age=86400, immutable"
+    assert response.headers["x-frame-timestamp-ms"] == "500"
+    assert response.content.startswith(b"\xff\xd8")
+    images_after = client.get("/artifacts", params={"types": "Image", "limit": 500, "offset": 0}).json()
+    assert len(images_after) == len(images_before)
+
+
 def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: TestClient):
     imported = client.post(
         "/artifacts/import-url",
@@ -439,7 +480,7 @@ def test_prompt_scene_search_seeks_and_captures_with_search_lineage(client: Test
     search = response.json()
     assert search["provider"] == "google"
     assert search["model_alias"] == "google.text.quality"
-    assert search["exact_model_id"] == "gemini-2.5-pro"
+    assert search["exact_model_id"] == "gemini-3.1-pro-preview"
     assert len(search["candidates"]) == 3
     assert all(candidate["thumbnail_data_url"].startswith("data:image/jpeg;base64,") for candidate in search["candidates"])
     assert [candidate["score"] for candidate in search["candidates"]] == sorted(
@@ -637,6 +678,102 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
     report = json.loads(qc["output"]["text"])
     assert report["passed"] is True
     assert report["checks"]["video_codec"]["actual"] == "h264"
+
+
+def test_video_reference_analyzer_creates_composite_manifest_and_component_artifacts(client: TestClient):
+    video = client.post("/experiments", json={
+        "canvas_id": "reference_analysis_canvas",
+        "node_id": "source-video",
+        "node_key": "video.generate",
+        "prompt": "Reference analyzer fixture source",
+        "model_alias": "video.fast",
+        "parameters": {},
+        "inputs": [],
+    })
+    assert video.status_code == 201
+    video_result = video.json()
+    assert video_result["status"] == "SUCCEEDED"
+
+    response = client.post("/experiments", json={
+        "canvas_id": "reference_analysis_canvas",
+        "node_id": "reference-analyzer",
+        "node_key": "reference.decompose",
+        "prompt": "Analyze the connected reference video",
+        "model_alias": "reference-analysis.pipeline.v1",
+        "parameters": {
+            "source_language": "auto",
+            "separate_music": True,
+            "scene_threshold": 0.28,
+        },
+        "inputs": [{"type": "Video", "artifact_ids": video_result["output_artifact_ids"]}],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["execution_mode"] == "reference-analysis.v1:fixture:fixture"
+    assert result["exact_model_id"] == "reference-analysis.v1"
+    assert len(result["output_artifact_ids"]) == 1
+
+    manifest = json.loads(result["output"]["text"])
+    assert manifest["schema_version"] == "reference.decomposition.v1"
+    assert manifest["components"] == {
+        "actions": "succeeded",
+        "music_separation": "fixture",
+        "onscreen_text": "succeeded",
+        "shots": "succeeded",
+        "sound_effects": "succeeded",
+        "speech": "succeeded",
+    }
+    assert manifest["speech"]["segments"][0]["start_ms"] == 0
+    assert len(manifest["visual"]["shots"]) >= 1
+    assert len(manifest["visual"]["actions"]) == len(manifest["visual"]["shots"])
+    assert manifest["visual"]["text_tracks"][0]["positions"][0]["bbox"]["y"] == 0.76
+    assert set(manifest["artifacts"]) == {"audio_mix", "transcript", "subtitle", "vocals", "accompaniment"}
+
+    analysis_artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert analysis_artifact["type"] == "ReferenceAnalysis"
+    assert analysis_artifact["schema_id"] == "reference.decomposition.v1"
+    assert analysis_artifact["metadata"]["storage"]["bucket"] == "project-reference-private"
+    assert analysis_artifact["input_artifact_ids"][0] == video_result["output_artifact_ids"][0]
+    assert set(analysis_artifact["input_artifact_ids"][1:]) == set(manifest["artifacts"].values())
+    assert client.get(f"/artifacts/{manifest['artifacts']['subtitle']}/content").content.count(b"-->") >= 1
+
+    canvas_run = client.post("/canvas-runs", json={
+        "canvas_id": "reference_analysis_graph",
+        "name": "Reference analyzer graph",
+        "nodes": [
+            {"id": "asset", "data": {
+                "key": "asset.select",
+                "label": "Source video",
+                "executable": False,
+                "outputType": "Video",
+                "outputArtifactIds": video_result["output_artifact_ids"],
+                "output": {"kind": "video", "title": "Source", "mimeType": "video/mp4"},
+            }},
+            {"id": "analyzer", "data": {
+                "key": "reference.decompose",
+                "label": "Video reference analyzer",
+                "description": "Analyze the connected reference video",
+                "model": "reference-analysis.pipeline.v1",
+                "outputType": "ReferenceAnalysis",
+                "sourceLanguage": "auto",
+                "separateMusic": True,
+                "sceneThreshold": 0.28,
+            }},
+        ],
+        "edges": [{"id": "asset-analysis", "source": "asset", "target": "analyzer"}],
+    })
+    assert canvas_run.status_code == 201
+    run_id = canvas_run.json()["id"]
+    for _ in range(100):
+        graph_result = client.get(f"/canvas-runs/{run_id}").json()
+        if graph_result["status"] in {"SUCCEEDED", "FAILED"}:
+            break
+        time.sleep(0.02)
+    assert graph_result["status"] == "SUCCEEDED"
+    analyzer_run = next(item for item in graph_result["node_runs"] if item["canvas_node_id"] == "analyzer")
+    assert analyzer_run["status"] == "SUCCEEDED"
+    assert json.loads(analyzer_run["output"]["text"])["schema_version"] == "reference.decomposition.v1"
 
 
 def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(client: TestClient, monkeypatch):
@@ -908,6 +1045,18 @@ def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: Te
     assert runs[0]["run_type"] == "canvas"
     assert runs[0]["name"] == "Persisted Canvas Run"
     models = client.get("/models").json()
+    selectable_text_models = {
+        model["logical_alias"]: model["exact_model_id"]
+        for model in models
+        if model["logical_alias"].startswith("google.text.3")
+    }
+    assert selectable_text_models == {
+        "google.text.3.6-flash": "gemini-3.6-flash",
+        "google.text.3.5-flash": "gemini-3.5-flash",
+        "google.text.3.5-flash-lite": "gemini-3.5-flash-lite",
+        "google.text.3.1-pro-preview": "gemini-3.1-pro-preview",
+        "google.text.3.1-flash-lite": "gemini-3.1-flash-lite",
+    }
     image_model = next(model for model in models if model["logical_alias"] == "google.image.fast")
     assert image_model["usage_count"] == 1
     assert image_model["last_used_at"] is not None

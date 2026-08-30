@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
 from .domain import ExperimentRunRequest
-from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services
+from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services, get_speech_recognizer
+from .reference_analysis import REFERENCE_ANALYSIS_REVISION, analyze_reference_video
 from .service import create_artifact
 from .storage import get_storage, storage_location
 
@@ -29,9 +30,10 @@ LOCAL_MODELS: dict[str, tuple[str, str]] = {
     "generation.resolve": ("local.policy", "generation-policy.v1"),
     "script.fit_duration": ("local.script-fit", "script-fit.v1"),
     "shot.plan": ("local.shot-plan", "shot-plan.v1"),
+    "reference.decompose": ("reference-analysis.pipeline", "reference-analysis.v1"),
     "video.edit": ("local.ffmpeg", "ffmpeg"),
     "video.change_voice": ("local.ffmpeg", "ffmpeg"),
-    "video.translate": ("google.localization.pipeline", "chirp_3+gemini-2.5-pro+gemini-2.5-flash-tts"),
+    "video.translate": ("google.localization.pipeline", "chirp_3+gemini-3.1-pro-preview+gemini-2.5-flash-tts"),
     "subtitle.align": ("google.stt.default", "chirp_3"),
     "timeline.compose": ("local.timeline", "timeline.v1"),
     "video.render": ("local.ffmpeg", "ffmpeg"),
@@ -69,6 +71,10 @@ def resolve_local_model(node_key: str) -> tuple[str, str]:
 
 
 def executor_revision(node_key: str) -> str:
+    if node_key == "reference.decompose":
+        mode = os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower()
+        separator = os.getenv("REFERENCE_AUDIO_SEPARATOR", "demucs").strip().lower()
+        return f"{REFERENCE_ANALYSIS_REVISION}:{mode}:{separator}"
     if node_key == "video.translate":
         return LOCALIZATION_EXECUTOR_REVISION
     if node_key == "subtitle.align" and os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").lower() == "live":
@@ -613,6 +619,110 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
         }
         return _json_result("Generation specification", "GenerationSpec", "generation.spec.v1", spec, digest, input_ids)
 
+    if node_key == "reference.decompose":
+        video = _require(artifacts, "Video", "Video", "FinalVideo", "ProxyVideo", "ReferenceOriginal")
+        separate_music = payload.parameters.get("separate_music")
+        bundle = analyze_reference_video(
+            video.data,
+            video.content_type,
+            language_code=str(payload.parameters.get("source_language") or "auto"),
+            separate_music=True if separate_music is None else bool(separate_music),
+            scene_threshold=float(payload.parameters.get("scene_threshold") or 0.28),
+        )
+        metadata = {
+            "access_scope": "reference-analyzer-only",
+            "storage_scope": "reference",
+            "source_artifact_id": video.record.id,
+            "immutable": True,
+        }
+        source_roles = {video.record.id: "source_video"}
+        derived: dict[str, ArtifactRecord] = {}
+        if bundle.audio_mix is not None:
+            derived["audio_mix"] = create_artifact(
+                db,
+                "ReferenceAudioMix",
+                schema_id="reference.audio.mix.v1",
+                input_artifact_ids=[video.record.id],
+                input_artifact_roles=source_roles,
+                metadata=metadata,
+                content=bundle.audio_mix,
+                content_type="audio/wav",
+                filename="reference-audio.wav",
+            )
+        transcript_parent = derived.get("audio_mix")
+        if bundle.transcript is not None:
+            transcript_input = transcript_parent.id if transcript_parent else video.record.id
+            derived["transcript"] = create_artifact(
+                db,
+                "ReferenceTranscript",
+                schema_id="transcript.v1",
+                input_artifact_ids=[transcript_input],
+                input_artifact_roles={transcript_input: "source_audio"},
+                metadata=metadata,
+                content=bundle.transcript,
+                content_type="application/json",
+                filename="transcript.json",
+            )
+        if bundle.subtitles is not None:
+            subtitle_parent = derived.get("transcript")
+            subtitle_input = subtitle_parent.id if subtitle_parent else video.record.id
+            derived["subtitle"] = create_artifact(
+                db,
+                "ReferenceSubtitle",
+                schema_id="subtitle.srt.v1",
+                input_artifact_ids=[subtitle_input],
+                input_artifact_roles={subtitle_input: "timed_transcript"},
+                metadata=metadata,
+                content=bundle.subtitles,
+                content_type="application/x-subrip",
+                filename="transcript.srt",
+            )
+        for key, artifact_type, content, filename in (
+            ("vocals", "ReferenceVocals", bundle.vocals, "vocals.wav"),
+            ("accompaniment", "ReferenceAccompaniment", bundle.accompaniment, "accompaniment.wav"),
+        ):
+            if content is None:
+                continue
+            stem_parent = derived.get("audio_mix")
+            stem_input = stem_parent.id if stem_parent else video.record.id
+            derived[key] = create_artifact(
+                db,
+                artifact_type,
+                schema_id="reference.audio.stem.v1",
+                input_artifact_ids=[stem_input],
+                input_artifact_roles={stem_input: "source_mix"},
+                metadata={**metadata, "stem": key, "contains_sound_effects_possible": key == "accompaniment"},
+                content=content,
+                content_type="audio/wav",
+                filename=filename,
+            )
+        db.flush()
+        bundle.manifest["artifacts"] = {key: artifact.id for key, artifact in derived.items()}
+        manifest_content = json.dumps(bundle.manifest, ensure_ascii=False, sort_keys=True, indent=2).encode()
+        manifest_inputs = [video.record.id, *(artifact.id for artifact in derived.values())]
+        manifest_roles = {
+            video.record.id: "source_video",
+            **{artifact.id: key for key, artifact in derived.items()},
+        }
+        visual = bundle.manifest["visual"]
+        audio = bundle.manifest["audio"]
+        title = (
+            f"Reference analysis · {len(visual['shots'])} shots · "
+            f"{len(visual['actions'])} actions · {len(audio['sound_effects'])} SFX"
+        )
+        return CanvasOperationResult(
+            {"kind": "json", "title": title, "text": manifest_content.decode()},
+            "ReferenceAnalysis",
+            "reference.decomposition.v1",
+            bundle.provider_request_id,
+            manifest_content,
+            "application/json",
+            "reference-analysis.json",
+            manifest_inputs,
+            metadata={**metadata, "component_artifact_ids": bundle.manifest["artifacts"]},
+            input_artifact_roles=manifest_roles,
+        )
+
     if node_key in {"script.fit_duration", "shot.plan"}:
         script_artifact = _require(artifacts, "Script", "Script", "TimedScript")
         script = _text_from_artifact(script_artifact)
@@ -728,7 +838,7 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
             duration = _duration_seconds(_probe(audio_path))
         alignment_mode = os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").strip().lower()
         if alignment_mode == "live":
-            transcript = get_localization_services().recognizer.transcribe(
+            transcript = get_speech_recognizer().transcribe(
                 audio.data,
                 language_code=str(payload.parameters.get("source_language") or payload.parameters.get("language") or "auto"),
                 duration_ms=round(duration * 1000),
