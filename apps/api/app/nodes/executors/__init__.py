@@ -1,4 +1,5 @@
 from .lora_train import FalLoraTrainingExecutor
+from .fal_lora_image import FalLoraImageCapabilityExecutor
 from .character_generation import CharacterGenerationCapabilityExecutor
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
@@ -11,6 +12,7 @@ from .xai_text import XAITextCapabilityExecutor
 
 __all__ = [
     "FalLoraTrainingExecutor",
+    "FalLoraImageCapabilityExecutor",
     "CharacterGenerationCapabilityExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",

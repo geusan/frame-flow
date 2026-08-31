@@ -29,30 +29,44 @@ class FalProviderConfig:
         return cls(api_key=api_key, queue_base_url=os.getenv("FAL_QUEUE_BASE_URL", "https://queue.fal.run").rstrip("/"))
 
 
+@dataclass(frozen=True)
+class FalGeneratedImage:
+    data: bytes
+    content_type: str
+    provider_request_id: str
+
+
 class FalGenerationServices:
     def __init__(self, config: FalProviderConfig | None = None, client: Any | None = None) -> None:
         self.config = config or FalProviderConfig.from_env()
         self.client = client or httpx.Client(timeout=httpx.Timeout(300.0, connect=30.0))
 
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult:
-        if payload.node_key != "lora.image.generate":
-            raise ValueError(f"fal provider does not support Canvas node: {payload.node_key}")
-        lora_path = str(payload.parameters.get("lora_url") or "").strip()
+    def generate_lora_image(
+        self,
+        *,
+        prompt: str,
+        lora_url: str,
+        lora_scale: float,
+        trigger_word: str,
+        aspect_ratio: str,
+        resolution: str,
+        guidance_scale: float = 2.5,
+        inference_steps: int = 28,
+        timeout_seconds: int = 300,
+    ) -> FalGeneratedImage:
+        lora_path = lora_url.strip()
         if not lora_path:
             raise ValueError("LoRA weights URL or Hugging Face repository ID is required")
-        scale = float(payload.parameters.get("lora_scale") or 0.9)
+        scale = float(lora_scale)
         if not 0 <= scale <= 2:
             raise ValueError("LoRA scale must be between 0 and 2")
-        trigger_word = str(payload.parameters.get("trigger_word") or "").strip()
-        rendered_prompt = f"{trigger_word}, {payload.prompt.strip()}" if trigger_word else payload.prompt.strip()
+        trigger = trigger_word.strip()
+        rendered_prompt = f"{trigger}, {prompt.strip()}" if trigger else prompt.strip()
         request_body = {
             "prompt": rendered_prompt,
-            "guidance_scale": float(payload.parameters.get("guidance_scale") or 2.5),
-            "num_inference_steps": int(payload.parameters.get("inference_steps") or 28),
-            "image_size": _image_size(
-                str(payload.parameters.get("aspect_ratio") or "9:16"),
-                str(payload.parameters.get("resolution") or "2K"),
-            ),
+            "guidance_scale": float(guidance_scale),
+            "num_inference_steps": int(inference_steps),
+            "image_size": _image_size(aspect_ratio, resolution),
             "num_images": 1,
             "acceleration": "regular",
             "enable_prompt_expansion": False,
@@ -73,7 +87,7 @@ class FalGenerationServices:
             raise RuntimeError("fal queue did not return a request_id")
         status_url = str(submission.get("status_url") or f"{self.config.queue_base_url}/{FAL_FLUX2_LORA_MODEL}/requests/{request_id}/status")
         response_url = str(submission.get("response_url") or f"{self.config.queue_base_url}/{FAL_FLUX2_LORA_MODEL}/requests/{request_id}")
-        deadline = time.monotonic() + float(payload.parameters.get("timeout_seconds") or 300)
+        deadline = time.monotonic() + float(timeout_seconds)
         while time.monotonic() < deadline:
             status_response = self.client.get(status_url, headers=headers)
             status_response.raise_for_status()
@@ -97,16 +111,31 @@ class FalGenerationServices:
         image_response = self.client.get(image_url)
         image_response.raise_for_status()
         content_type = str(image_response.headers.get("content-type") or (images[0] if images else {}).get("content_type") or "image/png").split(";", 1)[0]
-        input_ids = [item.artifact_id for item in inputs]
+        return FalGeneratedImage(bytes(image_response.content), content_type, request_id)
+
+    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult:
+        if payload.node_key != "lora.image.generate":
+            raise ValueError(f"fal provider does not support Canvas node: {payload.node_key}")
+        generated = self.generate_lora_image(
+            prompt=payload.prompt,
+            lora_url=str(payload.parameters.get("lora_url") or ""),
+            lora_scale=float(payload.parameters.get("lora_scale") or 0.9),
+            trigger_word=str(payload.parameters.get("trigger_word") or ""),
+            aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+            resolution=str(payload.parameters.get("resolution") or "2K"),
+            guidance_scale=float(payload.parameters.get("guidance_scale") or 2.5),
+            inference_steps=int(payload.parameters.get("inference_steps") or 28),
+            timeout_seconds=int(payload.parameters.get("timeout_seconds") or 300),
+        )
         return LiveGenerationResult(
-            {"kind": "image", "title": "LoRA generated image", "mimeType": content_type},
+            {"kind": "image", "title": "LoRA generated image", "mimeType": generated.content_type},
             "Image",
             "fal.flux2.lora.v1",
-            request_id,
-            bytes(image_response.content),
-            content_type,
+            generated.provider_request_id,
+            generated.data,
+            generated.content_type,
             "lora-generated.png",
-            input_ids,
+            [item.artifact_id for item in inputs],
         )
 
     def submit_lora_training(

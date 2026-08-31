@@ -6,6 +6,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -93,8 +94,13 @@ def resolve_prompt_image_variables(payload: ExperimentRunRequest) -> ExperimentR
     })
 
 
-def resolve_character_lora_parameters(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRequest:
-    if payload.node_key != "lora.image.generate" or str(payload.parameters.get("lora_url") or "").strip():
+def resolve_character_lora_parameters(db: Session, payload: ExperimentRunRequest, definition: Any = None) -> ExperimentRunRequest:
+    lora_capability = bool(
+        definition
+        and any(family.startswith("fal.image.") for family in definition.execution.model_families)
+        and "lora_url" in definition.config_schema.get("properties", {})
+    )
+    if not lora_capability or str(payload.parameters.get("lora_url") or "").strip():
         return payload
     for item in payload.inputs:
         if str(item.get("type") or "") != "Character":
@@ -346,10 +352,10 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
 
 def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRecord:
     payload = resolve_prompt_image_variables(payload)
-    payload = resolve_character_lora_parameters(db, payload)
+    definition = node_registry.get(payload.node_key, payload.node_contract_version)
+    payload = resolve_character_lora_parameters(db, payload, definition)
     if payload.node_key == "skill.execute":
         payload = payload.model_copy(update={"parameters": snapshot_skill_parameters(payload.parameters, db)})
-    definition = node_registry.get(payload.node_key, payload.node_contract_version)
     configured_model_alias = str(payload.parameters.get("model_alias") or "").strip()
     if definition and not node_registry.uses_legacy_runtime(definition) and configured_model_alias:
         payload = payload.model_copy(update={"model_alias": configured_model_alias})

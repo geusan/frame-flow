@@ -20,6 +20,7 @@ from app.providers_localization import (
 )
 from app.providers_google import GeneratedBinary
 from app.providers_generation import CharacterGenerationResult, CharacterImageAsset
+from app.providers_fal import FalGeneratedImage
 
 
 def test_executor_revision_fits_persisted_execution_mode(monkeypatch):
@@ -1423,6 +1424,46 @@ def test_lora_image_generator_experiment_uses_fal_model_contract(client: TestCli
     model = next(item for item in client.get("/models").json() if item["logical_alias"] == "fal.image.flux2-lora")
     assert model["provider"] == "fal.ai"
     assert model["exact_model_id"] == "fal-ai/flux-2/lora"
+
+
+def test_fal_lora_image_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeFalImages:
+        def generate_lora_image(self, **kwargs):
+            assert kwargs["lora_url"] == "https://weights.example/mori.safetensors"
+            assert kwargs["trigger_word"] == "mori_v1"
+            assert kwargs["lora_scale"] == 0.85
+            return FalGeneratedImage(b"fal-lora-image", "image/png", "fal_image_registry")
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.fal_lora_image.get_fal_generation_services",
+        lambda: FakeFalImages(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "lora_registry_canvas",
+        "node_id": "lora_registry",
+        "node_key": "lora.image.generate",
+        "prompt": "Mori at a cafe",
+        "model_alias": "fal.image.flux2-lora",
+        "parameters": {
+            "lora_url": "https://weights.example/mori.safetensors",
+            "lora_scale": 0.85,
+            "trigger_word": "mori_v1",
+            "resolution": "2K",
+            "aspect_ratio": "9:16",
+            "output_count": 1,
+        },
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["provider_request_id"] == "fal_image_registry"
+    assert result["cost_usd"] == 0.07
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "image.lora.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
+    assert artifact["metadata"]["normalized_config"]["trigger_word"] == "mori_v1"
 
 
 def test_character_lora_training_persists_weights_and_hydrates_lora_generator(client: TestClient, monkeypatch):
