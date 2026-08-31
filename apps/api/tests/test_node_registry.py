@@ -107,7 +107,11 @@ def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
     assert node_registry.can_execute(context) is True
     google_context = SimpleNamespace(definition=definition, payload=payload.model_copy(update={"model_alias": "google.text.fast"}))
-    assert node_registry.can_execute(google_context) is False
+    assert node_registry.can_execute(google_context) is True
+    image_definition = node_registry.get("image.generate", 1)
+    assert image_definition is not None
+    image_context = SimpleNamespace(definition=image_definition, payload=payload.model_copy(update={"node_key": "image.generate", "node_contract_version": 1, "model_alias": "google.image.fast"}))
+    assert node_registry.can_execute(image_context) is False
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "fixture")
     assert node_registry.can_execute(context) is False
 
@@ -115,9 +119,13 @@ def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
 def test_experiments_does_not_dispatch_xai_provider_directly():
     experiments_source = (Path(__file__).parents[1] / "app" / "experiments.py").read_text()
     executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "xai_text.py").read_text()
+    text_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "text_generation.py").read_text()
+    text_support_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "text_support.py").read_text()
     assert "get_xai_text_services" not in experiments_source
     assert "payload.node_key" not in executor_source
-    assert "artifact_contract.primary_type" in executor_source
+    assert "payload.node_key" not in text_executor_source
+    assert "artifact_contract.primary_type" in text_support_source
+    assert "complete_text_execution" in text_executor_source
 
 
 def test_every_node_manifest_materializes_a_closed_config():

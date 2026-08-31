@@ -54,6 +54,22 @@ class OpenAIGenerationServices:
             project=self.config.project,
         )
 
+    def generate_text(self, *, logical_model: str, prompt: str, instructions: str) -> tuple[str, str]:
+        try:
+            exact_model = OPENAI_MODEL_REGISTRY[logical_model]
+        except KeyError as exc:
+            raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
+        response = self.client.responses.create(
+            model=exact_model,
+            instructions=instructions,
+            input=prompt,
+            store=False,
+        )
+        text = str(response.output_text or "").strip()
+        if not text:
+            raise RuntimeError("OpenAI Responses API returned no text")
+        return text, str(response.id)
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias
         try:
@@ -119,21 +135,13 @@ class OpenAIGenerationServices:
                     if payload.node_key == "script.generate"
                     else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
                 )
-            response = self.client.responses.create(
-                model=exact_model,
-                instructions=instructions,
-                input=payload.prompt,
-                store=False,
-            )
-            text = str(response.output_text or "").strip()
-            if not text:
-                raise RuntimeError("OpenAI Responses API returned no text")
+            text, request_id = self.generate_text(logical_model=logical_model, prompt=payload.prompt, instructions=instructions)
             artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
             skill_execution = payload.node_key == "skill.execute"
             return LiveGenerationResult(
                 {"kind": "text", "title": "Generated script" if artifact_type == "Script" else "Generated master prompt" if skill_execution else "Generated text", "text": text},
                 artifact_type, "script.v1" if artifact_type == "Script" else "prompt.master.v1" if skill_execution else "openai.text.v1",
-                response.id, text.encode(), "text/plain", "master-prompt.txt" if skill_execution else "result.txt", input_ids,
+                request_id, text.encode(), "text/plain", "master-prompt.txt" if skill_execution else "result.txt", input_ids,
             )
 
         if payload.node_key in {"image.generate", "image.edit"}:

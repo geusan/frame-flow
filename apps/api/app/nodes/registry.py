@@ -13,6 +13,7 @@ from .executors import (
     LocalSubscriptionAgentExecutor,
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
+    TextGenerationCapabilityExecutor,
     VideoRetimeExecutor,
     XAITextCapabilityExecutor,
 )
@@ -110,7 +111,7 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
-        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(),)),
+        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor())),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),

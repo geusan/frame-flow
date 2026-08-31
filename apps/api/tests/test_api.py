@@ -239,17 +239,14 @@ def test_live_generation_mode_uses_google_service_without_deterministic_fallback
 
 def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):
     class FakeOpenAIServices:
-        def execute(self, payload, inputs):
-            assert payload.model_alias == "openai.chat.latest"
-            assert payload.node_key == "llm.assistant"
-            return LiveGenerationResult(
-                {"kind": "text", "title": "ChatGPT response", "text": "OpenAI response"},
-                "Text", "openai.text.v1", "resp_openai_test", b"OpenAI response",
-                "text/plain", "result.txt", [],
-            )
+        def generate_text(self, *, logical_model, prompt, instructions):
+            assert logical_model == "openai.chat.latest"
+            assert prompt == "Use ChatGPT"
+            assert "Transform" in instructions
+            return "OpenAI response", "resp_openai_test"
 
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
-    monkeypatch.setattr("app.experiments.get_openai_generation_services", lambda: FakeOpenAIServices())
+    monkeypatch.setattr("app.nodes.executors.text_generation.get_openai_generation_services", lambda: FakeOpenAIServices())
     response = client.post("/experiments", json={
         "canvas_id": "canvas_openai",
         "node_id": "assistant_openai",
@@ -265,6 +262,10 @@ def test_openai_chat_provider_routes_through_live_service(client: TestClient, mo
     assert result["execution_mode"] == "openai-live.v1"
     assert result["exact_model_id"] == "chat-latest"
     assert result["provider_request_id"] == "resp_openai_test"
+    assert result["output"]["text"] == "OpenAI response"
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "text.generated.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
     mismatch = client.post("/experiments", json={
         "canvas_id": "canvas_openai",
         "node_id": "assistant_mismatch",
@@ -275,6 +276,40 @@ def test_openai_chat_provider_routes_through_live_service(client: TestClient, mo
         "inputs": [],
     })
     assert mismatch.status_code == 422
+
+
+def test_google_text_provider_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeGoogleText:
+        def generate_text(self, **kwargs):
+            assert kwargs["logical_model"] == "google.text.quality"
+            assert kwargs["rendered_prompt"] == "Use Gemini"
+            assert "Transform" in kwargs["system_prompt"]
+            assert kwargs["temperature"] == 0.4
+            return "Google response", "google_text_registry"
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.text_generation.get_google_generation_services",
+        lambda: SimpleNamespace(text=FakeGoogleText()),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_google_text",
+        "node_id": "assistant_google",
+        "node_key": "llm.assistant",
+        "prompt": "Use Gemini",
+        "model_alias": "google.text.quality",
+        "parameters": {"temperature": 0.4},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["provider_request_id"] == "google_text_registry"
+    assert result["cost_usd"] == 0.03
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "text.generated.v1"
+    assert artifact["metadata"]["provider"] == "google"
+    assert artifact["metadata"]["normalized_config"] == {"temperature": 0.4}
 
 
 def test_canvas_can_import_a_video_url_as_an_artifact(client: TestClient):
