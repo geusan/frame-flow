@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .database import ProviderSettingRecord, SessionLocal
 from .domain import utc_now
+from .google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV, validate_service_account_json
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,7 @@ class ProviderField:
     placeholder: str = ""
     help_text: str = ""
     auth_methods: tuple[str, ...] = ()
+    input_kind: str = "text"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ def _field(
     placeholder: str = "",
     help_text: str = "",
     auth_methods: tuple[str, ...] = (),
+    input_kind: str = "text",
 ) -> ProviderField:
     return ProviderField(
         key,
@@ -66,6 +70,7 @@ def _field(
         placeholder=placeholder,
         help_text=help_text,
         auth_methods=auth_methods,
+        input_kind=input_kind,
     )
 
 
@@ -107,6 +112,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
             _field("project_id", "Google Cloud project", "GOOGLE_CLOUD_PROJECT", placeholder="my-gcp-project", help_text="Optional with Gemini API; required for Chirp 3 Speech-to-Text.", auth_methods=("api_key", "vertex")),
             _field("location", "Google Cloud location", "GOOGLE_CLOUD_LOCATION", default="us-central1", placeholder="us-central1", auth_methods=("api_key", "vertex")),
             _field("credentials_path", "Application credentials path", "GOOGLE_APPLICATION_CREDENTIALS", placeholder="/run/secrets/google-application-default-credentials.json", help_text="Required for Chirp 3 and must be readable by the API and Temporal worker.", auth_methods=("api_key", "vertex")),
+            _field("service_account_json", "Service Account JSON", GOOGLE_SERVICE_ACCOUNT_ENV, secret=True, placeholder="Select the downloaded Service Account JSON file", help_text="Stored as a write-only DB secret and loaded directly by API and Temporal workers.", auth_methods=("api_key", "vertex"), input_kind="service_account_json"),
             _field("speech_location", "Speech location", "GOOGLE_SPEECH_LOCATION", default="us", placeholder="us", auth_methods=("api_key", "vertex")),
             _field("video_output_gcs_uri", "Video output GCS URI", "GOOGLE_VIDEO_OUTPUT_GCS_URI", placeholder="gs://bucket/path", auth_methods=("vertex",)),
         ),
@@ -374,6 +380,7 @@ def provider_settings_payload(record: ProviderSettingRecord) -> dict[str, Any]:
                 "placeholder": field.placeholder,
                 "help_text": field.help_text,
                 "auth_methods": list(field.auth_methods),
+                "input_kind": field.input_kind,
             }
             for field in definition.fields
         ],
@@ -404,6 +411,14 @@ def update_provider_settings(
     for key, raw_value in values.items():
         target = secrets if fields[key].secret else configuration
         value = str(raw_value).strip()
+        if record.provider == "google" and key == "service_account_json" and value:
+            service_account = validate_service_account_json(value)
+            service_project = str(service_account["project_id"])
+            configured_project = str(values.get("project_id") or "").strip()
+            if configured_project and configured_project != service_project:
+                raise ValueError("Google Cloud project does not match the Service Account project_id")
+            configuration["project_id"] = service_project
+            value = json.dumps(service_account, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         if value:
             target[key] = value
         elif not fields[key].secret:

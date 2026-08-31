@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .google_service_account import google_credentials_from_env, google_project_from_env
 from .providers_google import GoogleProviderConfig, GoogleTextProvider, GoogleTtsProvider
 
 
@@ -89,7 +90,10 @@ class GoogleChirp3Recognizer:
         except ImportError as exc:
             raise RuntimeError("google-cloud-speech is required for Chirp 3 speech recognition") from exc
         options = None if location == "global" else ClientOptions(api_endpoint=f"{location}-speech.googleapis.com")
-        self.client = SpeechClient(client_options=options)
+        self.client = SpeechClient(
+            client_options=options,
+            credentials=google_credentials_from_env(),
+        )
 
     def transcribe(self, audio: bytes, *, language_code: str, duration_ms: int) -> TranscriptResult:
         try:
@@ -202,7 +206,7 @@ class GeminiSpeechSynthesizer:
 
 
 def get_speech_recognizer() -> SpeechRecognizer:
-    project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+    project = google_project_from_env()
     if not project:
         raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Chirp 3 Speech-to-Text")
     speech_location = os.getenv("GOOGLE_SPEECH_LOCATION", "us").strip() or "us"

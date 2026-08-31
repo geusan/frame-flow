@@ -9,5 +9,8 @@ node_modules
 **/.pytest_cache
 *.db
 *.tfstate*
+/output
+/*.ass
+/*.mp4
+/*.png
 docs
-

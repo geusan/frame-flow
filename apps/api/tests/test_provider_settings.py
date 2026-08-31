@@ -1,9 +1,13 @@
+import json
 import os
 
 from fastapi.testclient import TestClient
 
 from app.database import ProviderSettingRecord, SessionLocal
+from app import provider_settings as provider_settings_module
+from app.google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV
 from app.provider_settings import ensure_provider_settings, provider_settings_payload
+from app.providers_localization import GoogleChirp3Recognizer
 
 
 def test_provider_settings_are_created_and_secrets_are_write_only(client: TestClient, monkeypatch):
@@ -155,6 +159,77 @@ def test_google_api_key_mode_can_apply_cloud_speech_adc_settings(client: TestCli
     assert os.environ["GEMINI_API_KEY"] == "gemini-test-key"
     assert os.environ["GOOGLE_CLOUD_PROJECT"] == "speech-project"
     assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/run/secrets/google-adc.json"
+
+
+def test_google_service_account_json_is_validated_write_only_and_applied(client: TestClient, monkeypatch):
+    for key in ("GEMINI_API_KEY", "GOOGLE_CLOUD_PROJECT", GOOGLE_SERVICE_ACCOUNT_ENV):
+        monkeypatch.delenv(key, raising=False)
+    service_account = {
+        "type": "service_account",
+        "project_id": "service-project",
+        "private_key_id": "key-id",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n",
+        "client_email": "frameflow@service-project.iam.gserviceaccount.com",
+        "client_id": "123456",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    monkeypatch.setattr(provider_settings_module, "validate_service_account_json", lambda raw: json.loads(raw))
+
+    saved = client.put("/settings/providers/google", json={
+        "enabled": True,
+        "auth_method": "api_key",
+        "values": {
+            "api_key": "gemini-test-key",
+            "service_account_json": json.dumps(service_account),
+            "speech_location": "us",
+        },
+    })
+
+    assert saved.status_code == 200
+    payload = saved.json()
+    project = next(field for field in payload["fields"] if field["key"] == "project_id")
+    secret = next(field for field in payload["fields"] if field["key"] == "service_account_json")
+    assert project["value"] == "service-project"
+    assert secret["value"] == ""
+    assert secret["has_value"] is True
+    assert secret["input_kind"] == "service_account_json"
+    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "service-project"
+    assert json.loads(os.environ[GOOGLE_SERVICE_ACCOUNT_ENV])["client_email"] == service_account["client_email"]
+
+    mismatch = client.put("/settings/providers/google", json={
+        "enabled": True,
+        "auth_method": "api_key",
+        "values": {
+            "project_id": "different-project",
+            "service_account_json": json.dumps(service_account),
+        },
+    })
+    assert mismatch.status_code == 422
+    assert "does not match" in mismatch.json()["detail"]
+
+    cleared = client.put("/settings/providers/google", json={
+        "enabled": True,
+        "auth_method": "api_key",
+        "values": {},
+        "clear_fields": ["service_account_json"],
+    })
+    assert cleared.status_code == 200
+    assert next(field for field in cleared.json()["fields"] if field["key"] == "service_account_json")["has_value"] is False
+    assert GOOGLE_SERVICE_ACCOUNT_ENV not in os.environ
+
+
+def test_chirp3_uses_registered_service_account_credentials(monkeypatch):
+    from google.cloud import speech_v2
+
+    credential = object()
+    captured = {}
+    monkeypatch.setattr("app.providers_localization.google_credentials_from_env", lambda: credential)
+    monkeypatch.setattr(speech_v2, "SpeechClient", lambda **kwargs: captured.update(kwargs) or object())
+
+    GoogleChirp3Recognizer("service-project", "us")
+
+    assert captured["credentials"] is credential
+    assert captured["client_options"].api_endpoint == "us-speech.googleapis.com"
 
 
 def test_fal_provider_uses_server_side_api_key(client: TestClient, monkeypatch):

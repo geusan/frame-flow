@@ -11,6 +11,10 @@ __pycache__/
 *.tsbuildinfo
 *.db
 artifacts/
+/output/
+/*.ass
+/*.mp4
+/*.png
 .DS_Store
 .terraform/
 *.tfstate

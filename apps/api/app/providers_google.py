@@ -11,6 +11,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from .google_service_account import google_credentials_from_env, google_project_from_env
 from .providers import MODEL_REGISTRY, ProviderSubmission, model_id_for_alias
 
 
@@ -24,15 +25,17 @@ class GoogleProviderConfig:
     location: str = "global"
     api_version: str = "v1"
     api_key: str | None = None
+    credentials: Any | None = None
 
     @classmethod
     def from_env(cls) -> "GoogleProviderConfig":
         api_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
-        project = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+        project = google_project_from_env()
+        credentials = google_credentials_from_env()
         if api_key:
-            return cls(api_key=api_key, location="global", api_version="v1beta")
+            return cls(api_key=api_key, credentials=credentials, location="global", api_version="v1beta")
         if project:
-            return cls(project=project, location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"), api_version="v1")
+            return cls(project=project, credentials=credentials, location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"), api_version="v1")
         raise GoogleProviderError("GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT is required for live Google providers")
 
 
@@ -63,6 +66,7 @@ class GoogleProviderBase:
                 vertexai=True,
                 project=self.config.project,
                 location=self.config.location,
+                credentials=self.config.credentials,
                 http_options=types.HttpOptions(api_version=self.config.api_version),
             )
         )
@@ -391,7 +395,10 @@ class GoogleVideoProvider(GoogleProviderBase):
         bucket_name, _, blob_name = uri[5:].partition("/")
         if not bucket_name or not blob_name:
             raise GoogleProviderError(f"invalid generated video GCS URI: {uri}")
-        return storage.Client().bucket(bucket_name).blob(blob_name).download_as_bytes()
+        return storage.Client(
+            project=google_project_from_env() or None,
+            credentials=google_credentials_from_env(),
+        ).bucket(bucket_name).blob(blob_name).download_as_bytes()
 
 
 class GoogleTtsProvider(GoogleProviderBase):
@@ -403,6 +410,7 @@ class GoogleTtsProvider(GoogleProviderBase):
                 vertexai=True,
                 project=self.config.project,
                 location="global",
+                credentials=self.config.credentials,
                 http_options=types.HttpOptions(api_version="v1beta1"),
             )
 

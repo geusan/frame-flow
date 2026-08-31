@@ -84,6 +84,7 @@ export function SettingsView() {
   const [providerErrors, setProviderErrors] = useState<Record<string, string>>({});
   const [savedProvider, setSavedProvider] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const [selectedSecretFiles, setSelectedSecretFiles] = useState<Record<string, string>>({});
   const [expandedProvider, setExpandedProvider] = useState<string | null>("openai");
 
   const loadProviders = useCallback(async () => {
@@ -106,6 +107,11 @@ export function SettingsView() {
   const updateRecord = (record: ProviderSetting) => {
     setProviders((current) => current.map((provider) => provider.provider === record.provider ? record : provider));
     setDrafts((current) => ({ ...current, [record.provider]: draftFor(record) }));
+    setSelectedSecretFiles((current) => {
+      const next = { ...current };
+      delete next[record.provider];
+      return next;
+    });
     window.dispatchEvent(new Event("frameflow:provider-settings-changed"));
   };
 
@@ -261,6 +267,36 @@ export function SettingsView() {
                 <div className="provider-fields">
                   {visibleFields.map((field) => {
                     const required = selectedAuth?.required_fields.includes(field.key) ?? field.required;
+                    if (field.input_kind === "service_account_json") {
+                      const selectedFile = selectedSecretFiles[provider.provider];
+                      return (
+                        <Label className="provider-field provider-service-account-field" key={field.key} htmlFor={`${provider.provider}-${field.key}`}>
+                          <span>{field.label}{required && <b>Required</b>}</span>
+                          <div className="provider-service-account-input">
+                            <Input
+                              id={`${provider.provider}-${field.key}`}
+                              type="file"
+                              accept="application/json,.json"
+                              autoComplete="off"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (!file) return;
+                                void file.text().then((value) => {
+                                  setDrafts((current) => ({
+                                    ...current,
+                                    [provider.provider]: { ...draft, values: { ...draft.values, [field.key]: value } },
+                                  }));
+                                  setSelectedSecretFiles((current) => ({ ...current, [provider.provider]: file.name }));
+                                }).catch(() => setProviderErrors((current) => ({ ...current, [provider.provider]: "Service Account JSON 파일을 읽지 못했습니다." })));
+                              }}
+                            />
+                            <span>{selectedFile ? `${selectedFile} · 저장 준비됨` : field.has_value ? "Service Account가 저장되어 있습니다." : "다운로드한 JSON 키 파일을 선택하세요."}</span>
+                            {field.has_value && <ConfirmAction trigger={<Button type="button" variant="danger" size="icon" className="provider-secret-remove" aria-label={`Remove ${field.label}`} disabled={saving === provider.provider}><Trash2 size={13} /></Button>} title={`Remove ${field.label}?`} description="저장된 Service Account 개인 키를 데이터베이스에서 제거합니다." confirmLabel="Remove credential" onConfirm={() => removeSecret(provider, field.key)} />}
+                          </div>
+                          <small><code>{field.env_var}</code>{field.help_text && ` · ${field.help_text}`}</small>
+                        </Label>
+                      );
+                    }
                     return (
                       <Label className="provider-field" key={field.key} htmlFor={`${provider.provider}-${field.key}`}>
                         <span>{field.label}{required && <b>Required</b>}</span>

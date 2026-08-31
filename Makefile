@@ -33,5 +33,6 @@ build:
 check:
 	npm run lint
 	npm run typecheck
+	npm run ui:check
 	$(MAKE) test
 	$(MAKE) build

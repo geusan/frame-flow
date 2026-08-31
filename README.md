@@ -3,6 +3,7 @@
 레퍼런스 영상의 원본 자산을 생성 단계와 격리하고, 추상적인 영상 포맷만 구조화해 새로운 숏츠를 만드는 그래프 기반 AI 영상 제작 시스템입니다.
 
 현재 구현과 Canvas 사용법은 [`GUIDE.md`](./GUIDE.md)를 참고하세요.
+오픈소스·셀프호스트·BYOK·데이터 이동 요구사항과 구현 순서는 [`docs/open-source-requirements.md`](./docs/open-source-requirements.md)를 참고하세요.
 
 이 저장소는 실제 Google Cloud Provider와 로컬 FFmpeg 실행을 사용하는 실행 가능한 MVP입니다. 운영 기본 모드는 `live`이며 Google Cloud 프로젝트와 Application Default Credentials가 없으면 AI 생성·분석 Step이 명확히 실패합니다. 자동화 테스트만 명시적인 `fixture` 모드를 사용합니다.
 
@@ -137,7 +138,7 @@ PostgreSQL이 사용자에게 보이는 상태의 기준입니다. 일반 Genera
 
 ## 실제 Google Provider 연결
 
-Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 수 있고, Video·Format extraction·Speech Subtitle·Translate Video는 실제 Google API를 사용합니다. Vertex AI 없이 사용할 때는 Gemini API key를 유지하면서 `GOOGLE_CLOUD_PROJECT`, Chirp 3 지원 리전의 `GOOGLE_SPEECH_LOCATION`과 Application Default Credentials를 설정하고 Speech-to-Text API 권한을 부여합니다. Translate Video는 현재 60초 이하를 지원하며 Transcript, 번역문, WAV, SRT와 최종 MP4를 각각 불변 Artifact로 저장합니다.
+Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 수 있고, Video·Format extraction·Speech Subtitle·Translate Video는 실제 Google API를 사용합니다. Vertex AI 없이 사용할 때는 Gemini API key를 유지하면서 `GOOGLE_CLOUD_PROJECT`, Chirp 3 지원 리전의 `GOOGLE_SPEECH_LOCATION`과 Google Cloud 자격증명을 설정하고 Speech-to-Text API 권한을 부여합니다. Google Service Account JSON은 Settings의 Google AI 연결에서 write-only secret으로 등록할 수 있으며 기존 `GOOGLE_APPLICATION_CREDENTIALS` 파일 경로도 지원합니다. Translate Video는 현재 60초 이하를 지원하며 Transcript, 번역문, WAV, SRT와 최종 MP4를 각각 불변 Artifact로 저장합니다.
 
 Canvas의 Image, Voiceover, LLM Assistant와 Script 노드는 모델 선택에서 OpenAI를 선택할 수 있습니다. Voiceover는 Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS와 OpenAI GPT-4o Mini TTS, TTS-1, TTS-1 HD를 지원합니다. Gemini API 키 인증에서는 2.5 TTS 별칭이 Developer API의 Preview 모델 ID로, Vertex AI 인증에서는 Google Cloud 모델 ID로 자동 해석됩니다. `OPENAI_API_KEY`를 설정하면 Responses API의 GPT-5.6/ChatGPT Latest, GPT Image 2와 OpenAI TTS 모델이 활성화됩니다. Video Generator는 Veo를 사용합니다.
 

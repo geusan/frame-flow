@@ -75,6 +75,7 @@ export interface ProviderSettingField {
   placeholder: string;
   help_text: string;
   auth_methods: string[];
+  input_kind: "text" | "service_account_json";
 }
 
 export interface ProviderAuthMethod {

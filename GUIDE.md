@@ -411,6 +411,8 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 
 Workflow는 논리적 모델 별칭을 사용하고 Run에서 정확한 모델 ID를 Snapshot한다.
 
+Google Service Account는 Settings → Provider connections → Google AI에서 JSON 키 파일로 등록할 수 있다. JSON은 DB의 write-only secret에 저장되며 API 응답과 화면에서 개인 키를 다시 노출하지 않는다. 저장 시 `service_account` 형식, 프로젝트 ID와 PEM 개인 키를 검증하고 `GOOGLE_CLOUD_PROJECT`를 JSON의 `project_id`로 자동 설정한다. API와 Temporal Worker는 실행 직전 DB 설정을 동기화하고 Chirp 3 Speech-to-Text, Vertex Gemini와 GCS Client에 메모리 자격증명으로 직접 전달한다. 기존 `GOOGLE_APPLICATION_CREDENTIALS` 파일 경로 방식도 대체 인증으로 유지한다.
+
 ### Media Worker
 
 - FFmpeg 기반 세로형 MP4 렌더

@@ -12,6 +12,10 @@ const legacyPortTypes: Record<string, PortType> = {
   "data.text.v1": "Text",
   "data.json.v1": "Any",
   "data.motion_track.v1": "MotionTrack",
+  "data.reference_analysis.v1": "ReferenceAnalysis",
+  "data.reference_asset.v1": "ReferenceAsset",
+  "data.subtitle.v1": "Subtitle",
+  "data.timeline.v1": "Timeline",
 };
 
 export function legacyPortType(typeId: string): PortType {
