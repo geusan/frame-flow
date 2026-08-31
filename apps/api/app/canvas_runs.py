@@ -13,6 +13,7 @@ from .database import CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, Sessio
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
 from .nodes import node_registry
+from .nodes.legacy_run_adapter import legacy_canvas_run_parameters
 from .service import new_id
 
 
@@ -56,6 +57,7 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         nodes = payload.nodes
         edges = payload.edges
         canvas_revision = payload.canvas_revision
+        graph_source = "legacy_request"
     else:
         canvas = db.get(CanvasRecord, payload.canvas_id)
         if not canvas:
@@ -66,8 +68,18 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         nodes = list(graph.get("nodes") or [])
         edges = list(graph.get("edges") or [])
         canvas_revision = canvas.revision
+        graph_source = "stored_canvas"
     if not nodes:
         raise ValueError("Canvas graph has no nodes")
+    if graph_source == "stored_canvas":
+        unknown = [
+            str(node.get("data", {}).get("key") or "unknown")
+            for node in nodes
+            if node.get("data", {}).get("executable") is not False
+            and not node_registry.get(str(node.get("data", {}).get("key") or ""), int(node.get("data", {}).get("contractVersion") or 1))
+        ]
+        if unknown:
+            raise ValueError(f"Canvas contains an unavailable Node contract: {', '.join(sorted(set(unknown)))}")
     node_ids = [str(node.get("id") or "") for node in nodes]
     if any(not node_id for node_id in node_ids) or len(set(node_ids)) != len(node_ids):
         raise ValueError("Canvas node IDs must be present and unique")
@@ -87,7 +99,7 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         name=payload.name,
         status=NodeStatus.READY,
         progress=0,
-        graph_snapshot={"nodes": nodes, "edges": edges, "target_node_id": payload.target_node_id, **({"canvas_revision": canvas_revision} if canvas_revision is not None else {})},
+        graph_snapshot={"nodes": nodes, "edges": edges, "target_node_id": payload.target_node_id, "source": graph_source, **({"canvas_revision": canvas_revision} if canvas_revision is not None else {})},
     )
     db.add(run)
     for ordinal, node in enumerate(nodes):
@@ -293,6 +305,15 @@ class LocalCanvasRunEngine:
 local_canvas_engine = LocalCanvasRunEngine()
 
 
+def canvas_run_parameters(run: CanvasRunRecord, data: dict[str, Any]) -> dict[str, Any]:
+    definition = node_registry.get(str(data.get("key") or ""), int(data.get("contractVersion") or 1))
+    if (run.graph_snapshot or {}).get("source") == "stored_canvas":
+        if not definition:
+            raise ValueError(f"Node Definition was not found: {data.get('key')}@{data.get('contractVersion') or 1}")
+        return node_registry.resolve_config(definition, dict(data.get("config") or {}))
+    return legacy_canvas_run_parameters(data)
+
+
 def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRecord, data: dict[str, Any]) -> ExperimentRunRequest:
     inputs: list[dict[str, Any]] = []
     seen_input_ids: set[str] = set()
@@ -359,34 +380,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
         if source_data.get("outputType") == "Prompt":
             append_prompt_ancestors(source_id)
         append_input(source_id)
-    parameters = dict(data.get("config") or data.get("parameters") or {})
-    definition = node_registry.get(node.node_key, int(data.get("contractVersion") or 1))
-    if not definition or node_registry.uses_legacy_runtime(definition):
-        parameters.setdefault("resolution", data.get("resolution"))
-        parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
-        parameters.setdefault("transition", data.get("transition"))
-        parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
-        parameters.setdefault("source_language", data.get("sourceLanguage"))
-        parameters.setdefault("separate_music", data.get("separateMusic"))
-        parameters.setdefault("scene_threshold", data.get("sceneThreshold"))
-        parameters.setdefault("motion_sample_fps", data.get("motionSampleFps"))
-        parameters.setdefault("motion_max_width", data.get("motionMaxWidth"))
-        parameters.setdefault("motion_min_confidence", data.get("motionMinConfidence"))
-        parameters.setdefault("motion_face_blendshapes", data.get("motionFaceBlendshapes"))
-        parameters.setdefault("target_language", data.get("targetLanguage"))
-        parameters.setdefault("voice_name", data.get("voiceName"))
-        parameters.setdefault("caption_x", data.get("captionX"))
-        parameters.setdefault("caption_y", data.get("captionY"))
-        parameters.setdefault("caption_align", data.get("captionAlign"))
-        parameters.setdefault("caption_font_size", data.get("captionFontSize"))
-        parameters.setdefault("skill_id", data.get("skillId"))
-        parameters.setdefault("provider", data.get("provider"))
-        parameters.setdefault("character_name", data.get("characterName"))
-        parameters.setdefault("shot_count", data.get("shotCount"))
-        parameters.setdefault("duration_seconds", data.get("durationSeconds"))
-        parameters.setdefault("lora_url", data.get("loraUrl"))
-        parameters.setdefault("lora_scale", data.get("loraScale"))
-        parameters.setdefault("trigger_word", data.get("triggerWord"))
+    parameters = canvas_run_parameters(run, data)
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,
         node_id=node.canvas_node_id,

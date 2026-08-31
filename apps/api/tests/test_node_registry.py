@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import canvas_activities
+from app.canvas_runs import canvas_run_parameters
 from app.domain import ExperimentRunRequest
 from app.experiments import request_fingerprint, resolve_model
 from app.motion_control_video import MOTION_CONTROL_VIDEO_REVISION, RenderedMotionControlVideo, parse_motion_track, render_motion_control_video
@@ -94,6 +95,36 @@ def test_every_node_manifest_materializes_a_closed_config():
         resolved = node_registry.resolve_config(definition, {})
         assert set(resolved) <= set(definition.config_schema["properties"])
         assert set(definition.config_schema.get("required", [])) <= set(resolved)
+
+
+def test_canvas_run_parameters_use_registry_for_stored_snapshots_and_legacy_adapter_for_raw_requests():
+    stored = SimpleNamespace(graph_snapshot={"source": "stored_canvas"})
+    stored_parameters = canvas_run_parameters(stored, {
+        "key": "image.generate",
+        "contractVersion": 1,
+        "config": {"resolution": "4K"},
+        "provider": "openai",
+    })
+    definition = node_registry.get("image.generate", 1)
+    assert definition is not None
+    assert stored_parameters == node_registry.resolve_config(definition, {"resolution": "4K"})
+    assert "provider" not in stored_parameters
+
+    legacy = SimpleNamespace(graph_snapshot={"source": "legacy_request"})
+    legacy_parameters = canvas_run_parameters(legacy, {
+        "key": "image.generate",
+        "contractVersion": 1,
+        "resolution": "4K",
+        "aspectRatio": "1:1",
+        "provider": "openai",
+    })
+    assert legacy_parameters == {"resolution": "4K", "aspect_ratio": "1:1", "provider": "openai"}
+
+
+def test_canvas_run_module_does_not_reintroduce_manual_parameter_flattening():
+    canvas_runs_source = (Path(__file__).parents[1] / "app" / "canvas_runs.py").read_text()
+    assert "parameters.setdefault(" not in canvas_runs_source
+    assert "legacy_canvas_run_parameters(data)" in canvas_runs_source
 
 
 def test_all_node_definition_digests_match_the_v1_golden_snapshot():

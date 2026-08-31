@@ -966,6 +966,7 @@ def test_canvas_run_snapshots_the_saved_canonical_canvas_revision(client: TestCl
         "canvas_revision": created["revision"],
     })
     assert started.status_code == 201, started.text
+    assert started.json()["graph"]["source"] == "stored_canvas"
     assert started.json()["graph"]["canvas_revision"] == created["revision"]
     assert started.json()["graph"]["nodes"][0]["data"]["configText"] == "original snapshot"
 

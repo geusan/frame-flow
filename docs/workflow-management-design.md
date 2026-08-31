@@ -1015,6 +1015,8 @@ Web의 Canvas autosave와 명시적 저장은 React Flow `nodes/edges`를 API에
 
 Draft Run 직전 Web은 현재 Canonical Canvas를 저장하고 응답 revision과 `canvas_id`만 Run API에 전달한다. 서버는 해당 revision이 현재 저장 상태와 일치하는지 확인한 뒤 Canonical 문서를 Legacy execution graph로 변환해 불변 `graph_snapshot`으로 저장한다. 이후 Canvas autosave나 편집은 이미 생성된 Run payload를 변경하지 않는다. Raw `nodes/edges` Run 요청은 전환 기간의 구버전 API 호환에만 남긴다.
 
+저장된 Canvas에서 만든 Run의 Node 설정은 snapshot의 materialized `config`만 사용하고 Node Registry `resolve_config`로 다시 검증한다. `canvas_runs.py`가 camelCase UI 필드를 공통 parameter 객체로 수동 평탄화하지 않는다. 구버전 Raw graph 요청에서만 별도 Legacy Run Adapter가 과거 필드를 Canonical config key로 변환하며, 이 Adapter는 신규 Run 경로의 Source of Truth가 아니다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.
