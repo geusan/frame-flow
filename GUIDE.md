@@ -45,8 +45,11 @@ make dev-web
 
 | 화면 | 현재 역할 |
 | --- | --- |
-| `/workflows` | DB에 저장된 Canvas 목록과 새 Canvas 생성 |
-| `/workflows/{id}` | 그래프 편집·Step 실행·결과 Preview |
+| `/canvases` | 독립 Canvas와 Workflow Draft 목록 |
+| `/canvases/{id}` | 그래프 편집·Step 실행·Publish |
+| `/workflows` | 관리형 Workflow 목록과 새 Workflow 생성 |
+| `/workflows/{id}` | 현재 Version, Version 이력과 Schema 기반 Run Form |
+| `/workflows/{id}/versions/{version}` | Frozen graph와 편집 가능한 메모 Layer |
 | `/asset/images` | Image Artifact 목록과 lineage |
 | `/asset/videos` | Video Artifact 목록·장면 검색·프레임 캡처 |
 | `/runs` | Run 상태·비용·진행률 목록 |
@@ -119,6 +122,16 @@ Undo·Redo를 지원하며 상단 초기화 버튼으로 Starter Workflow를 다
 
 Upload 노드와 클립보드 이미지는 Artifact Upload API에 저장되며 새로고침 후에도 Content URL로 복구된다. 이전 버전에서 저장된 `blob:` URL 출력은 마이그레이션 과정에서 제거된다.
 
+### 4.6 Workflow 게시와 Version
+
+`/workflows`에서 새 Workflow를 만들면 편집 가능한 Draft Canvas가 함께 생성된다. Draft는 Publish 후에도 잠기지 않는다. Canvas에 실행 가능한 Terminal output이 하나면 상단 `Publish v1` 또는 `Publish next`로 불변 WorkflowVersion을 만든다.
+
+- Sticky는 실행 그래프에서 빠지고 Version의 편집 가능한 메모로 복사된다.
+- Folder와 선언된 Output에 도달하지 않는 Node는 실행 그래프에서 제외된다.
+- 게시된 Version graph는 읽기 전용이며 `Edit as draft`로 다음 Version을 준비한다.
+- Version 메모를 수정해도 content hash, Cache와 Run payload는 변하지 않는다.
+- Workflow 상세의 입력 Form은 게시된 input schema를 사용하며 실행 시 resolved graph와 정확한 모델 ID를 Snapshot한다.
+
 ## 5. Prompt와 생성 노드 규칙
 
 Prompt는 독립된 입력 노드다. 생성 노드 내부에는 별도 Prompt 입력창이 없다.
@@ -164,6 +177,7 @@ Folder 노드는 현재 목록에서 숨겨져 있다. Canvas 내부의 하위 C
 | Assets | 저장 Asset 한 개 | `ReferenceAsset` | 미니 Popover에서 저장된 이미지·비디오 하나 선택 |
 | Video Reference Analyzer | `Video` | `ReferenceAnalysis` | STT·음악 구간/2-stem·컷·액션·화면 자막 위치·효과음을 하나의 타임라인으로 분석 |
 | Motion Extractor | `Video` | `MotionTrack` | MediaPipe Holistic로 포즈·얼굴·좌우 손가락 랜드마크 추출 |
+| Motion Segment | `MotionTrack` | `MotionTrack` | 구간을 자르고 타임스탬프를 늘려 빠른 동작을 슬로모션 제어 데이터로 변환 |
 | Motion Control Video | `MotionTrack` | `Video` | 랜드마크를 생성 모델이 읽을 24/30fps 컬러 스켈레톤 영상으로 렌더 |
 
 `Video Reference Analyzer`는 Canvas에 보이는 하나의 composite 노드다. 내부에서는 FFmpeg 컷 검출과 오디오 추출, Chirp 3 STT, Gemini 영상·오디오 의미 분석을 수행하고 `reference.decomposition.v1` manifest를 주 Artifact로 저장한다. Transcript JSON, SRT, 원본 WAV와 선택적인 vocals/accompaniment WAV는 manifest의 component Artifact로 연결된다. Inspector에서 언어 힌트, 컷 민감도와 stem 생성 여부를 설정하고 분석 lane과 오디오 stem을 확인할 수 있다.
@@ -185,6 +199,7 @@ Images의 각 Asset은 `편집하기`로 전용 이미지 편집기를 연다. M
 | Image Generator | `Prompt`, 선택 `ReferenceAsset` | `Image` | 단일 이미지 생성 |
 | Video Generator | `Prompt`, 선택 `Image × N`, 선택 `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
+| Video Retime | `Video` | `Video` | 0.25~4배속으로 영상과 선택적인 오디오 속도를 변환 |
 | Caption layout | `Video`, `Subtitle` | `Timeline` | 영상 위 자막을 드래그하고 가로 정렬·세로 위치·크기를 저장 |
 | Render captions | `Timeline` | `Video` | 저장한 위치의 자막을 FFmpeg로 영상에 렌더 |
 
@@ -254,13 +269,15 @@ Video Generator C → Video ─┘                  └→ Change Voice
 ### MotionTrack으로 캐릭터 모션 가이드 생성
 
 ```text
-Reference Video → Motion Extractor → MotionTrack → Motion Control Video ─┐
+Reference Video → Motion Extractor → Motion Segment → Motion Control Video ─┐
 Character 선택 ───────────────────────────────────────────────── Character ─┤
 장면 시작 이미지 ─────────────────────────────────────────────────── Image ─┤
-Prompt ───────────────────────────────────────────────────────────── Prompt ─┴→ Video Generator → Video
+Prompt ───────────────────────────────────────────────────────────── Prompt ─┴→ Video Generator → Video → Video Retime
 ```
 
 Motion Control Video는 좌표를 캐릭터 Rig에 직접 적용하지 않는다. 현재 경로에서는 몸·얼굴·손가락이 그려진 제어 영상을 Gemini Omni의 모션 Reference로 사용한다. 프레임 단위의 결정적 리타게팅이 필요하면 별도의 Rigged Character와 AnimationClip Executor 계약이 필요하다.
+
+빠른 춤은 약 5초 Motion Segment에 `time_scale=2`를 적용해 10초 제어 영상으로 생성하고, Gemini Omni 결과에 Video Retime `speed_multiplier=2`를 적용해 원래 박자로 복원한다. 여러 구간은 Video Editor의 Hard cut으로 연결한 뒤 원본 음악을 Replace Audio로 다시 붙인다.
 
 ## 8. Step 실행
 
@@ -460,6 +477,8 @@ make check
 | Temporal Workflow | `apps/api/app/temporal_workflow.py` |
 | Temporal Activity | `apps/api/app/temporal_activities.py` |
 | Canvas Run Engine | `apps/api/app/canvas_runs.py` |
+| Workflow Definition·Publish·Run Compiler | `apps/api/app/workflow_definitions.py` |
+| Node Definition Registry | `apps/api/app/nodes/` |
 | Canvas Temporal Workflow | `apps/api/app/canvas_temporal.py` |
 | Canvas Temporal Activity | `apps/api/app/canvas_activities.py` |
 | Google Provider | `apps/api/app/providers_google.py` |
@@ -476,7 +495,7 @@ make check
 
 1. Veo 장기 operation ID의 프로세스 재시작 후 Reconcile
 2. 연결된 Video의 순서 변경·구간 Trim·삭제 UI
-3. Canvas 정의를 DB의 WorkflowDefinition/Version으로 저장
+3. Prompt Template의 다중 변수 binding과 여러 Terminal output 선택 UX
 4. 일반 Generation Run 상세 Inspector
 5. Reference Collection Fan-out 실행
 6. 인증·Workspace 데이터 격리·관측성 운영 설정

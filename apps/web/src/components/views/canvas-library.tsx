@@ -92,18 +92,18 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
   };
 
   return <div className="view-page canvas-library-page">
-    <PageHeader title="Canvases" description="DB에 저장된 실제 Canvas 문서를 열거나 새 Workflow를 만듭니다." actions={<><Button type="button" variant="secondary" onClick={() => void loadCanvases()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button><Button type="button" onClick={() => void createCanvas()} disabled={creating}><Plus size={14} /> {creating ? "Creating…" : "New canvas"}</Button></>} />
+    <PageHeader title="Canvases" description="독립 실험 Canvas와 Workflow의 편집 가능한 Draft를 관리합니다." actions={<><Button type="button" variant="secondary" onClick={() => void loadCanvases()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button><Button type="button" onClick={() => void createCanvas()} disabled={creating}><Plus size={14} /> {creating ? "Creating…" : "New canvas"}</Button></>} />
     {error && <p className="experiment-history-state error">{error}</p>}
     {!error && loading && <p className="experiment-history-state">Loading persisted canvases…</p>}
     {!error && !loading && !canvases.length && <div className="canvas-library-empty"><span><Workflow size={24} /></span><strong>No saved canvases</strong><p>새 Canvas를 만들면 그래프가 PostgreSQL에 자동 저장됩니다.</p><Button type="button" onClick={() => void createCanvas()}><Plus size={14} /> Create first canvas</Button></div>}
     <div className="canvas-document-grid">{canvases.map((canvas) => <article className="canvas-document-card" key={canvas.id}>
       <button type="button" className="canvas-document-open" onClick={() => onOpen(canvas.id)}>
         <span className="canvas-document-icon"><Workflow size={18} /></span>
-        <span className="canvas-document-copy"><strong>{canvas.name}</strong><small>{canvas.id}</small></span>
+        <span className="canvas-document-copy"><strong>{canvas.name}</strong><small>{canvas.workflow_definition_id ? `Workflow draft · r${canvas.revision}` : canvas.id}</small></span>
         <span className="canvas-document-count"><b>{canvas.node_count}</b><small>nodes</small></span>
       </button>
       <div className="canvas-document-meta"><span><GitBranch size={12} /> {canvas.edge_count} connections</span><span><Clock3 size={12} /> {new Date(canvas.updated_at).toLocaleString("ko-KR")}</span></div>
-      <div className="canvas-document-footer"><span>{canvas.last_run ? <><i className={`run-dot status-${canvas.last_run.status.toLowerCase()}`} /> Last run · {canvas.last_run.status} · {canvas.last_run.progress}%</> : "No runs yet"}</span><ConfirmAction trigger={<button type="button" aria-label={`Delete ${canvas.name}`}><Trash2 size={13} /></button>} title={`Delete “${canvas.name}”?`} description="Canvas runs and artifacts remain immutable, but this canvas document will be removed." confirmLabel="Delete canvas" onConfirm={() => deleteCanvas(canvas)} /></div>
+      <div className="canvas-document-footer"><span>{canvas.last_run ? <><i className={`run-dot status-${canvas.last_run.status.toLowerCase()}`} /> Last run · {canvas.last_run.status} · {canvas.last_run.progress}%</> : canvas.workflow_definition_id ? "Managed Workflow draft" : "No runs yet"}</span>{!canvas.workflow_definition_id && <ConfirmAction trigger={<button type="button" aria-label={`Delete ${canvas.name}`}><Trash2 size={13} /></button>} title={`Delete “${canvas.name}”?`} description="Canvas runs and artifacts remain immutable, but this canvas document will be removed." confirmLabel="Delete canvas" onConfirm={() => deleteCanvas(canvas)} />}</div>
     </article>)}</div>
   </div>;
 }

@@ -4,7 +4,18 @@ Status: Proposed
 작성 기준: 2026-08-31
 범위: 현재 저장소에 이미 존재하는 Canvas/Generation Node를 버전이 있는 공통 Node Protocol로 전환한다.
 
-구현 현황 메모 (2026-08-31): Registry/Manifest/Generic Inspector vertical slice가 적용됐고 `lora.train@1`, `motion.control_video@1`이 공통 Executor Registry를 사용한다. 나머지 기존 production Node의 계약화는 이 문서의 Phase 순서대로 진행 중이며 Legacy 목록과 분기는 아직 Source of Truth 전환 대상이다.
+## 구현 상태
+
+2026-08-31 기준:
+
+- Phase 0 완료: 35개 기존 key를 30개 production contract와 5개 Canvas-only 요소로 고정했다.
+- Phase 1 완료: Node Definition Schema, Port Type Registry, immutable digest와 Registry API가 있다.
+- Phase 2 완료: production Node 30개에 `@1` Manifest를 등록했고 Legacy Pipeline 8개는 `DEPRECATED`다.
+- Phase 3 진행 중: Registry-native Node와 Legacy Canvas Adapter가 공존한다. Canonical Canvas 저장 shape 분리는 아직 남았다.
+- Phase 4 진행 중: 신규 Node 6개는 native Executor, 기존 Node 26개는 `legacy-compatibility` Executor Adapter를 사용한다.
+- Phase 5 진행 중: Registry-native Generic Inspector와 관리 화면이 연결됐지만 기존 `nodeTemplates` Source of Truth 제거는 남았다.
+- Phase 6 Backend/Web 수직 단면 완료: WorkflowVersion Publish, Annotation, Version Run, Frozen Viewer, `Expose as input`과 Artifact/Character Picker Run Form이 연결됐다. Prompt Template 다중 binding과 복수 Output 선택 UX는 남았다.
+- Phase 7 미착수: Legacy write 제거와 Architecture CI guard가 남았다.
 
 ## 1. 목적
 

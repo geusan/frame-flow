@@ -1,0 +1,547 @@
+[
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "prompt.input",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Prompt", "description": "직접 입력하거나 상위 Prompt와 Image를 받아 편집", "category": "Quick", "icon": "brief", "keywords": ["prompt", "text", "input"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt" },
+        { "key": "images", "type": "media.image.v1", "label": "Images", "multiple": true }
+      ],
+      "outputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "text": { "type": "string", "default": "", "title": "Prompt", "maxLength": 32000, "x-workflow-input": { "enabled": true, "type": "prompt" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "prompt-source.v1", "provider": "local", "model_alias": "local.prompt-source" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Prompt", "schema_id": "prompt.text.v1", "input_roles": { "media.image.v1": "reference_image" }, "output_role": "prompt" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "asset.select",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Assets", "description": "저장된 Image, Video 또는 Audio Artifact를 입력으로 선택", "category": "References", "icon": "assets", "keywords": ["asset", "image", "video", "audio"] },
+    "ports": { "inputs": [], "outputs": [{ "key": "artifact", "type": "data.reference_asset.v1", "label": "Artifact" }] },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "artifact_id": { "type": "string", "default": "", "title": "Artifact", "maxLength": 128, "x-workflow-input": { "enabled": true, "type": "artifact" } },
+        "artifact_type": { "type": "string", "enum": ["Image", "Video", "Audio", "ReferenceAsset"], "default": "ReferenceAsset", "title": "Artifact type", "x-workflow-input": { "enabled": true, "type": "enum" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "artifact-source.v1", "provider": "local", "model_alias": "local.artifact-source" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "ReferenceAsset", "schema_id": "artifact.reference.v1", "input_roles": {}, "output_role": "selected_artifact" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.select",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Character", "description": "Characters 보관함의 캐릭터 묶음을 입력으로 선택", "category": "References", "icon": "character", "keywords": ["character", "identity", "input"] },
+    "ports": { "inputs": [], "outputs": [{ "key": "character", "type": "artifact.character.v1", "label": "Character" }] },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "character_id": { "type": "string", "default": "", "title": "Character", "maxLength": 128, "x-workflow-input": { "enabled": true, "type": "character" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "character-source.v1", "provider": "local", "model_alias": "local.character-source" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Character", "schema_id": "character.v1", "input_roles": {}, "output_role": "selected_character" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "image.generate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Image generator", "description": "연결된 Prompt로 이미지를 생성", "category": "Image", "icon": "image", "cost_label": "$0.21", "keywords": ["image", "generate"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "image", "type": "media.image.v1", "label": "Image" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "output_count"], "properties": {
+        "resolution": { "type": "string", "enum": ["1080p", "2K", "4K"], "default": "2K", "title": "Resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1", "4:5"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "output_count": { "type": "integer", "minimum": 1, "maximum": 4, "default": 1, "title": "Output count" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "quality": { "type": "string", "enum": ["low", "medium", "high"], "default": "medium", "title": "Quality" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.image.fast", "model_families": ["google.image.", "openai.image."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Image", "schema_id": "image.generated.v1", "input_roles": {}, "output_role": "generated_image" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "lora.image.generate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "LoRA image generator", "description": "학습 완료 Character 또는 FLUX.2 LoRA로 이미지를 생성", "category": "Image", "icon": "lora", "cost_label": "$0.07", "keywords": ["lora", "flux", "character"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true },
+        { "key": "character", "type": "artifact.character.v1", "label": "Character" }
+      ],
+      "outputs": [{ "key": "image", "type": "media.image.v1", "label": "Image" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "output_count", "lora_scale"], "properties": {
+        "resolution": { "type": "string", "enum": ["1080p", "2K"], "default": "2K", "title": "Resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1", "4:5"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "output_count": { "type": "integer", "minimum": 1, "maximum": 4, "default": 1, "title": "Output count" },
+        "lora_url": { "type": "string", "default": "", "maxLength": 2048, "title": "LoRA weights" },
+        "lora_scale": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.9, "title": "LoRA scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "trigger_word": { "type": "string", "default": "", "maxLength": 80, "title": "Trigger word" },
+        "character_lora_artifact_id": { "type": "string", "maxLength": 128, "title": "Character LoRA Artifact" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "fal-generation.v1", "provider": "fal", "model_alias": "fal.image.flux2-lora", "model_families": ["fal.image."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Image", "schema_id": "image.lora.v1", "input_roles": { "artifact.character.v1": "character" }, "output_role": "generated_image" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.generate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Character generator", "description": "Prompt 또는 기준 이미지에서 동일 캐릭터의 여러 장면을 생성", "category": "Image", "icon": "character", "cost_label": "$0.40", "keywords": ["character", "identity", "views"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt" },
+        { "key": "images", "type": "media.image.v1", "label": "Images", "multiple": true }
+      ],
+      "outputs": [{ "key": "character", "type": "artifact.character.v1", "label": "Character" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "character_name", "shot_count"], "properties": {
+        "resolution": { "type": "string", "enum": ["1080p", "2K", "4K"], "default": "2K", "title": "Resolution" },
+        "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1", "4:5"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "character_name": { "type": "string", "minLength": 1, "maxLength": 160, "default": "New character", "title": "Character name", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "shot_count": { "type": "integer", "enum": [4, 6, 8], "default": 6, "title": "Generated views", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" },
+        "quality": { "type": "string", "enum": ["low", "medium", "high"], "default": "medium", "title": "Quality" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.image.fast", "model_families": ["google.image.", "openai.image."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Character", "schema_id": "character.v1", "input_roles": { "media.image.v1": "reference_image" }, "output_role": "generated_character" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.generate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Video generator", "description": "Prompt와 Character, Image, Reference Video로 영상을 생성", "category": "Video", "icon": "video", "cost_label": "$1.40", "keywords": ["video", "generate", "veo", "omni"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true },
+        { "key": "character", "type": "artifact.character.v1", "label": "Character" },
+        { "key": "image", "type": "media.image.v1", "label": "Image" },
+        { "key": "video", "type": "media.video.v1", "label": "Reference video" }
+      ],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "duration_seconds", "output_count"], "properties": {
+        "resolution": { "type": "string", "enum": ["720p", "1080p"], "default": "1080p", "title": "Resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "duration_seconds": { "type": "integer", "enum": [4, 6, 8], "default": 6, "title": "Duration", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "output_count": { "type": "integer", "minimum": 1, "maximum": 4, "default": 1, "title": "Output count" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed", "x-workflow-input": { "enabled": true, "type": "integer" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "google", "model_alias": "google.video.omni", "model_families": ["google.video."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Video", "schema_id": "video.generated.v1", "input_roles": { "artifact.character.v1": "character", "media.image.v1": "reference_image", "media.video.v1": "reference_video" }, "output_role": "generated_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "tts.generate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Voiceover", "description": "연결된 Prompt를 음성으로 생성", "category": "Audio", "icon": "voice", "cost_label": "$0.12", "keywords": ["tts", "voice", "audio"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "audio", "type": "media.audio.v1", "label": "Audio" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "voice_name": { "type": "string", "default": "Kore", "maxLength": 80, "title": "Voice", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "language": { "type": "string", "default": "ko-KR", "maxLength": 32, "title": "Language", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "style_prompt": { "type": "string", "default": "Read naturally and clearly for a short-form video.", "maxLength": 1000, "title": "Style", "x-workflow-input": { "enabled": true, "type": "prompt" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.tts.fast", "model_families": ["google.tts.", "openai.tts."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Audio", "schema_id": "audio.generated.v1", "input_roles": {}, "output_role": "voiceover" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "llm.assistant",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "LLM assistant", "description": "연결된 Prompt를 분석하거나 변환", "category": "Quick", "icon": "assistant", "cost_label": "$0.03", "keywords": ["llm", "text", "assistant"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "text", "type": "data.text.v1", "label": "Text" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Text", "schema_id": "text.generated.v1", "input_roles": {}, "output_role": "generated_text" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "skill.execute",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Skill executor", "description": "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", "category": "Quick", "icon": "skill", "cost_label": "$0.03", "keywords": ["skill", "prompt", "transform"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["skill_id"], "properties": {
+        "skill_id": { "type": "string", "minLength": 1, "maxLength": 128, "default": "nottalggak-prompt-machine", "title": "Project skill", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "skill_version": { "type": "string", "maxLength": 64, "title": "Skill version" },
+        "skill_sha256": { "type": "string", "maxLength": 64, "title": "Skill hash" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Text", "schema_id": "prompt.master.v1", "input_roles": {}, "output_role": "master_prompt" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "reference.decompose",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Video reference analyzer", "description": "STT, 음악, 컷, 액션, 화면 자막과 효과음을 분석", "category": "References", "icon": "reference", "cost_label": "$0.03", "keywords": ["reference", "analysis", "stt", "shots"] },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "analysis", "type": "data.reference_analysis.v1", "label": "Reference analysis" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["source_language", "separate_music", "scene_threshold"], "properties": {
+        "source_language": { "type": "string", "default": "auto", "maxLength": 32, "title": "Speech language", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "separate_music": { "type": "boolean", "default": true, "title": "Create music stems", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "scene_threshold": { "type": "number", "minimum": 0.01, "maximum": 1, "default": 0.28, "title": "Scene sensitivity", "x-workflow-input": { "enabled": true, "type": "number" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "composite", "executor": "legacy-compatibility", "revision": "reference-analysis.v1", "provider": "local+google", "model_alias": "reference-analysis.pipeline" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "ReferenceAnalysis", "schema_id": "reference.decomposition.v1", "input_roles": { "media.video.v1": "source_video" }, "output_role": "reference_analysis" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "motion.extract",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Holistic motion extractor", "description": "MediaPipe Holistic로 얼굴, 포즈와 양손 모션을 추출", "category": "References", "icon": "motion", "cost_label": "$0.00", "keywords": ["motion", "mediapipe", "pose", "hands"] },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "motion", "type": "data.motion_track.v1", "label": "MotionTrack" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["motion_sample_fps", "motion_max_width", "motion_min_confidence", "motion_face_blendshapes"], "properties": {
+        "motion_sample_fps": { "type": "integer", "enum": [6, 12, 24], "default": 12, "title": "Sample rate", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "motion_max_width": { "type": "integer", "minimum": 160, "maximum": 1920, "default": 640, "title": "Sample width" },
+        "motion_min_confidence": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Confidence", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "motion_face_blendshapes": { "type": "boolean", "default": true, "title": "Face blendshapes", "x-workflow-input": { "enabled": true, "type": "boolean" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "mediapipe-holistic-landmarker", "provider": "local", "model_alias": "local.mediapipe.holistic" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "MotionTrack", "schema_id": "motion.track.v1", "input_roles": { "media.video.v1": "source_video" }, "output_role": "motion_track" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.edit",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Video editor", "description": "여러 Video를 순서대로 합성하고 Transition과 길이를 적용", "category": "Video", "icon": "timeline", "cost_label": "$0.00", "keywords": ["video", "edit", "ffmpeg", "join"] },
+    "ports": {
+      "inputs": [{ "key": "videos", "type": "media.video.v1", "label": "Videos", "required": true, "multiple": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "transition", "target_duration_seconds"], "properties": {
+        "resolution": { "type": "string", "enum": ["source", "1080p", "2K", "4K"], "default": "1080p", "title": "Resolution" },
+        "aspect_ratio": { "type": "string", "enum": ["source", "9:16", "16:9", "1:1"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "transition": { "type": "string", "enum": ["hard_cut", "crossfade", "dip_to_black"], "default": "hard_cut", "title": "Transition", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 180, "default": 30, "title": "Target length", "x-workflow-input": { "enabled": true, "type": "integer" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "local-media.v1", "provider": "local", "model_alias": "local.ffmpeg" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Video", "schema_id": "video.edited.v1", "input_roles": { "media.video.v1": "source_video" }, "output_role": "edited_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.change_voice",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Replace video audio", "description": "Video의 기존 오디오를 연결된 Audio로 교체", "category": "Audio", "icon": "changeVoice", "cost_label": "$0.00", "keywords": ["video", "audio", "replace"] },
+    "ports": {
+      "inputs": [
+        { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+        { "key": "audio", "type": "media.audio.v1", "label": "Audio", "required": true }
+      ],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "local-media.v1", "provider": "local", "model_alias": "local.ffmpeg" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Video", "schema_id": "video.localized.v1", "input_roles": { "media.video.v1": "source_video", "media.audio.v1": "replacement_audio" }, "output_role": "video_with_replaced_audio" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.translate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Translate video", "description": "STT, 번역과 TTS로 영상을 현지화", "category": "Audio", "icon": "translate", "cost_label": "$0.35", "keywords": ["translate", "localize", "stt", "tts"] },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["source_language", "target_language", "voice_name"], "properties": {
+        "source_language": { "type": "string", "default": "auto", "maxLength": 32, "title": "Source language", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "target_language": { "type": "string", "default": "ko-KR", "maxLength": 32, "title": "Target language", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "voice_name": { "type": "string", "default": "Kore", "maxLength": 80, "title": "Voice", "x-workflow-input": { "enabled": true, "type": "string" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "composite", "executor": "legacy-compatibility", "revision": "google-localization.v1", "provider": "google+local", "model_alias": "google.localization.pipeline" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Video", "schema_id": "video.translation.v1", "input_roles": { "media.video.v1": "source_video" }, "output_role": "translated_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "subtitle.align",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Speech subtitles", "description": "Audio를 인식해 타임스탬프가 포함된 SRT를 생성", "category": "Audio", "icon": "subtitle", "cost_label": "$0.00", "keywords": ["subtitle", "speech", "srt", "stt"] },
+    "ports": {
+      "inputs": [{ "key": "audio", "type": "media.audio.v1", "label": "Audio", "required": true }],
+      "outputs": [{ "key": "subtitle", "type": "data.subtitle.v1", "label": "Subtitle" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "source_language": { "type": "string", "default": "auto", "maxLength": 32, "title": "Speech language", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "language": { "type": "string", "maxLength": 32, "title": "Language" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "google-speech.v1", "provider": "google", "model_alias": "google.stt.default" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Subtitle", "schema_id": "subtitle.srt.v1", "input_roles": { "media.audio.v1": "speech_audio" }, "output_role": "subtitle" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "timeline.compose",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Caption layout", "description": "영상 위에서 자막 위치와 정렬을 승인해 Timeline을 생성", "category": "Video", "icon": "timeline", "cost_label": "$0.00", "keywords": ["caption", "timeline", "layout", "approval"] },
+    "ports": {
+      "inputs": [
+        { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+        { "key": "subtitle", "type": "data.subtitle.v1", "label": "Subtitle", "required": true }
+      ],
+      "outputs": [{ "key": "timeline", "type": "data.timeline.v1", "label": "Timeline" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["caption_x", "caption_y", "caption_align", "caption_font_size"], "properties": {
+        "caption_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Caption X", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "caption_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.82, "title": "Caption Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "caption_align": { "type": "string", "enum": ["left", "center", "right"], "default": "center", "title": "Alignment", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "caption_font_size": { "type": "integer", "minimum": 8, "maximum": 180, "default": 54, "title": "Font size", "x-workflow-input": { "enabled": true, "type": "integer" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "human_gate", "executor": "legacy-compatibility", "revision": "timeline.v1", "provider": "local", "model_alias": "local.timeline" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Timeline", "schema_id": "timeline.v1", "input_roles": { "media.video.v1": "video", "data.subtitle.v1": "subtitle" }, "output_role": "timeline" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.render",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Render captioned video", "description": "Timeline을 H.264/AAC MP4로 렌더", "category": "Video", "icon": "render", "cost_label": "$0.00", "keywords": ["render", "caption", "ffmpeg"] },
+    "ports": {
+      "inputs": [{ "key": "timeline", "type": "data.timeline.v1", "label": "Timeline", "required": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "local-media.v1", "provider": "local", "model_alias": "local.ffmpeg" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "FinalVideo", "schema_id": "video.rendered.v1", "input_roles": { "data.timeline.v1": "timeline" }, "output_role": "final_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "generation.brief",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Generation brief", "description": "Legacy Generation Workflow의 주제와 메시지 입력", "category": "Advanced", "icon": "brief", "keywords": ["legacy", "brief"] },
+    "ports": { "inputs": [], "outputs": [{ "key": "brief", "type": "data.text.v1", "label": "Brief" }] },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": { "text": { "type": "string", "default": "", "maxLength": 32000, "title": "Brief", "x-workflow-input": { "enabled": true, "type": "prompt" } } } },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "generation-brief.v1", "provider": "local", "model_alias": "local.generation-brief" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Text", "schema_id": "generation.brief.v1", "input_roles": {}, "output_role": "generation_brief" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "format.profile",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Format profile", "description": "Legacy Generation Workflow에서 사용할 FormatProfile", "category": "Advanced", "icon": "format", "keywords": ["legacy", "format"] },
+    "ports": { "inputs": [], "outputs": [{ "key": "format", "type": "data.format_profile.v1", "label": "Format profile" }] },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": { "format_id": { "type": "string", "default": "", "maxLength": 128, "title": "Format", "x-workflow-input": { "enabled": true, "type": "string" } } } },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "format-profile.v1", "provider": "local", "model_alias": "local.format-profile" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "FormatProfile", "schema_id": "format.profile.v1", "input_roles": {}, "output_role": "format_profile" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "generation.resolve",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Resolve specification", "description": "Legacy Brief와 Format을 GenerationSpec으로 해석", "category": "Advanced", "icon": "resolve", "cost_label": "$0.00", "keywords": ["legacy", "spec"] },
+    "ports": {
+      "inputs": [
+        { "key": "brief", "type": "data.text.v1", "label": "Brief" },
+        { "key": "format", "type": "data.format_profile.v1", "label": "Format" }
+      ],
+      "outputs": [{ "key": "spec", "type": "data.generation_spec.v1", "label": "Generation spec" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 180, "default": 38, "title": "Target duration", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "generation-policy.v1", "provider": "local", "model_alias": "local.policy" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "GenerationSpec", "schema_id": "generation.spec.v1", "input_roles": { "data.text.v1": "brief", "data.format_profile.v1": "format" }, "output_role": "generation_spec" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "script.generate",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Script generator", "description": "Legacy GenerationSpec과 Prompt에서 대본을 생성", "category": "Advanced", "icon": "script", "cost_label": "$0.06", "keywords": ["legacy", "script"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true },
+        { "key": "spec", "type": "data.generation_spec.v1", "label": "Generation spec" }
+      ],
+      "outputs": [{ "key": "script", "type": "data.script.v1", "label": "Script" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Script", "schema_id": "script.v1", "input_roles": { "data.generation_spec.v1": "generation_spec" }, "output_role": "script" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "script.fit_duration",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Fit script duration", "description": "Legacy 대본을 목표 발화 시간에 맞춤", "category": "Advanced", "icon": "script", "cost_label": "$0.00", "keywords": ["legacy", "script", "duration"] },
+    "ports": {
+      "inputs": [{ "key": "script", "type": "data.script.v1", "label": "Script", "required": true }],
+      "outputs": [{ "key": "script", "type": "data.script.v1", "label": "Timed script" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": { "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 180, "default": 38, "title": "Target duration", "x-workflow-input": { "enabled": true, "type": "integer" } } } },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "script-fit.v1", "provider": "local", "model_alias": "local.script-fit" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "TimedScript", "schema_id": "script.timed.v1", "input_roles": { "data.script.v1": "script" }, "output_role": "timed_script" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "shot.plan",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Shot planner", "description": "Legacy 대본에서 ShotPlan을 생성", "category": "Advanced", "icon": "shot", "cost_label": "$0.00", "keywords": ["legacy", "shots", "plan"] },
+    "ports": {
+      "inputs": [{ "key": "script", "type": "data.script.v1", "label": "Script", "required": true }],
+      "outputs": [{ "key": "shots", "type": "data.shot_plan.v1", "label": "Shot plan" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": { "target_duration_seconds": { "type": "integer", "minimum": 1, "maximum": 180, "default": 38, "title": "Target duration", "x-workflow-input": { "enabled": true, "type": "integer" } } } },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "shot-plan.v1", "provider": "local", "model_alias": "local.shot-plan" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "ShotPlan", "schema_id": "shot.plan.v1", "input_roles": { "data.script.v1": "script" }, "output_role": "shot_plan" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "candidate.select",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Choose candidate", "description": "Legacy Video 후보 중 하나를 승인", "category": "Advanced", "icon": "select", "keywords": ["legacy", "candidate", "approval"] },
+    "ports": {
+      "inputs": [{ "key": "videos", "type": "media.video.v1", "label": "Videos", "required": true, "multiple": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Selected video" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": { "kind": "human_gate", "executor": "legacy-compatibility", "revision": "candidate-selection.v1", "provider": "local", "model_alias": "local.human-gate" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Video", "schema_id": "selection.v1", "input_roles": { "media.video.v1": "candidate" }, "output_role": "selected_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "media.qc",
+    "contract_version": 1,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Quality control", "description": "Legacy Final Video의 Codec, Pixel format, Audio와 길이를 검사", "category": "Advanced", "icon": "qc", "cost_label": "$0.00", "keywords": ["legacy", "qc", "ffprobe"] },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "report", "type": "data.qc_report.v1", "label": "QC report" }]
+    },
+    "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": { "kind": "local", "executor": "legacy-compatibility", "revision": "local-media.v1", "provider": "local", "model_alias": "local.ffprobe" },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "QCReport", "schema_id": "qc.report.v1", "input_roles": { "media.video.v1": "video" }, "output_role": "qc_report" }
+  }
+]

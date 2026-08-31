@@ -87,11 +87,12 @@ import { ReferenceResultDetail } from "@/components/views/reference-results-view
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
 import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
+import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
 import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
 import { GenericNodeInspector } from "@/features/nodes/generic-inspector";
 import { nodeTemplateFromDefinition } from "@/features/nodes/contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact } from "@/lib/api";
+import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { maximizePlaybackVolume } from "@/lib/media";
 import { googleTextModelOptions, migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
@@ -99,6 +100,51 @@ const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
 const SMOOTH_STEP_ROUTING_GAP = 40;
 const SPACE_PAN_HOLD_DELAY_MS = 600;
+const EMPTY_WORKFLOW_DRAFT: WorkflowDraftContract = { schema_version: "workflow.contract.draft.v1", inputs: [], bindings: [], outputs: [] };
+const CONFIG_DATA_FIELDS: Record<string, keyof StudioFlowNode["data"]> = {
+  resolution: "resolution",
+  aspect_ratio: "aspectRatio",
+  output_count: "batchSize",
+  character_name: "characterName",
+  shot_count: "shotCount",
+  duration_seconds: "durationSeconds",
+  lora_url: "loraUrl",
+  lora_scale: "loraScale",
+  trigger_word: "triggerWord",
+  transition: "transition",
+  target_duration_seconds: "targetDurationSeconds",
+  source_language: "sourceLanguage",
+  separate_music: "separateMusic",
+  scene_threshold: "sceneThreshold",
+  motion_sample_fps: "motionSampleFps",
+  motion_max_width: "motionMaxWidth",
+  motion_min_confidence: "motionMinConfidence",
+  motion_face_blendshapes: "motionFaceBlendshapes",
+  target_language: "targetLanguage",
+  voice_name: "voiceName",
+  caption_x: "captionX",
+  caption_y: "captionY",
+  caption_align: "captionAlign",
+  caption_font_size: "captionFontSize",
+  skill_id: "skillId",
+};
+
+function exposedConfigValue(node: StudioFlowNode, configKey: string, fallback: unknown): unknown {
+  if (node.data.config && node.data.config[configKey] !== undefined) return node.data.config[configKey];
+  if (configKey === "text") return node.data.configText ?? fallback;
+  if (configKey === "artifact_id" || configKey === "character_id") return node.data.configText || node.data.outputArtifactIds?.[0] || fallback;
+  if (configKey === "artifact_type") return node.data.outputType ?? fallback;
+  const dataKey = CONFIG_DATA_FIELDS[configKey];
+  return dataKey && node.data[dataKey] !== undefined ? node.data[dataKey] : fallback;
+}
+
+function uniqueWorkflowInputKey(configKey: string, inputs: WorkflowInputDefinition[]): string {
+  const base = configKey.toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/^[^a-z]+/, "") || "input";
+  if (!inputs.some((input) => input.key === base)) return base;
+  let suffix = 2;
+  while (inputs.some((input) => input.key === `${base}_${suffix}`)) suffix += 1;
+  return `${base}_${suffix}`;
+}
 
 function AdaptiveEdge(props: EdgeProps) {
   const horizontalGap = props.targetX - props.sourceX;
@@ -522,6 +568,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const [interactionMode, setInteractionMode] = useState<"select" | "pan">("select");
   const [spacePanActive, setSpacePanActive] = useState(false);
   const [canvasName, setCanvasName] = useState("Untitled canvas");
+  const [workflowDefinitionId, setWorkflowDefinitionId] = useState<string | null>(null);
+  const [baseVersionId, setBaseVersionId] = useState<string | null>(null);
+  const [canvasRevision, setCanvasRevision] = useState(1);
+  const [draftContract, setDraftContract] = useState<WorkflowDraftContract>(EMPTY_WORKFLOW_DRAFT);
+  const [inputsPanelOpen, setInputsPanelOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [saveState, setSaveState] = useState<"Saved" | "Unsaved" | "Saving">("Saved");
   const [toast, setToast] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [graphRunning, setGraphRunning] = useState(false);
@@ -671,7 +723,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.listNodeDefinitions().catch(() => []),
     ]).then(([document, experiments, definitions]) => {
       if (!active) return;
-      const manifestTemplates = definitions.map(nodeTemplateFromDefinition);
+      const manifestTemplates = definitions.filter((definition) => definition.editor.kind === "generic").map(nodeTemplateFromDefinition);
       const templates = [...nodeTemplates, ...manifestTemplates];
       setNodeDefinitions(definitions);
       setRegistryTemplates(manifestTemplates);
@@ -680,6 +732,10 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setNodes(reconciled.nodes);
       setEdges(migrated.edges);
       setCanvasName(document.name);
+      setWorkflowDefinitionId(document.workflow_definition_id ?? null);
+      setBaseVersionId(document.base_version_id ?? null);
+      setCanvasRevision(document.revision ?? 1);
+      setDraftContract(document.draft_contract ?? EMPTY_WORKFLOW_DRAFT);
       setActiveCanvasRunId(document.active_run_id ?? null);
       loadedRef.current = true;
       if (reconciled.changed || migrated.nodes.length !== document.nodes.length || migrated.edges.length !== document.edges.length) setSaveState("Unsaved");
@@ -778,12 +834,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setSaveState("Saving");
       const backup = { ...cloneGraph(nodes, edges), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
       window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
-      frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined })
-        .then(() => setSaveState("Saved"))
+      frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract })
+        .then((document) => { setCanvasRevision(document.revision); setSaveState("Saved"); })
         .catch((saveError) => { setSaveState("Unsaved"); notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error"); });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [activeCanvasRunId, canvasId, canvasName, edges, nodes, notify, saveState]);
+  }, [activeCanvasRunId, canvasId, canvasName, draftContract, edges, nodes, notify, saveState]);
 
   const markUnsaved = useCallback(() => setSaveState("Unsaved"), []);
 
@@ -792,7 +848,8 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
     window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
     try {
-      await frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined });
+      const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract });
+      setCanvasRevision(document.revision);
       setSaveState("Saved");
       return true;
     } catch (saveError) {
@@ -800,7 +857,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error");
       return false;
     }
-  }, [activeCanvasRunId, canvasId, canvasName, notify]);
+  }, [activeCanvasRunId, canvasId, canvasName, draftContract, notify]);
 
   const pushHistory = useCallback((snapshot?: GraphSnapshot) => {
     setHistory((current) => [...current, snapshot ?? cloneGraph(nodesRef.current, edgesRef.current)].slice(-40));
@@ -1323,6 +1380,55 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     notify(errors.length ? `${errors.length}개의 그래프 문제를 확인하세요.` : "그래프 검증을 통과했습니다.", errors.length ? "error" : "success");
   }, [notify]);
 
+  const publishDraft = useCallback(async () => {
+    if (!workflowDefinitionId) return;
+    const errors = validateGraph(nodesRef.current, edgesRef.current);
+    if (errors.length) {
+      setCompileErrors(errors);
+      setCompileOpen(true);
+      return;
+    }
+    const existingOutputs = draftContract.outputs;
+    const terminalNodes = nodesRef.current.filter((node) => node.data.outputType && !edgesRef.current.some((edge) => edge.source === node.id) && !["utility.sticky", "utility.drawing", "folder.group"].includes(node.data.key));
+    if (!existingOutputs.length && terminalNodes.length !== 1) {
+      notify(`Publish하려면 Primary output을 하나로 결정해야 합니다. 현재 terminal output은 ${terminalNodes.length}개입니다.`, "error");
+      return;
+    }
+    const outputContract = existingOutputs.length ? existingOutputs : [{
+      key: "primary_output",
+      label: terminalNodes[0].data.label,
+      node_id: terminalNodes[0].id,
+      port_type: terminalNodes[0].data.outputType!,
+      primary: true,
+    }];
+    const nextContract: WorkflowDraftContract = { ...draftContract, schema_version: "workflow.contract.draft.v1", outputs: outputContract };
+    setPublishing(true);
+    try {
+      const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
+      const saved = await frameflowApi.saveCanvas(canvasId, {
+        name: canvasName,
+        nodes: backup.nodes,
+        edges: backup.edges,
+        active_run_id: activeCanvasRunId ?? undefined,
+        draft_contract: nextContract,
+      });
+      setCanvasRevision(saved.revision);
+      setDraftContract(nextContract);
+      setSaveState("Saved");
+      const version = await frameflowApi.publishWorkflow(workflowDefinitionId, {
+        expected_canvas_revision: saved.revision,
+        release_notes: baseVersionId ? "Published Canvas changes" : "Initial Canvas publish",
+      });
+      setBaseVersionId(version.id);
+      window.dispatchEvent(new Event("frameflow:workspace-changed"));
+      notify(`Workflow v${version.version_number}을 게시했습니다.${version.warnings?.length ? ` ${version.warnings.length}개 미사용 Node를 제외했습니다.` : ""}`, "success");
+    } catch (publishError) {
+      notify(publishError instanceof Error ? publishError.message : "Workflow Publish failed", "error");
+    } finally {
+      setPublishing(false);
+    }
+  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, notify, workflowDefinitionId]);
+
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const targetNodeId = typeof run.graph.target_node_id === "string" ? run.graph.target_node_id : undefined;
     const byNodeId = new Map(run.node_runs.map((node) => [node.canvas_node_id, node]));
@@ -1523,6 +1629,39 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
   const selectedDefinition = selectedNode ? nodeDefinitions.find((definition) => definition.type_key === selectedNode.data.key && definition.contract_version === (selectedNode.data.contractVersion ?? 1)) : undefined;
+  const selectedExposableFields = selectedDefinition ? Object.entries(selectedDefinition.config_schema.properties).filter(([, field]) => field["x-workflow-input"]?.enabled) : [];
+  const exposeWorkflowInput = (configKey: string, field: NodeDefinitionRecord["config_schema"]["properties"][string]) => {
+    if (!selectedNode || !field["x-workflow-input"]?.enabled) return;
+    const path = `/config/${configKey}`;
+    if (draftContract.bindings.some((binding) => binding.target.node_id === selectedNode.id && binding.target.path === path)) {
+      setInputsPanelOpen(true);
+      return;
+    }
+    const key = uniqueWorkflowInputKey(configKey, draftContract.inputs);
+    const currentValue = exposedConfigValue(selectedNode, configKey, field.default);
+    const input: WorkflowInputDefinition = {
+      key,
+      label: field.title ?? configKey.replaceAll("_", " "),
+      description: field.description,
+      type: field["x-workflow-input"].type as WorkflowInputDefinition["type"],
+      required: false,
+      ...(currentValue !== undefined ? { default: currentValue } : {}),
+      ...(field.enum ? { options: field.enum } : {}),
+      validation: {
+        ...(field.minimum !== undefined ? { minimum: field.minimum } : {}),
+        ...(field.maximum !== undefined ? { maximum: field.maximum } : {}),
+        ...(field.minLength !== undefined ? { min_length: field.minLength } : {}),
+        ...(field.maxLength !== undefined ? { max_length: field.maxLength } : {}),
+      },
+    };
+    setDraftContract((current) => ({
+      ...current,
+      inputs: [...current.inputs, input],
+      bindings: [...current.bindings, { target: { node_id: selectedNode.id, path }, value: { kind: "input", key } }],
+    }));
+    setSaveState("Unsaved");
+    notify(`${input.label}을 Workflow input으로 노출했습니다.`, "success");
+  };
   const detailNode = nodeDetailId ? nodes.find((node) => node.id === nodeDetailId) : undefined;
   useEffect(() => {
     if (!detailNode || selectedNodeId === detailNode.id) return;
@@ -1623,7 +1762,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   return (
     <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${showInspector ? "with-inspector" : ""}`}>
       <div className="canvas-toolbar">
-        <div className="workflow-switcher canvas-name-field"><span className="workflow-glyph"><Workflow size={16} /></span><span><small>Canvas</small><input value={canvasName} onChange={(event) => { setCanvasName(event.target.value); markUnsaved(); }} aria-label="Canvas name" /></span></div>
+        <div className="workflow-switcher canvas-name-field"><span className="workflow-glyph"><Workflow size={16} /></span><span><small>{workflowDefinitionId ? `Workflow draft · r${canvasRevision}` : "Canvas"}</small><input value={canvasName} onChange={(event) => { setCanvasName(event.target.value); markUnsaved(); }} aria-label="Canvas name" /></span></div>
         <Button className="new-canvas-button" variant="secondary" type="button" onClick={() => { void saveNow().then((saved) => { if (saved) onBack(); }); }} disabled={graphRunning || saveState === "Saving"}><ArrowLeft size={15} /> Canvases</Button>
         <span className="canvas-divider" />
         <button className="tool-icon" type="button" onClick={undo} disabled={!history.length} aria-label="Undo"><Undo2 size={16} /></button>
@@ -1632,7 +1771,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => void saveNow()} disabled={saveState === "Saving"}><Save size={13} /> {saveState}</button>
         <button className="tool-icon reset-canvas" type="button" onClick={clearCanvas} disabled={graphRunning || !nodes.length} aria-label="Clear canvas"><Trash2 size={15} /></button>
         <div className="canvas-toolbar-spacer" />
+        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => setInputsPanelOpen(true)}><Braces size={14} /> Inputs {draftContract.inputs.length}</Button>}
         <Button variant="secondary" className="canvas-validate-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</Button>
+        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => void publishDraft()} disabled={publishing || graphRunning}><GitFork size={14} /> {publishing ? "Publishing…" : baseVersionId ? "Publish next" : "Publish v1"}</Button>}
         <div className="cost-estimate"><span><CircleDollarSign size={13} /> Est. ${cost.toFixed(2)}</span><small>{nodes.length} steps · {edges.length} connections</small></div>
         {graphRunning && <Button variant="secondary" className="run-stop" type="button" onClick={stopGraph}><CircleStop size={15} /> Stop</Button>}
         <Button className="run-button" type="button" onClick={validateAndOpen} disabled={graphRunning}>
@@ -1795,6 +1936,14 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
               <label className="reference-analysis-toggle"><input type="checkbox" checked={selectedNode.data.motionFaceBlendshapes ?? true} onChange={(event) => updateSelectedData({ motionFaceBlendshapes: event.target.checked })} /><span><strong>Face blendshapes</strong><small>눈 깜빡임·입·표정 계수를 MotionTrack에 포함합니다.</small></span></label>
               <HolisticMotionPreview videoUrl={selectedMotionVideo?.data.output?.url} sampleFps={Math.min(12, selectedNode.data.motionSampleFps ?? 12)} minConfidence={selectedNode.data.motionMinConfidence ?? 0.5} />
             </div>}
+            {workflowDefinitionId && selectedExposableFields.length > 0 && <div className="rounded-lg border border-[#d8dad3] bg-[#f7f7f3] p-2.5">
+              <div className="mb-2 flex items-center justify-between"><span><small className="block text-[10px] uppercase tracking-[.08em] text-[#858980]">Workflow contract</small><strong className="text-xs text-[#3e413b]">Expose settings as inputs</strong></span><Button type="button" variant="ghost" size="sm" onClick={() => setInputsPanelOpen(true)}><Braces size={13} /> {draftContract.inputs.length}</Button></div>
+              <div className="flex flex-wrap gap-1.5">{selectedExposableFields.map(([configKey, field]) => {
+                const binding = draftContract.bindings.find((item) => item.target.node_id === selectedNode.id && item.target.path === `/config/${configKey}`);
+                const inputKey = binding?.value.kind === "input" ? binding.value.key : undefined;
+                return <button type="button" className={`rounded-md border px-2 py-1 text-[10px] ${binding ? "border-[#8178e8] bg-[#eeecff] text-[#554ca8]" : "border-[#d3d5ce] bg-white text-[#666a62]"}`} onClick={() => exposeWorkflowInput(configKey, field)} key={configKey}>{binding ? `${field.title ?? configKey} · ${inputKey}` : `+ ${field.title ?? configKey}`}</button>;
+              })}</div>
+            </div>}
             <label className="field-label"><span>Node name</span><Input value={selectedNode.data.label} onChange={(event) => updateSelectedData({ label: event.target.value })} /></label>
             <label className="field-label"><span>Description</span><Textarea value={selectedNode.data.description} onChange={(event) => updateSelectedData({ description: event.target.value })} /></label>
             {selectedNode.data.model && selectedNode.data.kind !== "generate" && !selectedDefinition && <label className="field-label"><span>Runtime engine</span><Input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
@@ -1859,6 +2008,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         onClose={() => setDrawingNodeId(null)}
         onSave={(drawing, image) => saveDrawing(drawingNode.id, drawing, image)}
       />}
+      <WorkflowInputsPanel
+        open={inputsPanelOpen}
+        contract={draftContract}
+        onOpenChange={setInputsPanelOpen}
+        onChange={(contract) => { setDraftContract(contract); setSaveState("Unsaved"); }}
+      />
     </div>
   );
 }

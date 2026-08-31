@@ -118,6 +118,12 @@ services:
       HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
     ports: ["${API_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
     volumes:
       - demucs_cache:/root/.cache
       - mediapipe_cache:/root/.cache/mediapipe
@@ -129,6 +135,8 @@ services:
     command: ["python", "-m", "app.temporal_runtime"]
     restart: unless-stopped
     depends_on:
+      api:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       temporal:

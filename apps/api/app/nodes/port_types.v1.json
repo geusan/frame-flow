@@ -1,0 +1,31 @@
+{
+  "schema_version": "port-types.v1",
+  "types": [
+    { "id": "artifact.character.v1", "label": "Character", "legacy_type": "Character" },
+    { "id": "artifact.character_lora.v1", "label": "Character LoRA", "legacy_type": "Character" },
+    { "id": "data.any.v1", "label": "Any", "legacy_type": "Any" },
+    { "id": "data.audio_profile.v1", "label": "Audio profile", "legacy_type": "AudioProfile" },
+    { "id": "data.format_profile.v1", "label": "Format profile", "legacy_type": "FormatProfile" },
+    { "id": "data.format_variant.v1", "label": "Format variant", "legacy_type": "FormatVariant" },
+    { "id": "data.generation_spec.v1", "label": "Generation specification", "legacy_type": "GenerationSpec" },
+    { "id": "data.json.v1", "label": "JSON", "legacy_type": "Any" },
+    { "id": "data.motion_track.v1", "label": "MotionTrack", "legacy_type": "MotionTrack" },
+    { "id": "data.qc_report.v1", "label": "QC report", "legacy_type": "QCReport" },
+    { "id": "data.reference_analysis.v1", "label": "Reference analysis", "legacy_type": "ReferenceAnalysis" },
+    { "id": "data.reference_asset.v1", "label": "Reference asset", "legacy_type": "ReferenceAsset" },
+    { "id": "data.reference_set.v1", "label": "Reference set", "legacy_type": "ReferenceSet" },
+    { "id": "data.scene_list.v1", "label": "Scene list", "legacy_type": "SceneList" },
+    { "id": "data.script.v1", "label": "Script", "legacy_type": "Script" },
+    { "id": "data.shot_plan.v1", "label": "Shot plan", "legacy_type": "ShotPlan" },
+    { "id": "data.subtitle.v1", "label": "Subtitle", "legacy_type": "Subtitle" },
+    { "id": "data.text.v1", "label": "Text", "legacy_type": "Text" },
+    { "id": "data.timeline.v1", "label": "Timeline", "legacy_type": "Timeline" },
+    { "id": "data.transcript.v1", "label": "Transcript", "legacy_type": "Transcript" },
+    { "id": "media.audio.v1", "label": "Audio", "legacy_type": "Audio" },
+    { "id": "media.image.v1", "label": "Image", "legacy_type": "Image" },
+    { "id": "media.image_list.v1", "label": "Image list", "legacy_type": "ImageList" },
+    { "id": "media.video.v1", "label": "Video", "legacy_type": "Video" },
+    { "id": "media.video_clip_list.v1", "label": "Video clip list", "legacy_type": "VideoClipList" },
+    { "id": "prompt.text.v1", "label": "Prompt", "legacy_type": "Prompt" }
+  ]
+}

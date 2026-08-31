@@ -1,9 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { CanvasLibrary } from "@/components/views/canvas-library";
+import { WorkflowLibrary } from "@/components/views/workflow-library";
 
 export default function WorkflowsPage() {
   const router = useRouter();
-  return <CanvasLibrary onOpen={(canvasId) => router.push(`/workflows/${encodeURIComponent(canvasId)}`)} />;
+  return <WorkflowLibrary
+    onOpen={(workflowId) => router.push(`/workflows/${encodeURIComponent(workflowId)}`)}
+    onEditDraft={(canvasId) => router.push(`/canvases/${encodeURIComponent(canvasId)}`)}
+  />;
 }

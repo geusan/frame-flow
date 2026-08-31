@@ -6,7 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
-from .executors import FalLoraTrainingExecutor, MotionControlVideoExecutor
+from .executors import (
+    FalLoraTrainingExecutor,
+    LegacyCompatibilityExecutor,
+    MotionControlVideoExecutor,
+    MotionSegmentExecutor,
+    VideoRetimeExecutor,
+)
 
 
 class NodeRegistry:
@@ -14,15 +20,16 @@ class NodeRegistry:
         self._definitions: dict[tuple[str, int], NodeDefinition] = {}
         self._executors = executors
         for path in sorted(definitions_dir.glob("*.json")):
-            definition = NodeDefinition.model_validate(json.loads(path.read_text()))
-            key = (definition.type_key, definition.contract_version)
-            if key in self._definitions:
-                raise ValueError(f"duplicate Node Definition: {definition.type_key}@{definition.contract_version}")
-            if definition.execution.executor not in executors:
-                raise ValueError(f"unregistered Node executor: {definition.execution.executor}")
-            if definition.editor.kind != "generic":
-                raise ValueError(f"unregistered Node editor: {definition.editor.kind}")
-            self._definitions[key] = definition
+            document = json.loads(path.read_text())
+            payloads = document if isinstance(document, list) else [document]
+            for payload in payloads:
+                definition = NodeDefinition.model_validate(payload)
+                key = (definition.type_key, definition.contract_version)
+                if key in self._definitions:
+                    raise ValueError(f"duplicate Node Definition: {definition.type_key}@{definition.contract_version}")
+                if definition.execution.executor not in executors:
+                    raise ValueError(f"unregistered Node executor: {definition.execution.executor}")
+                self._definitions[key] = definition
 
     def list(self, *, lifecycle: str | None = None) -> list[NodeDefinition]:
         definitions = sorted(self._definitions.values(), key=lambda item: (item.type_key, item.contract_version))
@@ -30,6 +37,10 @@ class NodeRegistry:
 
     def get(self, type_key: str, contract_version: int = 1) -> NodeDefinition | None:
         return self._definitions.get((type_key, contract_version))
+
+    @staticmethod
+    def uses_legacy_runtime(definition: NodeDefinition | None) -> bool:
+        return bool(definition and definition.execution.executor == "legacy-compatibility")
 
     def execute(
         self,
@@ -44,9 +55,14 @@ class NodeRegistry:
     def resolve_config(definition: NodeDefinition, parameters: dict[str, Any]) -> dict[str, Any]:
         schema = definition.config_schema
         properties = dict(schema.get("properties") or {})
+        unknown = sorted(key for key, value in parameters.items() if key not in properties and value is not None)
+        if unknown and not NodeRegistry.uses_legacy_runtime(definition):
+            raise ValueError(f"unknown config fields for {definition.type_key}: {', '.join(unknown)}")
         resolved: dict[str, Any] = {}
         for key, field in properties.items():
-            value = parameters.get(key, field.get("default"))
+            value = parameters.get(key)
+            if value is None:
+                value = field.get("default")
             if value is None and key in schema.get("required", []):
                 raise ValueError(f"missing required config field: {key}")
             if value is None:
@@ -84,6 +100,9 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
+        "legacy-compatibility": LegacyCompatibilityExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
+        "motion-segment": MotionSegmentExecutor(),
+        "video-retime": VideoRetimeExecutor(),
     },
 )

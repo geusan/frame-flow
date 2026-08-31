@@ -1,0 +1,70 @@
+{
+  "schema_version": "node.inventory.v1",
+  "canvas_only": {
+    "asset.upload": "artifact_source_authoring",
+    "folder.group": "draft_layout",
+    "utility.drawing": "image_artifact_authoring",
+    "utility.sticky": "workflow_annotation",
+    "utility.text": "legacy_annotation"
+  },
+  "production_nodes": {
+    "source": [
+      "asset.select",
+      "character.select",
+      "format.profile",
+      "generation.brief",
+      "prompt.input"
+    ],
+    "provider": [
+      "character.generate",
+      "image.generate",
+      "llm.assistant",
+      "lora.image.generate",
+      "lora.train",
+      "script.generate",
+      "skill.execute",
+      "tts.generate",
+      "video.generate"
+    ],
+    "local": [
+      "generation.resolve",
+      "media.qc",
+      "motion.control_video",
+      "motion.extract",
+      "motion.segment",
+      "script.fit_duration",
+      "shot.plan",
+      "subtitle.align",
+      "video.change_voice",
+      "video.edit",
+      "video.retime",
+      "video.render"
+    ],
+    "human_gate": [
+      "candidate.select",
+      "timeline.compose"
+    ],
+    "composite": [
+      "reference.decompose",
+      "video.translate"
+    ]
+  },
+  "legacy_pipeline": [
+    "candidate.select",
+    "format.profile",
+    "generation.brief",
+    "generation.resolve",
+    "media.qc",
+    "script.fit_duration",
+    "script.generate",
+    "shot.plan"
+  ],
+  "library_duplicates": {
+    "asset.select": 2,
+    "character.generate": 2,
+    "image.generate": 2,
+    "lora.image.generate": 2,
+    "tts.generate": 2,
+    "video.generate": 2
+  }
+}

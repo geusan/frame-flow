@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from .database import CanvasNodeRunRecord, CanvasRunRecord, SessionLocal
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
+from .nodes import node_registry
 from .service import new_id
 
 
@@ -23,6 +24,12 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
         status=run.status,
         progress=run.progress,
         graph=run.graph_snapshot or {},
+        source_type=run.source_type,
+        workflow_definition_id=run.workflow_definition_id,
+        workflow_version_id=run.workflow_version_id,
+        inputs=run.input_snapshot or {},
+        model_snapshot=run.model_snapshot or {},
+        compiler_version=run.compiler_version,
         node_runs=[CanvasNodeRunResponse(
             id=node.id,
             created_at=node.created_at,
@@ -337,31 +344,33 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
             append_prompt_ancestors(source_id)
         append_input(source_id)
     parameters = dict(data.get("config") or data.get("parameters") or {})
-    parameters.setdefault("resolution", data.get("resolution"))
-    parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
-    parameters.setdefault("transition", data.get("transition"))
-    parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
-    parameters.setdefault("source_language", data.get("sourceLanguage"))
-    parameters.setdefault("separate_music", data.get("separateMusic"))
-    parameters.setdefault("scene_threshold", data.get("sceneThreshold"))
-    parameters.setdefault("motion_sample_fps", data.get("motionSampleFps"))
-    parameters.setdefault("motion_max_width", data.get("motionMaxWidth"))
-    parameters.setdefault("motion_min_confidence", data.get("motionMinConfidence"))
-    parameters.setdefault("motion_face_blendshapes", data.get("motionFaceBlendshapes"))
-    parameters.setdefault("target_language", data.get("targetLanguage"))
-    parameters.setdefault("voice_name", data.get("voiceName"))
-    parameters.setdefault("caption_x", data.get("captionX"))
-    parameters.setdefault("caption_y", data.get("captionY"))
-    parameters.setdefault("caption_align", data.get("captionAlign"))
-    parameters.setdefault("caption_font_size", data.get("captionFontSize"))
-    parameters.setdefault("skill_id", data.get("skillId"))
-    parameters.setdefault("provider", data.get("provider"))
-    parameters.setdefault("character_name", data.get("characterName"))
-    parameters.setdefault("shot_count", data.get("shotCount"))
-    parameters.setdefault("duration_seconds", data.get("durationSeconds"))
-    parameters.setdefault("lora_url", data.get("loraUrl"))
-    parameters.setdefault("lora_scale", data.get("loraScale"))
-    parameters.setdefault("trigger_word", data.get("triggerWord"))
+    definition = node_registry.get(node.node_key, int(data.get("contractVersion") or 1))
+    if not definition or node_registry.uses_legacy_runtime(definition):
+        parameters.setdefault("resolution", data.get("resolution"))
+        parameters.setdefault("aspect_ratio", data.get("aspectRatio"))
+        parameters.setdefault("transition", data.get("transition"))
+        parameters.setdefault("target_duration_seconds", data.get("targetDurationSeconds"))
+        parameters.setdefault("source_language", data.get("sourceLanguage"))
+        parameters.setdefault("separate_music", data.get("separateMusic"))
+        parameters.setdefault("scene_threshold", data.get("sceneThreshold"))
+        parameters.setdefault("motion_sample_fps", data.get("motionSampleFps"))
+        parameters.setdefault("motion_max_width", data.get("motionMaxWidth"))
+        parameters.setdefault("motion_min_confidence", data.get("motionMinConfidence"))
+        parameters.setdefault("motion_face_blendshapes", data.get("motionFaceBlendshapes"))
+        parameters.setdefault("target_language", data.get("targetLanguage"))
+        parameters.setdefault("voice_name", data.get("voiceName"))
+        parameters.setdefault("caption_x", data.get("captionX"))
+        parameters.setdefault("caption_y", data.get("captionY"))
+        parameters.setdefault("caption_align", data.get("captionAlign"))
+        parameters.setdefault("caption_font_size", data.get("captionFontSize"))
+        parameters.setdefault("skill_id", data.get("skillId"))
+        parameters.setdefault("provider", data.get("provider"))
+        parameters.setdefault("character_name", data.get("characterName"))
+        parameters.setdefault("shot_count", data.get("shotCount"))
+        parameters.setdefault("duration_seconds", data.get("durationSeconds"))
+        parameters.setdefault("lora_url", data.get("loraUrl"))
+        parameters.setdefault("lora_scale", data.get("loraScale"))
+        parameters.setdefault("trigger_word", data.get("triggerWord"))
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,
         node_id=node.canvas_node_id,

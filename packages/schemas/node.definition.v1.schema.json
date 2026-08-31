@@ -56,18 +56,23 @@
       "additionalProperties": false,
       "required": ["kind", "executor", "revision", "provider", "model_alias"],
       "properties": {
-        "kind": { "enum": ["source", "provider", "local", "human_gate", "utility", "composite"] },
+        "kind": { "enum": ["source", "provider", "local", "human_gate", "composite"] },
         "executor": { "type": "string", "minLength": 1 },
         "revision": { "type": "string", "minLength": 1 },
         "provider": { "type": "string", "minLength": 1 },
-        "model_alias": { "type": "string", "minLength": 1 }
+        "model_alias": { "type": "string", "minLength": 1 },
+        "model_families": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
       }
     },
     "editor": {
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
-      "properties": { "kind": { "type": "string", "minLength": 1 } }
+      "properties": { "kind": { "enum": ["generic", "legacy"] } }
     },
     "artifact_contract": {
       "type": "object",

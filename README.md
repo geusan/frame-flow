@@ -59,7 +59,7 @@ make dev-api
 make dev-web
 ```
 
-`make dev-api`는 로컬 MinIO를 먼저 시작하고 필요한 Bucket은 API 시작 시 자동 생성합니다.
+`make dev-api`는 로컬 MinIO를 먼저 시작하고 Alembic Migration을 적용한 뒤 API를 실행합니다. 필요한 Bucket은 API 시작 시 자동 생성합니다.
 
 Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. 시작 포트를 직접 지정하려면
 `WEB_PORT=3100 make dev-web`을 사용합니다. API 포트를 바꿔야 할 때는
@@ -70,7 +70,7 @@ Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. �
 - API 문서: <http://localhost:8000/docs>
 - API 상태: <http://localhost:8000/health>
 
-Web 화면 경로는 `/workflows`, `/workflows/{id}`, `/asset/images`,
+Web 화면 경로는 `/canvases`, `/canvases/{id}`, `/workflows`, `/workflows/{id}`, `/asset/images`,
 `/asset/videos`, `/runs`, `/settings`, `/settings/models`로 분리되어 있습니다.
 
 API를 실행하지 않아도 Canvas 그래프 편집은 가능하지만 생성·미디어 편집 노드 실행, 업로드 Artifact, 실행 이력은 API가 필요합니다. API가 연결되면 상단에 `API connected`가 표시되고 Reference Metadata Inspect 및 Experiment 계약을 사용합니다.

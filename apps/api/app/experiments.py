@@ -133,7 +133,7 @@ def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
 
 def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
     definition = node_registry.get(node_key)
-    if definition and definition.execution.provider == "local":
+    if definition and not node_registry.uses_legacy_runtime(definition) and definition.execution.provider == "local":
         if model_alias != definition.execution.model_alias:
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         return definition.execution.model_alias, definition.execution.revision
@@ -152,6 +152,10 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
 def validate_model_for_node(node_key: str, model_alias: str) -> None:
     definition = node_registry.get(node_key)
     if definition:
+        if definition.execution.model_families:
+            if not model_alias.startswith(tuple(definition.execution.model_families)):
+                raise ValueError(f"{node_key} requires one of these model families: {', '.join(definition.execution.model_families)}")
+            return
         if model_alias != definition.execution.model_alias:
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         return
@@ -170,11 +174,18 @@ def validate_model_for_node(node_key: str, model_alias: str) -> None:
         raise ValueError(f"{node_key} requires one of these model families: {', '.join(allowed_families)}")
 
 
+def resolved_executor_revision(node_key: str, model_alias: str) -> str:
+    definition = node_registry.get(node_key)
+    if definition and not node_registry.uses_legacy_runtime(definition):
+        return definition.execution.revision
+    return executor_revision(node_key) if is_local_operation(node_key) else generation_executor_revision(model_alias)
+
+
 def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_model_id: str) -> str:
     definition = node_registry.get(payload.node_key)
     normalized_parameters = node_registry.resolve_config(definition, payload.parameters) if definition else payload.parameters
     snapshot = {
-        "executor_revision": definition.execution.revision if definition else executor_revision(payload.node_key) if is_local_operation(payload.node_key) else generation_executor_revision(model_alias),
+        "executor_revision": resolved_executor_revision(payload.node_key, model_alias),
         "node_contract_version": definition.contract_version if definition else 1,
         "node_definition_digest": definition.definition_digest if definition else None,
         "node_key": payload.node_key,
@@ -340,7 +351,10 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")
     validate_model_for_node(payload.node_key, model_alias)
     definition = node_registry.get(payload.node_key)
-    normalized_parameters = node_registry.resolve_config(definition, payload.parameters) if definition else payload.parameters
+    contract_parameters = {key: value for key, value in payload.parameters.items() if key != "provider"}
+    normalized_parameters = node_registry.resolve_config(definition, contract_parameters) if definition else payload.parameters
+    if definition:
+        payload = payload.model_copy(update={"parameters": normalized_parameters})
     digest = request_fingerprint(payload, model_alias, exact_model_id)
     cached = db.scalar(
         select(ExperimentRunRecord)
@@ -350,7 +364,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     record = ExperimentRunRecord(
         id=new_id("exp"), canvas_id=payload.canvas_id, node_id=payload.node_id, node_key=payload.node_key,
         status=NodeStatus.RUNNING,
-        execution_mode=definition.execution.revision if definition else executor_revision(payload.node_key) if is_local_operation(payload.node_key) else generation_executor_revision(model_alias),
+        execution_mode=resolved_executor_revision(payload.node_key, model_alias),
         prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=normalized_parameters,
         input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},
@@ -374,7 +388,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
 
     started = time.perf_counter()
     try:
-        if definition:
+        if definition and not node_registry.uses_legacy_runtime(definition):
             result = node_registry.execute(
                 NodeExecutionContext(db=db, payload=payload, definition=definition, request_hash=digest, experiment_id=record.id),
                 payload.parameters,

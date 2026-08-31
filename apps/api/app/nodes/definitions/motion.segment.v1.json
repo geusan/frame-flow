@@ -1,0 +1,50 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "motion.segment",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Motion Segment",
+    "description": "MotionTrack을 구간별로 자르고 타임스탬프를 늘려 빠른 모션을 생성 모델이 읽기 쉽게 변환",
+    "category": "References",
+    "icon": "motion",
+    "cost_label": "$0.00",
+    "keywords": ["motion", "segment", "trim", "slow motion", "dance"]
+  },
+  "ports": {
+    "inputs": [{ "key": "motion", "type": "data.motion_track.v1", "label": "MotionTrack", "required": true }],
+    "outputs": [{ "key": "motion", "type": "data.motion_track.v1", "label": "Motion Segment" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["start_seconds", "duration_seconds", "time_scale"],
+    "properties": {
+      "start_seconds": {
+        "type": "number", "minimum": 0, "maximum": 600, "default": 0,
+        "title": "Start time", "description": "원본 MotionTrack에서 구간을 시작할 초 단위 시각입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "duration_seconds": {
+        "type": "number", "exclusiveMinimum": 0, "maximum": 30, "default": 5,
+        "title": "Source duration", "description": "느리게 만들기 전 원본 구간 길이입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "time_scale": {
+        "type": "number", "minimum": 1, "maximum": 4, "default": 2,
+        "title": "Slow-motion scale", "description": "2는 5초 모션을 10초로 늘립니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "local", "executor": "motion-segment", "revision": "motion-segment.v1",
+    "provider": "local", "model_alias": "local.motion-segment"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "MotionTrack", "schema_id": "motion.track.segment.v1",
+    "input_roles": { "data.motion_track.v1": "source_motion_track" }, "output_role": "motion_segment"
+  }
+}

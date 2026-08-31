@@ -9,6 +9,7 @@ import {
   FileChartColumnIncreasing,
   Headphones,
   Image as ImageIcon,
+  PanelsTopLeft,
   Play,
   Settings,
   Sparkles,
@@ -30,7 +31,7 @@ import {
 import { API_BASE, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-type WorkspaceCount = "canvases" | "characters" | "images" | "videos" | "audio" | "runs";
+type WorkspaceCount = "workflows" | "canvases" | "characters" | "images" | "videos" | "audio" | "runs";
 
 interface NavigationItem {
   href: string;
@@ -40,7 +41,8 @@ interface NavigationItem {
 }
 
 const workspaceNavigation: NavigationItem[] = [
-  { href: "/workflows", label: "Canvases", icon: Workflow, count: "canvases" },
+  { href: "/workflows", label: "Workflows", icon: Workflow, count: "workflows" },
+  { href: "/canvases", label: "Canvases", icon: PanelsTopLeft, count: "canvases" },
   { href: "/characters", label: "Characters", icon: ContactRound, count: "characters" },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
@@ -57,6 +59,7 @@ const settingsNavigation: NavigationItem[] = [
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/workflows") return pathname === href || pathname.startsWith("/workflows/");
+  if (href === "/canvases") return pathname === href || pathname.startsWith("/canvases/");
   if (href.startsWith("/asset/")) return pathname === href || pathname.startsWith(`${href}/`);
   if (href === "/reference-results") return pathname === href || pathname.startsWith("/reference-results/");
   return pathname === href;
@@ -93,7 +96,7 @@ function SidebarCanvasLinks({ canvases, pathname }: { canvases: CanvasDocument[]
   return (
     <div className="mb-1 ml-[17px] flex flex-col gap-0.5 border-l border-[#3a3d37] py-1 pl-2 max-[980px]:hidden" aria-label="Canvas shortcuts">
       {visibleCanvases.map((canvas) => {
-        const href = `/workflows/${encodeURIComponent(canvas.id)}`;
+        const href = `/canvases/${encodeURIComponent(canvas.id)}`;
         const active = pathname === href;
         return (
           <Link
@@ -113,7 +116,7 @@ function SidebarCanvasLinks({ canvases, pathname }: { canvases: CanvasDocument[]
         );
       })}
       {canvases.length > visibleCanvases.length && (
-        <Link className="min-h-7 rounded-md px-2 py-1.5 text-[length:var(--text-sm)] text-[#7f837b] no-underline hover:bg-[#2a2d28] hover:text-white" href="/workflows">
+        <Link className="min-h-7 rounded-md px-2 py-1.5 text-[length:var(--text-sm)] text-[#7f837b] no-underline hover:bg-[#2a2d28] hover:text-white" href="/canvases">
           +{canvases.length - visibleCanvases.length} more · View all
         </Link>
       )}
@@ -155,8 +158,9 @@ export function StudioSidebar({ pathname, workspace, canvases }: { pathname: str
       <nav className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto" aria-label="Main navigation">
         <span className="px-2.5 pb-[7px] pt-[5px] text-[length:var(--text-sm)] font-bold uppercase tracking-[.1em] text-[#777b73] max-[980px]:hidden">Workspace</span>
         <SidebarNavItem item={workspaceNavigation[0]} pathname={pathname} workspace={workspace} />
+        <SidebarNavItem item={workspaceNavigation[1]} pathname={pathname} workspace={workspace} />
         <SidebarCanvasLinks canvases={canvases} pathname={pathname} />
-        {workspaceNavigation.slice(1).map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
+        {workspaceNavigation.slice(2).map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
         <span className="mt-3.5 px-2.5 pb-[7px] pt-[5px] text-[length:var(--text-sm)] font-bold uppercase tracking-[.1em] text-[#777b73] max-[980px]:hidden">Configure</span>
         {settingsNavigation.map((item) => <SidebarNavItem key={item.href} item={item} pathname={pathname} workspace={workspace} />)}
       </nav>

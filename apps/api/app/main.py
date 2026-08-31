@@ -31,6 +31,9 @@ from .database import (
     ReferenceSetRecord,
     RunRecord,
     SessionLocal,
+    WorkflowAnnotationRecord,
+    WorkflowDefinitionRecord,
+    WorkflowVersionRecord,
     create_all,
     get_db,
 )
@@ -64,6 +67,12 @@ from .domain import (
     SignedUrlRequest,
     SceneSearchRequest,
     VariationRequest,
+    WorkflowAnnotationCreateRequest,
+    WorkflowAnnotationUpdateRequest,
+    WorkflowCreateRequest,
+    WorkflowPublishRequest,
+    WorkflowUpdateRequest,
+    WorkflowVersionRunRequest,
     utc_now,
 )
 from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
@@ -106,6 +115,21 @@ from .service import (
     new_id,
     node_response,
     run_response,
+)
+from .workflow_definitions import (
+    DEFAULT_DRAFT_CONTRACT,
+    WORKFLOW_COMPILER_VERSION,
+    WorkflowContractError,
+    create_annotation,
+    create_workflow_definition,
+    delete_annotation,
+    publish_workflow_version,
+    resolve_workflow_execution,
+    update_annotation,
+    update_workflow_definition,
+    workflow_annotation_payload,
+    workflow_definition_payload,
+    workflow_version_payload,
 )
 
 
@@ -215,6 +239,7 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
         "references": int(db.scalar(select(func.count()).select_from(ReferenceRecord)) or 0),
         "canvases": int(db.scalar(select(func.count()).select_from(CanvasRecord)) or 0),
+        "workflows": int(db.scalar(select(func.count()).select_from(WorkflowDefinitionRecord)) or 0),
         "formats": int(db.scalar(select(func.count()).select_from(FormatRecord)) or 0),
         "runs": regular_run_count + canvas_run_count,
         "regular_runs": regular_run_count,
@@ -242,6 +267,10 @@ def canvas_document_payload(record: CanvasRecord, last_run: CanvasRunRecord | No
         "node_count": len(graph.get("nodes") or []),
         "edge_count": len(graph.get("edges") or []),
         "active_run_id": record.active_run_id,
+        "workflow_definition_id": record.workflow_definition_id,
+        "base_version_id": record.base_version_id,
+        "revision": record.revision,
+        "draft_contract": record.draft_contract_json or DEFAULT_DRAFT_CONTRACT,
         "last_run": ({
             "id": last_run.id,
             "status": last_run.status,
@@ -268,6 +297,8 @@ def create_canvas_document(payload: CanvasDocumentRequest, db: Session = Depends
         name=payload.name,
         graph_json={"nodes": payload.nodes, "edges": payload.edges},
         active_run_id=payload.active_run_id,
+        revision=1,
+        draft_contract_json=payload.draft_contract or DEFAULT_DRAFT_CONTRACT,
         updated_at=utc_now(),
     )
     db.add(record)
@@ -293,11 +324,27 @@ def save_canvas_document(canvas_id: str, payload: CanvasDocumentRequest, db: Ses
     record = db.get(CanvasRecord, canvas_id)
     created = record is None
     if not record:
-        record = CanvasRecord(id=canvas_id, created_at=utc_now(), updated_at=utc_now(), name=payload.name, graph_json={})
+        record = CanvasRecord(
+            id=canvas_id,
+            created_at=utc_now(),
+            updated_at=utc_now(),
+            name=payload.name,
+            graph_json={},
+            revision=1,
+            draft_contract_json=payload.draft_contract or DEFAULT_DRAFT_CONTRACT,
+        )
         db.add(record)
+    elif payload.expected_revision is not None and record.revision != payload.expected_revision:
+        raise HTTPException(409, f"Canvas revision conflict: expected {payload.expected_revision}, current {record.revision}")
+    next_graph = {"nodes": payload.nodes, "edges": payload.edges}
+    next_contract = payload.draft_contract if payload.draft_contract is not None else (record.draft_contract_json or DEFAULT_DRAFT_CONTRACT)
+    definition_changed = record.name != payload.name or record.graph_json != next_graph or record.draft_contract_json != next_contract
     record.name = payload.name
-    record.graph_json = {"nodes": payload.nodes, "edges": payload.edges}
+    record.graph_json = next_graph
+    record.draft_contract_json = next_contract
     record.active_run_id = payload.active_run_id
+    if not created and definition_changed:
+        record.revision += 1
     record.updated_at = utc_now()
     audit(db, "canvas.imported" if created else "canvas.saved", record.id, {
         "node_count": len(payload.nodes),
@@ -313,10 +360,208 @@ def delete_canvas_document(canvas_id: str, db: Session = Depends(get_db)) -> Res
     record = db.get(CanvasRecord, canvas_id)
     if not record:
         raise HTTPException(404, "canvas not found")
+    if record.workflow_definition_id:
+        raise HTTPException(409, "Workflow Draft Canvas cannot be deleted directly; archive the Workflow instead")
     db.delete(record)
     audit(db, "canvas.deleted", canvas_id)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _workflow_or_404(db: Session, workflow_id: str) -> WorkflowDefinitionRecord:
+    record = db.get(WorkflowDefinitionRecord, workflow_id)
+    if not record:
+        raise HTTPException(404, "Workflow not found")
+    return record
+
+
+def _workflow_version_or_404(db: Session, workflow_id: str, version_number: int) -> WorkflowVersionRecord:
+    record = db.scalar(select(WorkflowVersionRecord).where(
+        WorkflowVersionRecord.workflow_definition_id == workflow_id,
+        WorkflowVersionRecord.version_number == version_number,
+    ))
+    if not record:
+        raise HTTPException(404, "Workflow Version not found")
+    return record
+
+
+def _workflow_contract_http_error(exc: WorkflowContractError) -> HTTPException:
+    message = str(exc)
+    status_code = 409 if "conflict" in message.lower() or "already belongs" in message.lower() else 422
+    return HTTPException(status_code, message)
+
+
+@app.post("/workflows", status_code=status.HTTP_201_CREATED)
+def create_workflow(payload: WorkflowCreateRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    try:
+        record = create_workflow_definition(db, payload)
+    except WorkflowContractError as exc:
+        raise _workflow_contract_http_error(exc) from exc
+    return workflow_definition_payload(record, db)
+
+
+@app.get("/workflows")
+def list_workflows(status_filter: str | None = Query(default=None, alias="status"), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    query = select(WorkflowDefinitionRecord)
+    if status_filter:
+        query = query.where(WorkflowDefinitionRecord.status == status_filter.upper())
+    records = db.scalars(query.order_by(WorkflowDefinitionRecord.updated_at.desc())).all()
+    return [workflow_definition_payload(record, db) for record in records]
+
+
+@app.get("/workflows/{workflow_id}")
+def get_workflow(workflow_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return workflow_definition_payload(_workflow_or_404(db, workflow_id), db)
+
+
+@app.patch("/workflows/{workflow_id}")
+def update_workflow(workflow_id: str, payload: WorkflowUpdateRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = update_workflow_definition(db, _workflow_or_404(db, workflow_id), payload)
+    return workflow_definition_payload(record, db)
+
+
+@app.post("/workflows/{workflow_id}/publish", status_code=status.HTTP_201_CREATED)
+def publish_workflow(workflow_id: str, payload: WorkflowPublishRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    try:
+        version, warnings = publish_workflow_version(db, workflow_id, payload)
+    except WorkflowContractError as exc:
+        raise _workflow_contract_http_error(exc) from exc
+    return {**workflow_version_payload(version), "warnings": warnings}
+
+
+@app.post("/workflows/{workflow_id}/runs", response_model=CanvasRunResponse, status_code=status.HTTP_201_CREATED)
+async def start_workflow_version_run(workflow_id: str, payload: WorkflowVersionRunRequest, db: Session = Depends(get_db)) -> CanvasRunResponse:
+    definition = _workflow_or_404(db, workflow_id)
+    if definition.status != "ACTIVE":
+        raise HTTPException(422, "Archived Workflow cannot be run")
+    if payload.version is not None:
+        version = _workflow_version_or_404(db, workflow_id, payload.version)
+    elif definition.current_version_id:
+        version = db.get(WorkflowVersionRecord, definition.current_version_id)
+    else:
+        version = None
+    if not version:
+        raise HTTPException(422, "Workflow has no published Version")
+    try:
+        run_payload, resolved_inputs, model_snapshot = resolve_workflow_execution(db, definition, version, payload)
+        run = create_canvas_run(db, run_payload)
+    except (WorkflowContractError, ValueError, RuntimeError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    run.source_type = "WORKFLOW_VERSION"
+    run.workflow_definition_id = definition.id
+    run.workflow_version_id = version.id
+    run.input_snapshot = resolved_inputs
+    run.model_snapshot = model_snapshot
+    run.compiler_version = WORKFLOW_COMPILER_VERSION
+    audit(db, "workflow.run_created", run.id, {
+        "workflow_definition_id": definition.id,
+        "workflow_version_id": version.id,
+        "version_number": version.version_number,
+    })
+    db.commit()
+    db.refresh(run)
+    await _schedule_canvas_run(run, run_payload.nodes)
+    return canvas_run_response(run)
+
+
+@app.get("/workflows/{workflow_id}/versions")
+def list_workflow_versions(workflow_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    _workflow_or_404(db, workflow_id)
+    records = db.scalars(select(WorkflowVersionRecord).where(
+        WorkflowVersionRecord.workflow_definition_id == workflow_id
+    ).order_by(WorkflowVersionRecord.version_number.desc())).all()
+    return [workflow_version_payload(record) for record in records]
+
+
+@app.get("/workflows/{workflow_id}/versions/{version_number}")
+def get_workflow_version(workflow_id: str, version_number: int, db: Session = Depends(get_db)) -> dict[str, Any]:
+    return workflow_version_payload(_workflow_version_or_404(db, workflow_id, version_number))
+
+
+def _list_annotations(db: Session, workflow_id: str, version_id: str | None) -> list[dict[str, Any]]:
+    query = select(WorkflowAnnotationRecord).where(
+        WorkflowAnnotationRecord.workflow_definition_id == workflow_id,
+        WorkflowAnnotationRecord.deleted_at.is_(None),
+    )
+    query = query.where(
+        WorkflowAnnotationRecord.workflow_version_id == version_id
+        if version_id is not None
+        else WorkflowAnnotationRecord.workflow_version_id.is_(None)
+    )
+    records = db.scalars(query.order_by(WorkflowAnnotationRecord.created_at)).all()
+    return [workflow_annotation_payload(record) for record in records]
+
+
+@app.get("/workflows/{workflow_id}/annotations")
+def list_workflow_annotations(workflow_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    _workflow_or_404(db, workflow_id)
+    return _list_annotations(db, workflow_id, None)
+
+
+@app.post("/workflows/{workflow_id}/annotations", status_code=status.HTTP_201_CREATED)
+def create_workflow_annotation(workflow_id: str, payload: WorkflowAnnotationCreateRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = create_annotation(db, _workflow_or_404(db, workflow_id), payload)
+    return workflow_annotation_payload(record)
+
+
+@app.get("/workflows/{workflow_id}/versions/{version_number}/annotations")
+def list_workflow_version_annotations(workflow_id: str, version_number: int, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    version = _workflow_version_or_404(db, workflow_id, version_number)
+    return _list_annotations(db, workflow_id, version.id)
+
+
+@app.post("/workflows/{workflow_id}/versions/{version_number}/annotations", status_code=status.HTTP_201_CREATED)
+def create_workflow_version_annotation(workflow_id: str, version_number: int, payload: WorkflowAnnotationCreateRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    definition = _workflow_or_404(db, workflow_id)
+    version = _workflow_version_or_404(db, workflow_id, version_number)
+    try:
+        record = create_annotation(db, definition, payload, version=version)
+    except WorkflowContractError as exc:
+        raise _workflow_contract_http_error(exc) from exc
+    return workflow_annotation_payload(record)
+
+
+@app.patch("/workflow-annotations/{annotation_id}")
+def patch_workflow_annotation(annotation_id: str, payload: WorkflowAnnotationUpdateRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = db.get(WorkflowAnnotationRecord, annotation_id)
+    if not record or record.deleted_at:
+        raise HTTPException(404, "Workflow Annotation not found")
+    try:
+        record = update_annotation(db, record, payload)
+    except WorkflowContractError as exc:
+        raise _workflow_contract_http_error(exc) from exc
+    return workflow_annotation_payload(record)
+
+
+@app.delete("/workflow-annotations/{annotation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_workflow_annotation(annotation_id: str, actor_id: str = Query(default="local-user", max_length=128), db: Session = Depends(get_db)) -> Response:
+    record = db.get(WorkflowAnnotationRecord, annotation_id)
+    if not record or record.deleted_at:
+        raise HTTPException(404, "Workflow Annotation not found")
+    delete_annotation(db, record, actor_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/workflows/{workflow_id}/archive")
+def archive_workflow(workflow_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = _workflow_or_404(db, workflow_id)
+    record.status = "ARCHIVED"
+    record.updated_at = utc_now()
+    audit(db, "workflow.archived", record.id)
+    db.commit()
+    db.refresh(record)
+    return workflow_definition_payload(record, db)
+
+
+@app.post("/workflows/{workflow_id}/activate")
+def activate_workflow(workflow_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    record = _workflow_or_404(db, workflow_id)
+    record.status = "ACTIVE"
+    record.updated_at = utc_now()
+    audit(db, "workflow.activated", record.id)
+    db.commit()
+    db.refresh(record)
+    return workflow_definition_payload(record, db)
 
 
 @app.get("/workflow-runs")
@@ -343,7 +588,7 @@ def list_workflow_runs(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         rows.append({
             "id": run.id,
             "created_at": run.created_at,
-            "run_type": "canvas",
+            "run_type": "workflow" if run.source_type == "WORKFLOW_VERSION" else "canvas",
             "name": run.name,
             "status": run.status,
             "progress": run.progress,
@@ -353,6 +598,8 @@ def list_workflow_runs(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
             "nodes_total": len(run.node_runs),
             "attempt_count": sum(node.attempt_count for node in run.node_runs),
             "duration_ms": sum(node.duration_ms for node in run.node_runs) or None,
+            "workflow_definition_id": run.workflow_definition_id,
+            "workflow_version_id": run.workflow_version_id,
         })
     return sorted(rows, key=lambda row: row["created_at"], reverse=True)
 
@@ -366,26 +613,14 @@ def create_experiment(payload: ExperimentRunRequest, db: Session = Depends(get_d
     return experiment_response(record)
 
 
-@app.post("/canvas-runs", response_model=CanvasRunResponse, status_code=201)
-async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_db)) -> CanvasRunResponse:
-    try:
-        run = create_canvas_run(db, payload)
-    except (ValueError, RuntimeError) as exc:
-        raise HTTPException(422, str(exc)) from exc
-    canvas = db.get(CanvasRecord, payload.canvas_id)
-    if canvas:
-        canvas.active_run_id = run.id
-        canvas.updated_at = utc_now()
-        db.commit()
+async def _schedule_canvas_run(run: CanvasRunRecord, nodes: list[dict[str, Any]]) -> None:
     if uses_temporal():
         dependencies = canvas_dependencies(run)
-        node_keys = {str(node.get("id")): str((node.get("data") or {}).get("key") or "unknown") for node in payload.nodes}
-        completed = [
-            node.canvas_node_id for node in run.node_runs if node.status == NodeStatus.SUCCEEDED
-        ]
+        node_keys = {str(node.get("id")): str((node.get("data") or {}).get("key") or "unknown") for node in nodes}
+        completed = [node.canvas_node_id for node in run.node_runs if node.status == NodeStatus.SUCCEEDED]
         approval_node_ids = [
             str(node.get("id"))
-            for node in payload.nodes
+            for node in nodes
             if (node.get("data") or {}).get("waitForInput") is True
         ]
         client = await temporal_client()
@@ -397,6 +632,20 @@ async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_
         )
     else:
         await local_canvas_engine.start(run.id)
+
+
+@app.post("/canvas-runs", response_model=CanvasRunResponse, status_code=201)
+async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_db)) -> CanvasRunResponse:
+    try:
+        run = create_canvas_run(db, payload)
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    canvas = db.get(CanvasRecord, payload.canvas_id)
+    if canvas:
+        canvas.active_run_id = run.id
+        canvas.updated_at = utc_now()
+        db.commit()
+    await _schedule_canvas_run(run, payload.nodes)
     return canvas_run_response(run)
 
 

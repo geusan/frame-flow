@@ -7,8 +7,10 @@ import { StudioSidebar } from "@/components/layout/studio-sidebar";
 import { frameflowApi, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 
 function pageTitle(pathname: string): { eyebrow: string; title: string } {
-  if (pathname.startsWith("/workflows/")) return { eyebrow: "Canvas editor", title: "Workflow Canvas" };
-  if (pathname === "/workflows") return { eyebrow: "Workspace canvases", title: "Canvases" };
+  if (pathname.startsWith("/canvases/")) return { eyebrow: "Canvas editor", title: "Canvas Draft" };
+  if (pathname === "/canvases") return { eyebrow: "Workspace drafts", title: "Canvases" };
+  if (pathname.startsWith("/workflows/")) return { eyebrow: "Versioned automation", title: "Workflow" };
+  if (pathname === "/workflows") return { eyebrow: "Published automation", title: "Workflows" };
   if (pathname.startsWith("/characters")) return { eyebrow: "Reusable identity bundles", title: "Characters" };
   if (pathname.startsWith("/asset/images/") && pathname.endsWith("/edit")) return { eyebrow: "Image workspace", title: "Image Editor" };
   if (pathname.startsWith("/asset/images")) return { eyebrow: "Workspace assets", title: "Image Gallery" };

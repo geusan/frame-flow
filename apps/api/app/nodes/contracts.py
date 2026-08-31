@@ -9,19 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from ..domain import ExperimentRunRequest
+from .port_types import port_type_registry
 
-
-PORT_TYPES = {
-    "prompt.text.v1",
-    "media.image.v1",
-    "media.video.v1",
-    "media.audio.v1",
-    "artifact.character.v1",
-    "artifact.character_lora.v1",
-    "data.text.v1",
-    "data.json.v1",
-    "data.motion_track.v1",
-}
 
 
 class NodeDisplay(BaseModel):
@@ -61,17 +50,18 @@ class NodeBindingPolicy(BaseModel):
 class NodeExecution(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["source", "provider", "local", "human_gate", "utility", "composite"]
+    kind: Literal["source", "provider", "local", "human_gate", "composite"]
     executor: str = Field(min_length=1)
     revision: str = Field(min_length=1)
     provider: str = Field(min_length=1)
     model_alias: str = Field(min_length=1)
+    model_families: list[str] = Field(default_factory=list)
 
 
 class NodeEditor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: str = Field(min_length=1)
+    kind: Literal["generic", "legacy"]
 
 
 class NodeArtifactContract(BaseModel):
@@ -100,7 +90,7 @@ class NodeDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_contract(self) -> "NodeDefinition":
-        unknown_ports = [port.type for port in [*self.ports.inputs, *self.ports.outputs] if port.type not in PORT_TYPES]
+        unknown_ports = [port.type for port in [*self.ports.inputs, *self.ports.outputs] if port.type not in port_type_registry.ids]
         if unknown_ports:
             raise ValueError(f"unregistered port types: {', '.join(sorted(set(unknown_ports)))}")
         schema = self.config_schema
@@ -110,7 +100,7 @@ class NodeDefinition(BaseModel):
         if not isinstance(properties, dict):
             raise ValueError("config_schema.properties must be an object")
         workflow_types = {
-            "string": {"string", "prompt", "enum", "model_alias"},
+            "string": {"string", "prompt", "enum", "model_alias", "artifact", "character"},
             "integer": {"integer", "number"},
             "number": {"number"},
             "boolean": {"boolean"},
@@ -127,7 +117,12 @@ class NodeDefinition(BaseModel):
 
     @property
     def definition_digest(self) -> str:
-        canonical = json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+        payload = self.model_dump(mode="json")
+        # model_families was added as backward-compatible capability metadata.
+        # Do not rewrite digests for already published fixed-model contracts.
+        if not payload["execution"]["model_families"]:
+            payload["execution"].pop("model_families")
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
     def public_payload(self) -> dict[str, Any]:

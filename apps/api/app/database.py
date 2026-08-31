@@ -160,7 +160,60 @@ class CanvasRecord(Timestamped, Base):
     name: Mapped[str] = mapped_column(String(255))
     graph_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     active_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    workflow_definition_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    base_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    draft_contract_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+
+
+class WorkflowDefinitionRecord(Timestamped, Base):
+    __tablename__ = "workflow_definitions"
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+    draft_canvas_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    current_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+    versions: Mapped[list["WorkflowVersionRecord"]] = relationship(back_populates="definition", cascade="all, delete-orphan", order_by="WorkflowVersionRecord.version_number")
+
+
+class WorkflowVersionRecord(Timestamped, Base):
+    __tablename__ = "workflow_versions"
+    __table_args__ = (
+        UniqueConstraint("workflow_definition_id", "version_number", name="uq_workflow_version_number"),
+        UniqueConstraint("workflow_definition_id", "source_canvas_id", "source_canvas_revision", name="uq_workflow_canvas_revision"),
+    )
+    workflow_definition_id: Mapped[str] = mapped_column(ForeignKey("workflow_definitions.id"), index=True)
+    version_number: Mapped[int] = mapped_column(Integer)
+    schema_version: Mapped[str] = mapped_column(String(64), default="workflow.version.v1")
+    graph_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    input_schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    bindings_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    output_schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    source_canvas_id: Mapped[str] = mapped_column(String(64), index=True)
+    source_canvas_revision: Mapped[int] = mapped_column(Integer)
+    release_notes: Mapped[str] = mapped_column(Text, default="")
+    published_by: Mapped[str] = mapped_column(String(128), default="local-user")
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    definition: Mapped[WorkflowDefinitionRecord] = relationship(back_populates="versions")
+
+
+class WorkflowAnnotationRecord(Timestamped, Base):
+    __tablename__ = "workflow_annotations"
+    workflow_definition_id: Mapped[str] = mapped_column(ForeignKey("workflow_definitions.id"), index=True)
+    workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey("workflow_versions.id"), nullable=True, index=True)
+    node_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    body: Mapped[str] = mapped_column(Text)
+    position_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    color: Mapped[str] = mapped_column(String(32), default="yellow")
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(128), default="local-user")
+    updated_by: Mapped[str] = mapped_column(String(128), default="local-user")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
 
 class CanvasRunRecord(Timestamped, Base):
@@ -170,6 +223,12 @@ class CanvasRunRecord(Timestamped, Base):
     status: Mapped[str] = mapped_column(String(32), index=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     graph_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    source_type: Mapped[str] = mapped_column(String(32), default="CANVAS_DRAFT", index=True)
+    workflow_definition_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    workflow_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    model_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    compiler_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     node_runs: Mapped[list["CanvasNodeRunRecord"]] = relationship(back_populates="run", cascade="all, delete-orphan", order_by="CanvasNodeRunRecord.ordinal")
 

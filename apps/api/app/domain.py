@@ -289,6 +289,48 @@ class CanvasDocumentRequest(BaseModel):
     nodes: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     edges: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
     active_run_id: str | None = Field(default=None, max_length=128)
+    expected_revision: int | None = Field(default=None, ge=1)
+    draft_contract: dict[str, Any] | None = None
+
+
+class WorkflowCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=10_000)
+    tags: list[str] = Field(default_factory=list, max_length=32)
+    source_canvas_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class WorkflowUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=10_000)
+    tags: list[str] | None = Field(default=None, max_length=32)
+
+
+class WorkflowPublishRequest(BaseModel):
+    expected_canvas_revision: int = Field(ge=1)
+    release_notes: str = Field(default="", max_length=10_000)
+    published_by: str = Field(default="local-user", min_length=1, max_length=128)
+
+
+class WorkflowVersionRunRequest(BaseModel):
+    version: int | None = Field(default=None, ge=1)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowAnnotationCreateRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=20_000)
+    node_id: str | None = Field(default=None, min_length=1, max_length=128)
+    position: dict[str, float] = Field(default_factory=dict)
+    color: str = Field(default="yellow", pattern=r"^[a-z][a-z0-9_-]{0,31}$")
+    actor_id: str = Field(default="local-user", min_length=1, max_length=128)
+
+
+class WorkflowAnnotationUpdateRequest(BaseModel):
+    expected_revision: int = Field(ge=1)
+    body: str | None = Field(default=None, min_length=1, max_length=20_000)
+    position: dict[str, float] | None = None
+    color: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,31}$")
+    actor_id: str = Field(default="local-user", min_length=1, max_length=128)
 
 
 class CanvasSelectionRequest(BaseModel):
@@ -375,6 +417,12 @@ class CanvasRunResponse(ApiRecord):
     progress: int
     graph: dict[str, Any]
     node_runs: list[CanvasNodeRunResponse]
+    source_type: str = "CANVAS_DRAFT"
+    workflow_definition_id: str | None = None
+    workflow_version_id: str | None = None
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    model_snapshot: dict[str, Any] = Field(default_factory=dict)
+    compiler_version: str | None = None
 
 
 class NodeRunResponse(ApiRecord):

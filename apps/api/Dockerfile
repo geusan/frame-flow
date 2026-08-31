@@ -11,7 +11,9 @@ RUN apt-get update \
     && apt-get purge -y --auto-remove build-essential pkg-config libopus-dev \
     && rm -rf /var/lib/apt/lists/* /root/.cache/puccinialin
 COPY apps/api/app ./app
+COPY apps/api/alembic.ini ./alembic.ini
+COPY apps/api/migrations ./migrations
 COPY packages/schemas ./packages/schemas
 COPY .codex/skills ./.codex/skills
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]

@@ -107,6 +107,7 @@ export interface WorkspaceSummary {
   execution_backend: string;
   references: number;
   canvases: number;
+  workflows: number;
   formats: number;
   runs: number;
   regular_runs: number;
@@ -161,6 +162,26 @@ export interface CharacterLoraTrainingState {
   error?: string;
 }
 
+export interface WorkflowBindingDefinition {
+  target: { node_id: string; path: string };
+  value: { kind: "input"; key: string } | { kind: "template"; template: string; input_keys: string[] };
+}
+
+export interface WorkflowOutputDefinition {
+  key: string;
+  label: string;
+  node_id: string;
+  port_type: string;
+  primary: boolean;
+}
+
+export interface WorkflowDraftContract {
+  schema_version: "workflow.contract.draft.v1";
+  inputs: WorkflowInputDefinition[];
+  bindings: WorkflowBindingDefinition[];
+  outputs: WorkflowOutputDefinition[];
+}
+
 export interface CanvasDocument {
   id: string;
   created_at: string;
@@ -171,7 +192,70 @@ export interface CanvasDocument {
   node_count: number;
   edge_count: number;
   active_run_id?: string;
+  workflow_definition_id?: string;
+  base_version_id?: string;
+  revision: number;
+  draft_contract: WorkflowDraftContract;
   last_run?: { id: string; status: string; progress: number; created_at: string };
+}
+
+export interface WorkflowDefinitionRecord {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  description: string;
+  status: "ACTIVE" | "ARCHIVED";
+  draft_canvas_id: string;
+  current_version_id?: string;
+  current_version_number?: number;
+  version_count: number;
+  tags: string[];
+}
+
+export interface WorkflowInputDefinition {
+  key: string;
+  label: string;
+  description?: string;
+  type: "string" | "prompt" | "integer" | "number" | "boolean" | "enum" | "artifact" | "character" | "model_alias";
+  required?: boolean;
+  default?: unknown;
+  options?: Array<string | number>;
+  validation?: Record<string, unknown>;
+}
+
+export interface WorkflowVersionRecord {
+  id: string;
+  created_at: string;
+  workflow_definition_id: string;
+  version_number: number;
+  schema_version: "workflow.version.v1";
+  graph: { schema_version: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>> };
+  input_schema: { schema_version: string; inputs: WorkflowInputDefinition[] };
+  bindings: { schema_version: string; bindings: Array<Record<string, unknown>> };
+  output_schema: { schema_version: string; outputs: Array<Record<string, unknown>> };
+  content_hash: string;
+  source_canvas_id: string;
+  source_canvas_revision: number;
+  release_notes: string;
+  published_by: string;
+  published_at: string;
+  warnings?: string[];
+}
+
+export interface WorkflowAnnotationRecord {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  workflow_definition_id: string;
+  workflow_version_id?: string;
+  node_id?: string;
+  body: string;
+  position: { x?: number; y?: number };
+  color: string;
+  revision: number;
+  created_by: string;
+  updated_by: string;
 }
 
 export interface NodeDefinitionRecord {
@@ -213,11 +297,12 @@ export interface NodeDefinitionRecord {
   };
   binding_policy: { workflow_inputs: "schema" | "none" };
   execution: {
-    kind: "source" | "provider" | "local" | "human_gate" | "utility" | "composite";
+    kind: "source" | "provider" | "local" | "human_gate" | "composite";
     executor: string;
     revision: string;
     provider: string;
     model_alias: string;
+    model_families: string[];
   };
   editor: { kind: string };
   artifact_contract: {
@@ -231,7 +316,7 @@ export interface NodeDefinitionRecord {
 export interface WorkflowRunRecord {
   id: string;
   created_at: string;
-  run_type: "generation" | "canvas";
+  run_type: "generation" | "canvas" | "workflow";
   name: string;
   status: string;
   progress: number;
@@ -241,6 +326,8 @@ export interface WorkflowRunRecord {
   nodes_total: number;
   attempt_count: number;
   duration_ms?: number;
+  workflow_definition_id?: string;
+  workflow_version_id?: string;
 }
 
 export interface CanvasNodeRunRecord {
@@ -270,6 +357,12 @@ export interface CanvasRunRecord {
   progress: number;
   graph: Record<string, unknown>;
   node_runs: CanvasNodeRunRecord[];
+  source_type: "CANVAS_DRAFT" | "WORKFLOW_VERSION";
+  workflow_definition_id?: string;
+  workflow_version_id?: string;
+  inputs: Record<string, unknown>;
+  model_snapshot: Record<string, unknown>;
+  compiler_version?: string;
 }
 
 export interface ExperimentOutput {
@@ -487,8 +580,22 @@ export const frameflowApi = {
   listCanvases: () => request<CanvasDocument[]>("/canvases"),
   createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
   getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),
-  saveCanvas: (canvasId: string, payload: { name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; active_run_id?: string }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  saveCanvas: (canvasId: string, payload: { name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; active_run_id?: string; expected_revision?: number; draft_contract?: WorkflowDraftContract }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
   deleteCanvas: (canvasId: string) => request<void>(`/canvases/${canvasId}`, { method: "DELETE" }),
+  listWorkflows: () => request<WorkflowDefinitionRecord[]>("/workflows"),
+  createWorkflow: (payload: { name: string; description?: string; tags?: string[]; source_canvas_id?: string }) => request<WorkflowDefinitionRecord>("/workflows", { method: "POST", body: JSON.stringify(payload) }),
+  getWorkflow: (workflowId: string) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}`),
+  updateWorkflow: (workflowId: string, payload: { name?: string; description?: string; tags?: string[] }) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  archiveWorkflow: (workflowId: string) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}/archive`, { method: "POST" }),
+  activateWorkflow: (workflowId: string) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}/activate`, { method: "POST" }),
+  publishWorkflow: (workflowId: string, payload: { expected_canvas_revision: number; release_notes?: string }) => request<WorkflowVersionRecord>(`/workflows/${workflowId}/publish`, { method: "POST", body: JSON.stringify(payload) }),
+  listWorkflowVersions: (workflowId: string) => request<WorkflowVersionRecord[]>(`/workflows/${workflowId}/versions`),
+  getWorkflowVersion: (workflowId: string, version: number) => request<WorkflowVersionRecord>(`/workflows/${workflowId}/versions/${version}`),
+  listWorkflowVersionAnnotations: (workflowId: string, version: number) => request<WorkflowAnnotationRecord[]>(`/workflows/${workflowId}/versions/${version}/annotations`),
+  createWorkflowVersionAnnotation: (workflowId: string, version: number, payload: { body: string; node_id?: string; position?: { x: number; y: number }; color?: string }) => request<WorkflowAnnotationRecord>(`/workflows/${workflowId}/versions/${version}/annotations`, { method: "POST", body: JSON.stringify(payload) }),
+  updateWorkflowAnnotation: (annotationId: string, payload: { expected_revision: number; body?: string; position?: { x: number; y: number }; color?: string }) => request<WorkflowAnnotationRecord>(`/workflow-annotations/${annotationId}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  deleteWorkflowAnnotation: (annotationId: string) => request<void>(`/workflow-annotations/${annotationId}`, { method: "DELETE" }),
+  runWorkflow: (workflowId: string, payload: { version?: number; inputs: Record<string, unknown> }) => request<CanvasRunRecord>(`/workflows/${workflowId}/runs`, { method: "POST", body: JSON.stringify(payload) }),
   inspectReferences: (urls: string[]) => request<InspectResult[]>("/references/inspect", { method: "POST", body: JSON.stringify({ urls }) }),
   listReferences: () => request<ReferenceRecord[]>("/references"),
   importReference: (metadata: InspectResult, rightsBasis: ReferenceRecord["rights_basis"] = "analysis_only") => request<{ reference_id: string; deduplicated: boolean; artifact_ids: string[] }>("/references/import", { method: "POST", body: JSON.stringify({ metadata, rights_basis: rightsBasis, allow_generation_input: ["owned", "licensed", "creative_commons"].includes(rightsBasis), allow_direct_asset_use: ["owned", "licensed"].includes(rightsBasis) }) }),

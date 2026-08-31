@@ -1,0 +1,50 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.retime",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Video Retime",
+    "description": "영상 재생 속도를 느리게 또는 빠르게 바꾸고 선택적으로 오디오 속도를 동기화",
+    "category": "Video",
+    "icon": "timeline",
+    "cost_label": "$0.00",
+    "keywords": ["video", "speed", "retime", "slow motion", "fast motion"]
+  },
+  "ports": {
+    "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Retimed Video" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["speed_multiplier", "output_fps", "preserve_audio"],
+    "properties": {
+      "speed_multiplier": {
+        "type": "number", "minimum": 0.25, "maximum": 4, "default": 2,
+        "title": "Playback speed", "description": "2는 영상을 2배 빠르게, 0.5는 2배 느리게 만듭니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "output_fps": {
+        "type": "integer", "enum": [24, 30, 60], "default": 24,
+        "title": "Output FPS", "description": "배속 변환 후 출력 프레임률입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "preserve_audio": {
+        "type": "boolean", "default": false,
+        "title": "Retime audio", "description": "오디오도 같은 배율로 변환합니다. 원본 음악을 나중에 연결할 때는 끕니다.",
+        "x-workflow-input": { "enabled": true, "type": "boolean" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "local", "executor": "video-retime", "revision": "video-retime.v1",
+    "provider": "local", "model_alias": "local.video-retime"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Video", "schema_id": "video.retime.v1",
+    "input_roles": { "media.video.v1": "source_video" }, "output_role": "retimed_video"
+  }
+}

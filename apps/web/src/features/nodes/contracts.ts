@@ -35,7 +35,7 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord): No
       label: definition.display.label,
       description: definition.display.description,
       icon: definition.display.icon as IconName,
-      kind: definition.execution.kind === "source" || definition.execution.kind === "utility" ? "input" : "logic",
+      kind: definition.execution.kind === "source" ? "input" : "logic",
       inputTypes,
       requiredInputTypes,
       multiInputTypes,

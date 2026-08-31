@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+from collections import Counter
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,12 +13,90 @@ from app import canvas_activities
 from app.domain import ExperimentRunRequest
 from app.experiments import request_fingerprint, resolve_model
 from app.motion_control_video import MOTION_CONTROL_VIDEO_REVISION, RenderedMotionControlVideo, parse_motion_track, render_motion_control_video
+from app.motion_segmentation import MOTION_SEGMENT_REVISION, segment_motion_track
 from app.nodes import node_registry
 from app.nodes.contracts import NodeExecutionContext
+from app.nodes.inventory import canvas_only_keys, load_node_inventory, production_node_keys
+from app.nodes.port_types import port_type_registry
 from app.nodes.executors import lora_train as lora_train_module
 from app.nodes.executors.lora_train import FalLoraTrainingExecutor
 from app.nodes.executors import motion_control_video as motion_control_module
 from app.nodes.executors.motion_control_video import MotionControlVideoExecutor
+from app.video_retime import VIDEO_RETIME_REVISION, retime_video
+
+
+def test_node_inventory_characterizes_every_canvas_key_and_registry_definition():
+    inventory = load_node_inventory()
+    production = production_node_keys()
+    canvas_only = canvas_only_keys()
+    assert inventory["schema_version"] == "node.inventory.v1"
+    assert not production & canvas_only
+
+    canvas_model = Path(__file__).parents[2] / "web/src/lib/canvas-model.ts"
+    template_keys = re.findall(r'key: "([a-z][a-z0-9_.-]+)"', canvas_model.read_text())
+    counts = Counter(template_keys)
+    registry_only = {definition.type_key for definition in node_registry.list() if definition.editor.kind == "generic"}
+    assert set(template_keys) == (production - registry_only) | canvas_only
+    assert inventory["library_duplicates"] == {
+        key: count for key, count in sorted(counts.items()) if count > 1
+    }
+
+    registered = {definition.type_key for definition in node_registry.list()}
+    assert registered <= production
+    assert {"lora.train", "motion.control_video", "motion.segment", "video.retime"} <= registered
+
+
+def test_node_inventory_lifecycle_groups_only_reference_production_nodes():
+    inventory = load_node_inventory()
+    production = production_node_keys()
+    assert set(inventory["legacy_pipeline"]) <= production
+    assert set(inventory["production_nodes"]) == {"source", "provider", "local", "human_gate", "composite"}
+
+
+def test_every_production_node_has_a_v1_manifest_and_canvas_only_elements_do_not():
+    inventory = load_node_inventory()
+    registered = {definition.type_key for definition in node_registry.list()}
+    assert registered == production_node_keys()
+    assert not registered & canvas_only_keys()
+    assert all(definition.contract_version == 1 for definition in node_registry.list())
+    assert {definition.type_key for definition in node_registry.list(lifecycle="DEPRECATED")} == set(inventory["legacy_pipeline"])
+    assert all(definition.editor.kind == "legacy" for definition in node_registry.list(lifecycle="DEPRECATED"))
+
+
+def test_every_node_manifest_materializes_a_closed_config():
+    for definition in node_registry.list():
+        resolved = node_registry.resolve_config(definition, {})
+        assert set(resolved) <= set(definition.config_schema["properties"])
+        assert set(definition.config_schema.get("required", [])) <= set(resolved)
+
+
+def test_all_node_definition_digests_match_the_v1_golden_snapshot():
+    fixture = Path(__file__).parent / "fixtures/node_definition_digests.v1.json"
+    expected = json.loads(fixture.read_text())
+    actual = {
+        f"{definition.type_key}@{definition.contract_version}": definition.definition_digest
+        for definition in node_registry.list()
+    }
+    assert actual == expected
+
+
+def test_node_definition_api_exposes_active_contracts_only(client):
+    response = client.get("/node-definitions")
+    assert response.status_code == 200
+    payload = response.json()
+    assert {item["type_key"] for item in payload} == {
+        definition.type_key for definition in node_registry.list(lifecycle="ACTIVE")
+    }
+    assert not {item["type_key"] for item in payload} & set(load_node_inventory()["legacy_pipeline"])
+
+
+def test_port_type_registry_covers_legacy_canvas_contracts():
+    assert len(port_type_registry.ids) == 26
+    assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
+    assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
+    assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"
+    assert port_type_registry.get("data.timeline.v1").legacy_type == "Timeline"
+    assert port_type_registry.get("data.reference_asset.v1").legacy_type == "ReferenceAsset"
 
 
 def test_lora_train_manifest_is_registered_and_digest_is_stable():
@@ -44,6 +125,8 @@ def test_lora_train_config_defaults_and_validation_come_from_manifest():
         node_registry.resolve_config(definition, {"trigger_word": "not allowed"})
     with pytest.raises(ValueError, match="must be one of"):
         node_registry.resolve_config(definition, {"trigger_word": "mori", "steps": 900})
+    with pytest.raises(ValueError, match="unknown config fields"):
+        node_registry.resolve_config(definition, {"trigger_word": "mori", "legacy_extra": "nope"})
 
 
 def test_lora_train_executor_returns_trained_character_contract(monkeypatch):
@@ -301,6 +384,75 @@ def test_motion_control_rejects_missing_or_invalid_motion_track():
         parse_motion_track(b"not-json")
     with pytest.raises(ValueError, match="motion.track.v1"):
         parse_motion_track(b'{"schema_version":"motion.track.v2"}')
+
+
+def test_motion_segment_and_video_retime_manifests_are_registered():
+    segment = node_registry.get("motion.segment", 1)
+    retime = node_registry.get("video.retime", 1)
+    assert segment is not None and retime is not None
+    assert segment.execution.revision == MOTION_SEGMENT_REVISION
+    assert segment.ports.inputs[0].type == "data.motion_track.v1"
+    assert segment.ports.outputs[0].type == "data.motion_track.v1"
+    assert segment.artifact_contract.schema_id == "motion.track.segment.v1"
+    assert node_registry.resolve_config(segment, {}) == {
+        "start_seconds": 0,
+        "duration_seconds": 5,
+        "time_scale": 2,
+    }
+    assert retime.execution.revision == VIDEO_RETIME_REVISION
+    assert retime.ports.inputs[0].type == "media.video.v1"
+    assert retime.ports.outputs[0].type == "media.video.v1"
+    assert retime.artifact_contract.schema_id == "video.retime.v1"
+    assert node_registry.resolve_config(retime, {}) == {
+        "speed_multiplier": 2,
+        "output_fps": 24,
+        "preserve_audio": False,
+    }
+
+
+def test_motion_segment_rebases_and_scales_timestamps():
+    source = motion_track_fixture()
+    segmented = segment_motion_track(
+        source,
+        start_seconds=0,
+        duration_seconds=0.25,
+        time_scale=2,
+    )
+    assert segmented["schema_version"] == "motion.track.v1"
+    assert segmented["source"]["duration_ms"] == 500
+    assert segmented["source"]["sample_fps"] == 2
+    assert segmented["frames"][0]["timestamp_ms"] == 0
+    assert segmented["frames"][-1]["timestamp_ms"] == 500
+    assert segmented["summary"]["frame_count"] == len(segmented["frames"])
+    with pytest.raises(ValueError, match="before the MotionTrack duration"):
+        segment_motion_track(source, start_seconds=1, duration_seconds=1, time_scale=2)
+
+
+def test_video_retime_changes_duration_and_keeps_video_contract():
+    source = render_motion_control_video(
+        motion_track_fixture(),
+        width=90,
+        output_fps=24,
+        theme="dark",
+        draw_pose=True,
+        draw_face=True,
+        draw_hands=True,
+        line_width=3,
+        point_radius=2,
+    )
+    retimed = retime_video(
+        source.data,
+        "video/mp4",
+        speed_multiplier=2,
+        output_fps=24,
+        preserve_audio=False,
+    )
+    assert retimed.width == 90
+    assert retimed.height == 160
+    assert retimed.fps == 24
+    assert retimed.has_audio is False
+    assert retimed.duration_ms < retimed.source_duration_ms
+    assert retimed.data[4:8] == b"ftyp"
 
 
 def test_temporal_canvas_activity_uses_the_same_canvas_node_dispatch(monkeypatch):

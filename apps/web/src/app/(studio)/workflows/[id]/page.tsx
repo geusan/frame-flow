@@ -1,19 +1,22 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { GenerationCanvas } from "@/components/views/generation-canvas";
+import { WorkflowDetail } from "@/components/views/workflow-detail";
 
 export default function WorkflowPage({ params }: { params: Promise<{ id: string; nodeId?: string }> }) {
   const { id, nodeId } = use(params);
   const router = useRouter();
-  const canvasPath = `/workflows/${encodeURIComponent(id)}`;
-  return <GenerationCanvas
-    canvasId={id}
-    nodeDetailId={nodeId}
-    onOpenNodeDetail={(nextNodeId) => router.push(`${canvasPath}/nodes/${encodeURIComponent(nextNodeId)}`, { scroll: false })}
-    onCloseNodeDetail={() => router.replace(canvasPath, { scroll: false })}
+  const legacyCanvas = id.startsWith("canvas_");
+  useEffect(() => {
+    if (legacyCanvas) router.replace(`/canvases/${encodeURIComponent(id)}${nodeId ? `/nodes/${encodeURIComponent(nodeId)}` : ""}`);
+  }, [id, legacyCanvas, nodeId, router]);
+  if (legacyCanvas) return <div className="route-loading">Redirecting legacy Canvas URL…</div>;
+  return <WorkflowDetail
+    workflowId={id}
     onBack={() => router.push("/workflows")}
-    key={id}
+    onEditDraft={(canvasId) => router.push(`/canvases/${encodeURIComponent(canvasId)}`)}
+    onOpenVersion={(version) => router.push(`/workflows/${encodeURIComponent(id)}/versions/${version}`)}
+    onOpenRun={() => router.push("/runs")}
   />;
 }
