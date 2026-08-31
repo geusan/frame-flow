@@ -10,6 +10,7 @@ from .editor_refs import node_editor_ref_registry
 from .executors import (
     CharacterGenerationCapabilityExecutor,
     FalLoraImageCapabilityExecutor,
+    FFmpegMediaCapabilityExecutor,
     FalLoraTrainingExecutor,
     ImageGenerationCapabilityExecutor,
     LegacyCompatibilityExecutor,
@@ -116,7 +117,7 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
-        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor())),
+        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor(), FFmpegMediaCapabilityExecutor())),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),

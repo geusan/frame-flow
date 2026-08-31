@@ -33,12 +33,9 @@ LOCAL_MODELS: dict[str, tuple[str, str]] = {
     "shot.plan": ("local.shot-plan", "shot-plan.v1"),
     "reference.decompose": ("reference-analysis.pipeline", "reference-analysis.v1"),
     "motion.extract": ("local.mediapipe.holistic", "mediapipe-holistic-landmarker"),
-    "video.edit": ("local.ffmpeg", "ffmpeg"),
-    "video.change_voice": ("local.ffmpeg", "ffmpeg"),
     "video.translate": ("google.localization.pipeline", "chirp_3+gemini-3.1-pro-preview+gemini-2.5-flash-tts"),
     "subtitle.align": ("google.stt.default", "chirp_3"),
     "timeline.compose": ("local.timeline", "timeline.v1"),
-    "video.render": ("local.ffmpeg", "ffmpeg"),
     "media.qc": ("local.ffprobe", "ffprobe"),
 }
 
@@ -786,22 +783,6 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
         shots = [{"index": index + 1, "start_ms": index * shot_duration * 1000, "duration_ms": min(shot_duration, target_seconds - index * shot_duration) * 1000} for index in range(shot_count)]
         return _json_result("Shot plan", "ShotPlan", "shot.plan.v1", {"version": "shot.plan.v1", "shots": shots}, digest, input_ids)
 
-    if node_key == "video.edit":
-        content = _edit_videos(artifacts, payload.parameters)
-        return CanvasOperationResult(
-            {"kind": "video", "title": "Edited video", "mimeType": "video/mp4"}, "Video", "video.edited.v1",
-            f"local_{digest[:20]}", content, "video/mp4", "edited.mp4", input_ids,
-        )
-
-    if node_key == "video.change_voice":
-        video = _require(artifacts, "Video", "Video", "FinalVideo")
-        audio = _require(artifacts, "Audio", "Audio")
-        content = _replace_audio(video, audio)
-        return CanvasOperationResult(
-            {"kind": "video", "title": "Video with replaced audio", "mimeType": "video/mp4"}, "Video", "video.localized.v1",
-            f"local_{digest[:20]}", content, "video/mp4", "localized.mp4", input_ids,
-        )
-
     if node_key == "video.translate":
         video = _require(artifacts, "Video", "Video", "FinalVideo")
         source_language = str(payload.parameters.get("source_language") or "auto")
@@ -908,14 +889,6 @@ def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest:
     if node_key == "timeline.compose":
         timeline = _timeline(artifacts, payload.parameters)
         return _json_result("Timeline", "Timeline", "timeline.v1", timeline, digest, input_ids)
-
-    if node_key == "video.render":
-        timeline = _require(artifacts, "Timeline", "Timeline")
-        content = _render_timeline(db, timeline)
-        return CanvasOperationResult(
-            {"kind": "video", "title": "Rendered final MP4", "mimeType": "video/mp4"}, "FinalVideo", None,
-            f"local_{digest[:20]}", content, "video/mp4", "final.mp4", input_ids,
-        )
 
     if node_key == "media.qc":
         video = _require(artifacts, "Video", "Video", "FinalVideo")

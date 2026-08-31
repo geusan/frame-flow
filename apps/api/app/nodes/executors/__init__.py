@@ -1,5 +1,6 @@
 from .lora_train import FalLoraTrainingExecutor
 from .fal_lora_image import FalLoraImageCapabilityExecutor
+from .ffmpeg_media import FFmpegMediaCapabilityExecutor
 from .character_generation import CharacterGenerationCapabilityExecutor
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
@@ -15,6 +16,7 @@ from .xai_text import XAITextCapabilityExecutor
 __all__ = [
     "FalLoraTrainingExecutor",
     "FalLoraImageCapabilityExecutor",
+    "FFmpegMediaCapabilityExecutor",
     "CharacterGenerationCapabilityExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",

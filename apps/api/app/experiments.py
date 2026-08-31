@@ -143,8 +143,13 @@ def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
 
 def resolve_model(model_alias: str, node_key: str, contract_version: int = 1) -> tuple[str, str]:
     definition = node_registry.get(node_key, contract_version)
-    if definition and not node_registry.uses_legacy_runtime(definition) and definition.execution.provider == "local":
-        if model_alias != definition.execution.model_alias:
+    registry_local = bool(
+        definition
+        and definition.execution.provider == "local"
+        and (not node_registry.uses_legacy_runtime(definition) or definition.execution.model_alias == "local.ffmpeg")
+    )
+    if registry_local:
+        if model_alias not in {definition.execution.model_alias, "local"}:
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         return definition.execution.model_alias, definition.execution.revision
     if is_local_operation(node_key):
@@ -186,7 +191,10 @@ def validate_model_for_node(node_key: str, model_alias: str, contract_version: i
 
 def resolved_executor_revision(node_key: str, model_alias: str, contract_version: int = 1) -> str:
     definition = node_registry.get(node_key, contract_version)
-    if definition and not node_registry.uses_legacy_runtime(definition):
+    if definition and (
+        not node_registry.uses_legacy_runtime(definition)
+        or (definition.execution.provider == "local" and definition.execution.model_alias == "local.ffmpeg")
+    ):
         return definition.execution.revision
     return executor_revision(node_key) if is_local_operation(node_key) else generation_executor_revision(model_alias)
 

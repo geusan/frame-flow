@@ -798,6 +798,9 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
     assert edited["output"]["mimeType"] == "video/mp4"
     edited_artifact = client.get(f"/artifacts/{edited['output_artifact_ids'][0]}").json()
     assert edited_artifact["input_artifact_ids"] == video["output_artifact_ids"] + video_two["output_artifact_ids"]
+    assert edited_artifact["schema_id"] == "video.edited.v1"
+    assert edited_artifact["metadata"]["source"] == "node_executor_registry"
+    assert set(edited_artifact["metadata"]["input_artifact_roles"].values()) == {"source_video"}
 
     localized = execute(
         "replace-audio",
@@ -808,6 +811,9 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
             {"type": "Audio", "artifact_ids": audio["output_artifact_ids"]},
         ],
     )
+    localized_artifact = client.get(f"/artifacts/{localized['output_artifact_ids'][0]}").json()
+    assert localized_artifact["schema_id"] == "video.localized.v1"
+    assert set(localized_artifact["metadata"]["input_artifact_roles"].values()) == {"source_video", "replacement_audio"}
 
     class FakeRecognizer:
         def transcribe(self, audio: bytes, *, language_code: str, duration_ms: int) -> TranscriptResult:
@@ -888,6 +894,10 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
         "local.ffmpeg",
         inputs=[{"type": "Timeline", "artifact_ids": timeline["output_artifact_ids"]}],
     )
+    rendered_artifact = client.get(f"/artifacts/{rendered['output_artifact_ids'][0]}").json()
+    assert rendered_artifact["type"] == "FinalVideo"
+    assert rendered_artifact["schema_id"] == "video.rendered.v1"
+    assert rendered_artifact["metadata"]["input_artifact_roles"] == {timeline["output_artifact_ids"][0]: "timeline"}
     qc = execute(
         "qc",
         "media.qc",

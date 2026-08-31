@@ -131,7 +131,11 @@ def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
     local_definition = node_registry.get("video.edit", 1)
     assert local_definition is not None
     local_context = SimpleNamespace(definition=local_definition, payload=payload.model_copy(update={"node_key": "video.edit", "node_contract_version": 1, "model_alias": "local.ffmpeg"}))
-    assert node_registry.can_execute(local_context) is False
+    assert node_registry.can_execute(local_context) is True
+    motion_definition = node_registry.get("motion.extract", 1)
+    assert motion_definition is not None
+    motion_context = SimpleNamespace(definition=motion_definition, payload=payload.model_copy(update={"node_key": "motion.extract", "node_contract_version": 1, "model_alias": "local.mediapipe.holistic"}))
+    assert node_registry.can_execute(motion_context) is False
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "fixture")
     assert node_registry.can_execute(context) is False
 
@@ -146,6 +150,8 @@ def test_experiments_does_not_dispatch_xai_provider_directly():
     fal_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "fal_lora_image.py").read_text()
     video_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "video_generation.py").read_text()
     speech_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "speech_generation.py").read_text()
+    ffmpeg_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "ffmpeg_media.py").read_text()
+    canvas_operations_source = (Path(__file__).parents[1] / "app" / "canvas_operations.py").read_text()
     assert "get_xai_text_services" not in experiments_source
     assert "payload.node_key" not in executor_source
     assert "payload.node_key" not in text_executor_source
@@ -154,6 +160,10 @@ def test_experiments_does_not_dispatch_xai_provider_directly():
     assert "payload.node_key" not in fal_executor_source
     assert "payload.node_key" not in video_executor_source
     assert "payload.node_key" not in speech_executor_source
+    assert "payload.node_key" not in ffmpeg_executor_source
+    for migrated_key in ("video.edit", "video.change_voice", "video.render"):
+        assert f'node_key == "{migrated_key}"' not in canvas_operations_source
+        assert f'"{migrated_key}":' not in canvas_operations_source
     assert 'payload.node_key != "lora.image.generate"' not in experiments_source
     assert "artifact_contract.primary_type" in text_support_source
     assert "complete_text_execution" in text_executor_source
