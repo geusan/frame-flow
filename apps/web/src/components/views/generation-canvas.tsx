@@ -1857,7 +1857,11 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             {selectedDefinition?.editor.kind === "generic" && <GenericNodeInspector
               definition={selectedDefinition}
               value={selectedNode.data.config ?? {}}
-              onChange={(config) => updateSelectedData({ config, status: selectedNode.data.output || selectedNode.data.outputArtifactIds?.length ? "STALE" : selectedNode.data.status })}
+              onChange={(config) => updateSelectedData({
+                config,
+                ...(typeof config.model_alias === "string" ? { model: config.model_alias } : {}),
+                status: selectedNode.data.output || selectedNode.data.outputArtifactIds?.length ? "STALE" : selectedNode.data.status,
+              })}
             />}
             {selectedNode.data.kind === "generate" && <div className="generator-settings">
               <div className={`connected-prompt-preview ${selectedPromptText || selectedNode.data.key === "character.generate" ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || (selectedNode.data.key === "character.generate" ? "Image-only mode · 연결된 기준 이미지를 canonical identity로 사용합니다." : "Prompt 노드를 연결하고 내용을 입력하세요.")}</p></div>

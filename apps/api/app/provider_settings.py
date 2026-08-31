@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .database import ProviderSettingRecord, SessionLocal
 from .domain import utc_now
 from .google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV, validate_service_account_json
+from .local_subscription_agents import LocalAuthStatus, check_local_provider_auth
 
 
 @dataclass(frozen=True)
@@ -250,10 +251,25 @@ def _auth_method_for(record: ProviderSettingRecord, definition: ProviderDefiniti
     return by_key[definition.default_auth_method]
 
 
+def provider_auth_method_key(record: ProviderSettingRecord) -> str:
+    return _auth_method_for(record, PROVIDER_DEFINITIONS[record.provider]).key
+
+
+def _local_connection_status(
+    record: ProviderSettingRecord,
+    method: ProviderAuthMethod,
+    values: dict[str, str],
+) -> LocalAuthStatus | None:
+    return check_local_provider_auth(record.provider, method.key, values)
+
+
 def provider_is_configured(record: ProviderSettingRecord) -> bool:
     definition = PROVIDER_DEFINITIONS[record.provider]
     method = _auth_method_for(record, definition)
     values = _record_values(record)
+    local_status = _local_connection_status(record, method, values)
+    if local_status is not None:
+        return bool(record.enabled and local_status.ready)
     return bool(
         record.enabled
         and not method.external
@@ -347,12 +363,22 @@ def provider_settings_payload(record: ProviderSettingRecord) -> dict[str, Any]:
     definition = PROVIDER_DEFINITIONS[record.provider]
     auth_method = _auth_method_for(record, definition)
     values = _record_values(record)
+    local_status = _local_connection_status(record, auth_method, values)
+    configured = bool(
+        record.enabled
+        and (
+            local_status.ready
+            if local_status is not None
+            else not auth_method.external and all(values.get(key, "").strip() for key in auth_method.required_fields)
+        )
+    )
     return {
         "provider": record.provider,
         "label": definition.label,
         "description": definition.description,
         "enabled": record.enabled,
-        "configured": provider_is_configured(record),
+        "configured": configured,
+        "connection": local_status.payload() if local_status is not None else None,
         "auth_method": auth_method.key,
         "auth_methods": [
             {

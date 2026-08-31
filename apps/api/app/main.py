@@ -92,7 +92,7 @@ from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
 from .media_compat import BrowserVideoError
 from .nodes import node_registry
-from .providers import FAL_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
+from .providers import FAL_MODEL_REGISTRY, LOCAL_SUBSCRIPTION_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
 from .providers_fal import get_fal_generation_services
 from .r2_training_storage import get_r2_training_dataset_store
 from .provider_settings import (
@@ -100,11 +100,21 @@ from .provider_settings import (
     apply_provider_settings_to_environment,
     ensure_provider_settings,
     get_provider_record,
+    provider_auth_method_key,
     provider_is_configured,
     provider_settings_payload,
     update_provider_settings,
 )
-from .project_skills import list_project_skills
+from .project_skills import (
+    SKILL_MAX_BYTES,
+    activate_project_skill_version,
+    ensure_bundled_skills,
+    list_project_skill_versions,
+    list_project_skills,
+    parse_project_skill_content,
+    register_project_skill,
+    set_project_skill_enabled,
+)
 from .reference_ingest import ReferenceIngestError, get_reference_provider, render_proxy
 from .scene_search import SceneSearchError, search_video_scenes
 from .experiments import experiment_response, run_experiment
@@ -150,6 +160,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     create_all()
     with SessionLocal() as settings_db:
         apply_provider_settings_to_environment(ensure_provider_settings(settings_db))
+    with SessionLocal() as skill_db:
+        ensure_bundled_skills(skill_db)
     get_storage().initialize()
     with SessionLocal() as lineage_db:
         if backfill_artifact_edges(lineage_db):
@@ -212,6 +224,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
         "google_configured": bool(settings.get("google") and provider_is_configured(settings["google"])),
         "openai_configured": bool(settings.get("openai") and provider_is_configured(settings["openai"])),
+        "claude_configured": bool(settings.get("claude") and provider_is_configured(settings["claude"])),
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
     }
 
@@ -222,8 +235,109 @@ def list_node_definitions() -> list[dict[str, Any]]:
 
 
 @app.get("/skills")
-def project_skills() -> list[dict[str, str]]:
-    return [skill.public_payload() for skill in list_project_skills()]
+def project_skills(
+    include_disabled: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    return [skill.public_payload() for skill in list_project_skills(db, include_disabled=include_disabled)]
+
+
+async def _register_uploaded_project_skill(
+    file: UploadFile,
+    db: Session,
+    *,
+    expected_id: str | None = None,
+    created_by: str = "local-user",
+) -> tuple[dict[str, Any], bool]:
+    content = await file.read(SKILL_MAX_BYTES + 1)
+    if len(content) > SKILL_MAX_BYTES:
+        raise HTTPException(413, "Project Skill exceeds the 256 KB limit")
+    try:
+        text = content.decode("utf-8")
+        parsed = parse_project_skill_content(text, expected_id=expected_id, source="upload")
+        stored, created = register_project_skill(db, parsed, created_by=created_by)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+    audit(db, "skill.version_registered", stored.version_id or stored.id, {
+        "skill_id": stored.id,
+        "version": stored.version,
+        "version_number": stored.version_number,
+        "filename": file.filename or "SKILL.md",
+        "created": created,
+    })
+    db.commit()
+    return stored.public_payload(), created
+
+
+@app.post("/skills", status_code=status.HTTP_201_CREATED)
+async def register_project_skill_file(
+    file: UploadFile = File(...),
+    created_by: str = Form(default="local-user", max_length=128),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    payload, created = await _register_uploaded_project_skill(file, db, created_by=created_by)
+    return {**payload, "created": created}
+
+
+@app.post("/skills/{skill_id}/versions", status_code=status.HTTP_201_CREATED)
+async def register_project_skill_version(
+    skill_id: str,
+    file: UploadFile = File(...),
+    created_by: str = Form(default="local-user", max_length=128),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    payload, created = await _register_uploaded_project_skill(
+        file,
+        db,
+        expected_id=skill_id,
+        created_by=created_by,
+    )
+    return {**payload, "created": created}
+
+
+@app.get("/skills/{skill_id}/versions")
+def project_skill_versions(skill_id: str, db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    try:
+        return [skill.public_payload() for skill in list_project_skill_versions(db, skill_id)]
+    except ValueError as exc:
+        raise HTTPException(404 if "not registered" in str(exc) else 422, str(exc)) from exc
+
+
+@app.post("/skills/{skill_id}/versions/{version_number}/activate")
+def activate_project_skill(
+    skill_id: str,
+    version_number: int,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        skill = activate_project_skill_version(db, skill_id, version_number)
+    except ValueError as exc:
+        raise HTTPException(404 if "not registered" in str(exc) else 422, str(exc)) from exc
+    audit(db, "skill.version_activated", skill.version_id or skill.id, {
+        "skill_id": skill.id,
+        "version": skill.version,
+        "version_number": skill.version_number,
+    })
+    db.commit()
+    return skill.public_payload()
+
+
+@app.put("/skills/{skill_id}/installation")
+def update_project_skill_installation(
+    skill_id: str,
+    enabled: bool,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    try:
+        skill = set_project_skill_enabled(db, skill_id, enabled)
+    except ValueError as exc:
+        raise HTTPException(404 if "not registered" in str(exc) else 422, str(exc)) from exc
+    audit(db, "skill.installation_updated", skill.definition_id or skill.id, {
+        "skill_id": skill.id,
+        "enabled": enabled,
+    })
+    db.commit()
+    return skill.public_payload()
 
 
 @app.get("/workspace/summary")
@@ -1989,7 +2103,8 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         **usage.get("google.localization.pipeline", {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     })
     openai_settings = get_provider_record(db, "openai")
-    openai_configured = bool(openai_settings and provider_is_configured(openai_settings))
+    openai_auth_method = provider_auth_method_key(openai_settings) if openai_settings else "api_key"
+    openai_configured = bool(openai_settings and openai_auth_method == "api_key" and provider_is_configured(openai_settings))
     rows.extend({
         "logical_alias": alias,
         "exact_model_id": model_id,
@@ -2001,6 +2116,29 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         "configuration": "OPENAI_API_KEY configured" if openai_configured else "OPENAI_API_KEY is not set",
         **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in OPENAI_MODEL_REGISTRY.items())
+    chatgpt_configured = bool(openai_settings and openai_auth_method == "chatgpt_oauth" and provider_is_configured(openai_settings))
+    claude_settings = get_provider_record(db, "claude")
+    claude_auth_method = provider_auth_method_key(claude_settings) if claude_settings else "api_key"
+    claude_configured = bool(claude_settings and claude_auth_method == "setup_token" and provider_is_configured(claude_settings))
+    rows.extend({
+        "logical_alias": alias,
+        "exact_model_id": model_id,
+        "provider": "ChatGPT Subscription" if alias.startswith("chatgpt.") else "Claude Code",
+        "modality": "text",
+        "region": "Local Codex CLI" if alias.startswith("chatgpt.") else "Local Claude Code CLI",
+        "status": "active" if (chatgpt_configured if alias.startswith("chatgpt.") else claude_configured) else "disabled",
+        "configured": chatgpt_configured if alias.startswith("chatgpt.") else claude_configured,
+        "configuration": (
+            "Codex ChatGPT login ready"
+            if alias.startswith("chatgpt.") and chatgpt_configured
+            else "Codex ChatGPT login is not ready"
+            if alias.startswith("chatgpt.")
+            else "Claude Code setup token ready"
+            if claude_configured
+            else "Claude Code setup token is not ready"
+        ),
+        **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
+    } for alias, model_id in LOCAL_SUBSCRIPTION_MODEL_REGISTRY.items())
     fal_settings = get_provider_record(db, "fal")
     fal_configured = bool(fal_settings and provider_is_configured(fal_settings))
     rows.extend({

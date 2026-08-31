@@ -122,6 +122,8 @@ Demucs, MediaPipe model download와 대용량 ML 의존성은 optional install p
 
 ## 6. DB 기반 Skill Registry
 
+2026-08-31 구현 상태: 단일 설치 범위의 SkillDefinition/immutable SkillVersion/SkillInstallation DB 모델, bundled idempotent seed, `SKILL.md` 업로드·버전 활성화·설치 토글 API와 관리 UI가 연결됐다. Workspace scope와 코드 실행형 Skill Sandbox는 남아 있다.
+
 ### 6.1 데이터 모델
 
 ```text
@@ -173,6 +175,8 @@ SkillVersion은 생성 후 수정하지 않는다. `skill.execute@1` Node는 실
 - Skill 본문을 일반 관리·Run API 응답이나 로그에 노출하지 않음
 
 ## 7. 로컬 데이터 Seed와 다중 업로드
+
+2026-08-31 구현 상태: 운영자 전용 `python -m app.seed skills|assets --root ...` CLI, dry-run, symlink·hidden/root 이탈 방지, MIME·용량 검증과 Artifact SHA-256 중복 제거가 구현됐다. Browser directory upload와 resumable multipart upload는 남아 있다.
 
 ### 7.1 셀프호스트 Seed
 
@@ -330,8 +334,8 @@ Local profile의 인증 비활성화는 명시적 설정으로만 허용하며 �
 
 ### M3. Portable content
 
-- DB Skill Registry
-- Seed CLI와 browser/CLI batch upload
+- DB Skill Registry 완료, Workspace scope와 Sandbox 남음
+- Local Seed CLI 완료, browser/resumable batch upload 남음
 - `frameflow.package.v1` export/import
 
 ### M4. Open-source release

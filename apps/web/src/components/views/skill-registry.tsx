@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Terminal,
+  Upload,
   X,
 } from "lucide-react";
 
@@ -35,13 +36,16 @@ export function SkillRegistry() {
   const [copiedSkillId, setCopiedSkillId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [selectedVersions, setSelectedVersions] = useState<ProjectSkillRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const skillFileRef = useRef<HTMLInputElement>(null);
 
   const refreshSkills = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      setSkills(await frameflowApi.listSkills());
+      setSkills(await frameflowApi.listSkills(true));
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Skill registry loading failed");
     } finally {
@@ -51,7 +55,7 @@ export function SkillRegistry() {
 
   useEffect(() => {
     let active = true;
-    frameflowApi.listSkills()
+    frameflowApi.listSkills(true)
       .then((rows) => { if (active) setSkills(rows); })
       .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "Skill registry loading failed"); })
       .finally(() => { if (active) setLoading(false); });
@@ -67,6 +71,53 @@ export function SkillRegistry() {
   }, [query, skills]);
 
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) ?? null;
+
+  useEffect(() => {
+    if (!selectedSkillId) return;
+    let active = true;
+    frameflowApi.listSkillVersions(selectedSkillId)
+      .then((versions) => { if (active) setSelectedVersions(versions); })
+      .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "Skill versions loading failed"); });
+    return () => { active = false; };
+  }, [selectedSkillId]);
+
+  const registerSkill = useCallback(async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const registered = await frameflowApi.registerSkill(file);
+      const rows = await frameflowApi.listSkills(true);
+      setSkills(rows);
+      setSelectedSkillId(registered.id);
+      setSelectedVersions(await frameflowApi.listSkillVersions(registered.id));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Skill registration failed");
+    } finally {
+      setUploading(false);
+      if (skillFileRef.current) skillFileRef.current.value = "";
+    }
+  }, []);
+
+  const activateVersion = useCallback(async (skillId: string, versionNumber: number) => {
+    setError(null);
+    try {
+      const activated = await frameflowApi.activateSkillVersion(skillId, versionNumber);
+      setSkills((current) => current.map((item) => item.id === skillId ? activated : item));
+      setSelectedVersions(await frameflowApi.listSkillVersions(skillId));
+    } catch (activateError) {
+      setError(activateError instanceof Error ? activateError.message : "Skill activation failed");
+    }
+  }, []);
+
+  const toggleInstallation = useCallback(async (skill: ProjectSkillRecord) => {
+    setError(null);
+    try {
+      const updated = await frameflowApi.setSkillEnabled(skill.id, !skill.enabled);
+      setSkills((current) => current.map((item) => item.id === skill.id ? updated : item));
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : "Skill installation update failed");
+    }
+  }, []);
 
   const copyInvocation = useCallback(async (skillId: string) => {
     try {
@@ -84,19 +135,21 @@ export function SkillRegistry() {
       <PageHeader
         title="Skill Registry"
         description="워크플로우에서 실행할 수 있는 신뢰된 프로젝트 스킬과 버전을 확인합니다."
-        actions={(
+        actions={<>
+          <input ref={skillFileRef} type="file" accept=".md,text/markdown,text/plain" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void registerSkill(file); }} />
+          <Button type="button" onClick={() => skillFileRef.current?.click()} disabled={uploading}><Upload size={14} />{uploading ? "Registering…" : "Register SKILL.md"}</Button>
           <Button variant="secondary" type="button" onClick={() => void refreshSkills()} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : undefined} size={14} />
             {refreshing ? "Refreshing…" : "Refresh registry"}
           </Button>
-        )}
+        </>}
       />
 
       <Card className="skill-registry-callout">
         <span className="skill-callout-icon"><ShieldCheck size={18} /></span>
         <div>
           <strong>Trusted, project-scoped instructions</strong>
-          <p><code>.codex/skills/&lt;skill-id&gt;/SKILL.md</code>에 등록된 유효한 스킬만 실행 노드에서 선택할 수 있습니다.</p>
+          <p>Bundled·업로드·Seed 경로에서 검증된 Skill은 immutable DB version으로 등록되고 실행 Snapshot에 digest가 고정됩니다.</p>
         </div>
         <Badge variant="success"><span className="skill-status-dot" />{skills.length} available</Badge>
       </Card>
@@ -132,7 +185,7 @@ export function SkillRegistry() {
             <Card className="skill-card" key={skill.id}>
               <div className="skill-card-head">
                 <span className="skill-card-icon"><Sparkles size={18} /></span>
-                <Badge variant="success"><span className="skill-status-dot" />Available</Badge>
+                <Badge variant={skill.enabled && skill.lifecycle === "ACTIVE" ? "success" : "warning"}><span className="skill-status-dot" />{skill.enabled ? skill.lifecycle : "Disabled"}</Badge>
               </div>
               <div className="skill-card-copy">
                 <h3>{skill.display_name}</h3>
@@ -140,15 +193,15 @@ export function SkillRegistry() {
                 <p>{skill.description}</p>
               </div>
               <div className="skill-card-meta">
-                <span><Fingerprint size={13} /> Version <code>{shortVersion(skill.version)}</code></span>
-                <span><FileText size={13} /> SKILL.md</span>
+                <span><Fingerprint size={13} /> v{skill.version_number} <code>{shortVersion(skill.version)}</code></span>
+                <span><FileText size={13} /> {skill.source}</span>
               </div>
               <div className="skill-card-actions">
                 <Button variant="ghost" size="sm" type="button" onClick={() => void copyInvocation(skill.id)}>
                   {copiedSkillId === skill.id ? <Check size={13} /> : <Copy size={13} />}
                   {copiedSkillId === skill.id ? "Copied" : "Copy reference"}
                 </Button>
-                <Button variant="secondary" size="sm" type="button" onClick={() => setSelectedSkillId(skill.id)}>
+                <Button variant="secondary" size="sm" type="button" onClick={() => { setSelectedVersions([]); setSelectedSkillId(skill.id); }}>
                   Details <ArrowRight size={13} />
                 </Button>
               </div>
@@ -161,12 +214,12 @@ export function SkillRegistry() {
         <Card className="skill-registry-empty">
           <span><SearchX size={21} /></span>
           <h3>{skills.length ? "No matching skills" : "No skills registered"}</h3>
-          <p>{skills.length ? "다른 이름이나 스킬 ID로 검색해 보세요." : ".codex/skills 아래에 유효한 SKILL.md를 추가한 뒤 레지스트리를 새로고침하세요."}</p>
+          <p>{skills.length ? "다른 이름이나 스킬 ID로 검색해 보세요." : "SKILL.md를 등록하거나 Seed CLI로 trusted Skill directory를 가져오세요."}</p>
           {query && <Button variant="secondary" size="sm" type="button" onClick={() => setQuery("")}>Clear search</Button>}
         </Card>
       )}
 
-      <Sheet open={Boolean(selectedSkill)} onOpenChange={(open) => { if (!open) setSelectedSkillId(null); }}>
+      <Sheet open={Boolean(selectedSkill)} onOpenChange={(open) => { if (!open) { setSelectedSkillId(null); setSelectedVersions([]); } }}>
         {selectedSkill && (
           <SheetContent className="skill-detail-drawer">
             <SheetDescription className="sr-only">Registration details for {selectedSkill.display_name}</SheetDescription>
@@ -182,17 +235,31 @@ export function SkillRegistry() {
             <div className="skill-detail-body">
               <div className="skill-detail-status">
                 <span><ShieldCheck size={16} /></span>
-                <div><strong>Available for execution</strong><p>The registry parsed and validated this skill successfully.</p></div>
-                <Badge variant="success"><span className="skill-status-dot" />Ready</Badge>
+                <div><strong>{selectedSkill.enabled ? "Available for execution" : "Installation disabled"}</strong><p>The registry parsed, versioned, and stored this Skill in the database.</p></div>
+                <Badge variant={selectedSkill.enabled ? "success" : "warning"}><span className="skill-status-dot" />{selectedSkill.enabled ? "Ready" : "Disabled"}</Badge>
               </div>
 
               <section className="skill-detail-section">
                 <h3>Registration</h3>
                 <dl>
                   <div><dt>Skill ID</dt><dd><code>{selectedSkill.id}</code></dd></div>
+                  <div><dt>Current version</dt><dd><code>v{selectedSkill.version_number}</code></dd></div>
                   <div><dt>Version fingerprint</dt><dd title={selectedSkill.version}><code>{selectedSkill.version}</code></dd></div>
-                  <div><dt>Source</dt><dd><code>.codex/skills/{selectedSkill.id}/SKILL.md</code></dd></div>
+                  <div><dt>Source</dt><dd><code>{selectedSkill.source}</code></dd></div>
+                  <div><dt>Lifecycle</dt><dd><code>{selectedSkill.lifecycle}</code></dd></div>
                 </dl>
+              </section>
+
+              <section className="skill-detail-section">
+                <h3>Immutable versions</h3>
+                <div className="skill-version-list">
+                  {selectedVersions.map((version) => <div key={version.version}>
+                    <span><strong>v{version.version_number}</strong><code title={version.version}>{shortVersion(version.version)}</code></span>
+                    {version.version === selectedSkill.version
+                      ? <Badge variant="success">Current</Badge>
+                      : <Button variant="secondary" size="sm" type="button" onClick={() => void activateVersion(selectedSkill.id, version.version_number)}>Activate</Button>}
+                  </div>)}
+                </div>
               </section>
 
               <section className="skill-detail-section">
@@ -219,6 +286,7 @@ export function SkillRegistry() {
             </div>
 
             <div className="skill-detail-foot">
+              <Button variant="secondary" type="button" onClick={() => void toggleInstallation(selectedSkill)}>{selectedSkill.enabled ? "Disable" : "Enable"}</Button>
               <Button type="button" onClick={() => void copyInvocation(selectedSkill.id)}>
                 {copiedSkillId === selectedSkill.id ? <Check size={14} /> : <Copy size={14} />}
                 {copiedSkillId === selectedSkill.id ? "Reference copied" : "Copy skill reference"}

@@ -6,7 +6,8 @@ import os
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from .database import create_all
+from .database import SessionLocal, create_all
+from .project_skills import ensure_bundled_skills
 from .provider_settings import refresh_provider_environment
 from .canvas_activities import execute_canvas_node_activity, finalize_canvas_run_activity, mark_canvas_waiting_activity, record_canvas_approval_activity, record_canvas_selection_activity
 from .canvas_temporal import CanvasRunWorkflow
@@ -20,6 +21,8 @@ TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "frameflow-generation-v1")
 async def run_worker() -> None:
     create_all()
     refresh_provider_environment()
+    with SessionLocal() as skill_db:
+        ensure_bundled_skills(skill_db)
     retry_seconds = float(os.getenv("TEMPORAL_CONNECT_RETRY_SECONDS", "2"))
     while True:
         try:

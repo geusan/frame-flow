@@ -1,0 +1,80 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "agent.execute",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Local Subscription Agent",
+    "description": "ChatGPT Codex 또는 Claude Code의 로컬 구독 세션으로 연결된 Prompt를 실행",
+    "category": "Quick",
+    "icon": "assistant",
+    "cost_label": "Subscription",
+    "keywords": ["agent", "chatgpt", "codex", "claude code", "subscription", "local"]
+  },
+  "ports": {
+    "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+    "outputs": [{ "key": "text", "type": "data.text.v1", "label": "Response" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["model_alias", "instructions", "timeout_seconds"],
+    "properties": {
+      "model_alias": {
+        "type": "string",
+        "enum": [
+          "chatgpt.local.quality",
+          "chatgpt.local.fast",
+          "claude.local.sonnet",
+          "claude.local.opus",
+          "claude.local.haiku"
+        ],
+        "x-enum-labels": {
+          "chatgpt.local.quality": "ChatGPT · GPT-5.6 Terra",
+          "chatgpt.local.fast": "ChatGPT · GPT-5.6 Luna",
+          "claude.local.sonnet": "Claude Code · Sonnet 4.6",
+          "claude.local.opus": "Claude Code · Opus 4.6",
+          "claude.local.haiku": "Claude Code · Haiku 4.5"
+        },
+        "default": "chatgpt.local.quality",
+        "title": "Subscription model",
+        "description": "Settings에서 연결한 로컬 ChatGPT 또는 Claude Code 구독을 사용합니다.",
+        "x-workflow-input": { "enabled": true, "type": "model_alias" }
+      },
+      "instructions": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 12000,
+        "default": "Follow the connected prompt and return only the useful final result without meta commentary.",
+        "title": "Agent instructions",
+        "description": "매 실행에 적용할 고정 지시입니다.",
+        "x-workflow-input": { "enabled": true, "type": "prompt" }
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 900,
+        "default": 300,
+        "title": "Timeout (seconds)",
+        "description": "로컬 CLI 응답을 기다릴 최대 시간입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "provider",
+    "executor": "local-subscription-agent",
+    "revision": "local-subscription-agent.v1",
+    "provider": "local-subscription",
+    "model_alias": "chatgpt.local.quality",
+    "model_families": ["chatgpt.local.", "claude.local."]
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Text",
+    "schema_id": "agent.response.v1",
+    "input_roles": { "prompt.text.v1": "instruction_prompt" },
+    "output_role": "agent_response"
+  }
+}

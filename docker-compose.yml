@@ -107,6 +107,10 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      CODEX_HOME: /root/.codex
+      CODEX_EXECUTABLE: codex
+      CLAUDE_CODE_EXECUTABLE: claude
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       FAL_KEY: ${FAL_KEY:-}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
@@ -127,6 +131,8 @@ services:
     volumes:
       - demucs_cache:/root/.cache
       - mediapipe_cache:/root/.cache/mediapipe
+      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/root/.codex
+      - ${FRAMEFLOW_IMPORTS_DIR:-./imports}:/imports:ro
 
   temporal-worker:
     build:
@@ -181,6 +187,10 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      CODEX_HOME: /root/.codex
+      CODEX_EXECUTABLE: codex
+      CLAUDE_CODE_EXECUTABLE: claude
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       FAL_KEY: ${FAL_KEY:-}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
@@ -194,6 +204,7 @@ services:
     volumes:
       - demucs_cache:/root/.cache
       - mediapipe_cache:/root/.cache/mediapipe
+      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/root/.codex
 
   web:
     build:

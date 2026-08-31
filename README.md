@@ -16,6 +16,8 @@
 - Workspace 카운트·통합 Run·모델 사용량·Format evidence를 실제 저장 데이터로 표시하는 UI
 - PostgreSQL 기반 Canvas 문서 목록·자동 저장·localStorage 데이터 1회 이관
 - `frameflow.package.v1` 기반 Canvas template export/import와 checksum·ZIP 안전 검증
+- DB 기반 immutable Skill Definition/Version Registry와 `SKILL.md` 관리 UI
+- `/imports` read-only mount를 사용하는 Skill·Asset Seed CLI
 - FastAPI Reference·Format·Generation·Run·Artifact API
 - URL 정규화와 중복 감지, analysis-only 권한 강제
 - Format 추출·변형·가중 병합과 필드별 Lineage
@@ -93,6 +95,20 @@ docker compose up --build
 Compose의 호스트 포트는 `.env`에서 `WEB_PORT`, `API_PORT`, `POSTGRES_PORT`,
 `TEMPORAL_PORT`, `TEMPORAL_UI_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`로 변경할 수 있습니다.
 
+신뢰할 로컬 데이터를 먼저 등록하려면 전용 import directory를 사용합니다.
+
+```bash
+# Host 개발 환경
+IMPORT_ROOT=/absolute/path/to/skills make seed-skills
+IMPORT_ROOT=/absolute/path/to/assets make seed-assets
+
+# Compose 환경: FRAMEFLOW_IMPORTS_DIR가 read-only /imports로 mount됨
+docker compose run --rm api python -m app.seed skills --root /imports --dry-run
+docker compose run --rm api python -m app.seed assets --root /imports
+```
+
+Skill directory는 `<skill-id>/SKILL.md` 구조만 등록합니다. Seed CLI는 symlink, hidden file, root 이탈, 허용되지 않은 MIME과 250 MB 초과 파일을 거부하며 Asset은 SHA-256으로 중복 제거합니다. 일반 HTTP API는 서버의 임의 로컬 경로를 읽지 않습니다.
+
 ## 검증
 
 ```bash
@@ -143,13 +159,22 @@ Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 �
 
 Canvas의 Image, Voiceover, LLM Assistant와 Script 노드는 모델 선택에서 OpenAI를 선택할 수 있습니다. Voiceover는 Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS와 OpenAI GPT-4o Mini TTS, TTS-1, TTS-1 HD를 지원합니다. Gemini API 키 인증에서는 2.5 TTS 별칭이 Developer API의 Preview 모델 ID로, Vertex AI 인증에서는 Google Cloud 모델 ID로 자동 해석됩니다. `OPENAI_API_KEY`를 설정하면 Responses API의 GPT-5.6/ChatGPT Latest, GPT Image 2와 OpenAI TTS 모델이 활성화됩니다. Video Generator는 Veo를 사용합니다.
 
+ChatGPT 또는 Claude 구독은 API Provider와 분리된 `Local Subscription Agent` Node에서 사용합니다. 이 Node는 빈 임시 작업 디렉터리에서 도구를 비활성화하거나 read-only로 제한한 로컬 Codex/Claude Code CLI를 실행하고 Text Artifact를 반환합니다.
+
+1. 로컬 실행은 API와 Worker 호스트에 `codex`, `claude` CLI가 설치되어 있어야 합니다.
+2. ChatGPT: Settings → OpenAI → `ChatGPT OAuth`를 선택하고 실행 호스트에서 `codex login --device-auth`를 완료합니다.
+3. Claude: 호스트에서 `claude setup-token`을 실행하고 Settings → Claude → `Setup token`에 발급 토큰을 저장합니다.
+4. Canvas에서 Prompt → `Local Subscription Agent`를 연결하고 ChatGPT 또는 Claude Code 모델을 선택합니다.
+
+Compose 이미지는 두 CLI를 포함합니다. `docker compose run --rm api codex login --device-auth`로 로그인하면 세션이 `FRAMEFLOW_CODEX_AUTH_DIR`에 영속화되어 API와 Temporal Worker가 함께 사용합니다. Claude setup token은 Settings DB에 write-only로 저장되어 Worker 실행 직전에 `CLAUDE_CODE_OAUTH_TOKEN`으로 주입됩니다.
+
 1. `.env.example`을 `.env`로 복사합니다.
 2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다. API 최초 시작 시 Google/OpenAI 연결 값이 `provider_settings` 테이블로 자동 이관됩니다.
 3. `GENERATION_PROVIDER_MODE`, `REFERENCE_PROVIDER_MODE`, `FORMAT_PROVIDER_MODE`, `SUBTITLE_ALIGNMENT_MODE`, `REFERENCE_ANALYSIS_MODE`가 `live`인지 확인하고 `VIDEO_DOWNLOADER_PROVIDER=yt-dlp`를 설정합니다. 음악 stem이 필요하면 `REFERENCE_AUDIO_SEPARATOR=demucs`와 `demucs` 실행 파일도 준비합니다.
 4. Provider 결과를 반환하기 전에 `provider_request_id`, `provider_operation_id`, `request_hash`를 NodeRun에 저장합니다.
 5. video operation은 제출과 완료를 분리하고 Reconciler가 operation ID로 재연결하게 합니다.
 
-이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다. fal.ai 연결은 서버 전용 `FAL_KEY`를 사용합니다.
+이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI API Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다. 로컬 구독 실행은 `CODEX_EXECUTABLE`, `CODEX_HOME`, `CLAUDE_CODE_EXECUTABLE`, `CLAUDE_CODE_OAUTH_TOKEN`을 사용합니다. fal.ai 연결은 서버 전용 `FAL_KEY`를 사용합니다.
 
 Workflow에는 실제 모델 ID를 넣지 않습니다. 논리적 별칭만 사용하고 Run 생성 시점에 정확한 모델 ID를 Snapshot합니다.
 

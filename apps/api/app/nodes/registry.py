@@ -9,6 +9,7 @@ from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult
 from .executors import (
     FalLoraTrainingExecutor,
     LegacyCompatibilityExecutor,
+    LocalSubscriptionAgentExecutor,
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
     VideoRetimeExecutor,
@@ -101,6 +102,7 @@ node_registry = NodeRegistry(
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
         "legacy-compatibility": LegacyCompatibilityExecutor(),
+        "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),
         "video-retime": VideoRetimeExecutor(),

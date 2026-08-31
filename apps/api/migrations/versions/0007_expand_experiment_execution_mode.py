@@ -13,20 +13,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "experiment_runs",
-        "execution_mode",
-        existing_type=sa.String(32),
-        type_=sa.String(64),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table("experiment_runs") as batch_op:
+        batch_op.alter_column(
+            "execution_mode",
+            existing_type=sa.String(32),
+            type_=sa.String(64),
+            existing_nullable=False,
+        )
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "experiment_runs",
-        "execution_mode",
-        existing_type=sa.String(64),
-        type_=sa.String(32),
-        existing_nullable=False,
-    )
+    with op.batch_alter_table("experiment_runs") as batch_op:
+        batch_op.alter_column(
+            "execution_mode",
+            existing_type=sa.String(64),
+            type_=sa.String(32),
+            existing_nullable=False,
+        )

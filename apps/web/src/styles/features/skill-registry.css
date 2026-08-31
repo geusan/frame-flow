@@ -57,7 +57,12 @@
 .skill-security-note { margin-top: 16px; padding: 10px; border-radius: 8px; background: #f7f6ff; color: var(--brand); display: flex; align-items: flex-start; gap: 8px; }
 .skill-security-note svg { margin-top: 1px; flex: 0 0 auto; }
 .skill-security-note p { margin: 0; color: #77728f; font-size: var(--text-xs); line-height: 1.5; }
-.skill-detail-foot { min-height: 62px; padding: 12px 15px; border-top: 1px solid var(--line); background: #fafaf8; display: flex; align-items: center; justify-content: flex-end; }
+.skill-detail-foot { min-height: 62px; padding: 12px 15px; border-top: 1px solid var(--line); background: #fafaf8; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.skill-version-list { display: flex; flex-direction: column; gap: 7px; }
+.skill-version-list > div { min-height: 39px; padding: 5px 6px 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fafaf8; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.skill-version-list > div > span { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.skill-version-list strong { font-size: var(--text-xs); }
+.skill-version-list code { overflow: hidden; color: var(--ink-faint); font: var(--text-2xs) ui-monospace, monospace; text-overflow: ellipsis; }
 @keyframes skill-skeleton { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
 @media (max-width: 1100px) {

@@ -36,6 +36,7 @@ from .domain import (
 from .nodes import node_registry
 from .nodes.inventory import canvas_only_keys
 from .nodes.port_types import port_type_registry
+from .project_skills import snapshot_skill_parameters
 from .service import audit, new_id
 
 
@@ -305,6 +306,8 @@ def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflo
         if definition.lifecycle in {"RETIRED", "BLOCKED"}:
             raise WorkflowContractError(f"Node cannot be published: {type_key}@{contract_version} is {definition.lifecycle}")
         config = node_registry.resolve_config(definition, legacy_node_config(data, type_key))
+        if type_key == "skill.execute":
+            config = snapshot_skill_parameters(config, db)
         if type_key == "asset.select" and config.get("artifact_id"):
             if not db.get(ArtifactRecord, str(config["artifact_id"])):
                 raise WorkflowContractError(f"input Artifact was not found: {config['artifact_id']}")

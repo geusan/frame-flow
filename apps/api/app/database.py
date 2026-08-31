@@ -263,6 +263,52 @@ class ProviderSettingRecord(Timestamped, Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
+class SkillDefinitionRecord(Timestamped, Base):
+    __tablename__ = "skill_definitions"
+    skill_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(160))
+    description: Mapped[str] = mapped_column(Text)
+    lifecycle: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+    current_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    source: Mapped[str] = mapped_column(String(32), default="database")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+    versions: Mapped[list["SkillVersionRecord"]] = relationship(
+        back_populates="definition",
+        cascade="all, delete-orphan",
+        order_by="SkillVersionRecord.version_number",
+    )
+
+
+class SkillVersionRecord(Timestamped, Base):
+    __tablename__ = "skill_versions"
+    __table_args__ = (
+        UniqueConstraint("skill_definition_id", "version_number", name="uq_skill_version_number"),
+        UniqueConstraint("skill_definition_id", "content_digest", name="uq_skill_version_digest"),
+    )
+    skill_definition_id: Mapped[str] = mapped_column(ForeignKey("skill_definitions.id", ondelete="CASCADE"), index=True)
+    version_number: Mapped[int] = mapped_column(Integer)
+    schema_version: Mapped[str] = mapped_column(String(64), default="project.skill.v1")
+    content_digest: Mapped[str] = mapped_column(String(64), index=True)
+    manifest_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    instruction_body: Mapped[str] = mapped_column(Text)
+    source_archive_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128), default="local-user")
+    definition: Mapped[SkillDefinitionRecord] = relationship(back_populates="versions")
+
+
+class SkillInstallationRecord(Timestamped, Base):
+    __tablename__ = "skill_installations"
+    skill_definition_id: Mapped[str] = mapped_column(
+        ForeignKey("skill_definitions.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    permission_policy_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=lambda: {"mode": "prompt_only", "tools": []}
+    )
+    default_config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
 class AuditEventRecord(Timestamped, Base):
     __tablename__ = "audit_events"
     action: Mapped[str] = mapped_column(String(128), index=True)

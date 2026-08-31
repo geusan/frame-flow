@@ -93,6 +93,13 @@ export interface ProviderSetting {
   description: string;
   enabled: boolean;
   configured: boolean;
+  connection?: {
+    ready: boolean;
+    state: string;
+    message: string;
+    account?: string;
+    plan?: string;
+  };
   auth_method: string;
   auth_methods: ProviderAuthMethod[];
   source: "default" | "environment" | "database";
@@ -128,6 +135,10 @@ export interface ProjectSkillRecord {
   display_name: string;
   description: string;
   version: string;
+  version_number: number;
+  lifecycle: "ACTIVE" | "DEPRECATED" | "RETIRED" | "BLOCKED";
+  source: "bundled" | "upload" | "seed" | "database";
+  enabled: boolean;
 }
 
 export interface CharacterRecord {
@@ -299,6 +310,7 @@ export interface NodeDefinitionRecord {
       minLength?: number;
       maxLength?: number;
       pattern?: string;
+      "x-enum-labels"?: Record<string, string>;
       "x-workflow-input"?: { enabled: boolean; type: string };
     }>;
   };
@@ -590,7 +602,15 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
-  listSkills: () => request<ProjectSkillRecord[]>("/skills"),
+  listSkills: (includeDisabled = false) => request<ProjectSkillRecord[]>(`/skills${includeDisabled ? "?include_disabled=true" : ""}`),
+  registerSkill: (file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<ProjectSkillRecord & { created: boolean }>("/skills", { method: "POST", body });
+  },
+  listSkillVersions: (skillId: string) => request<ProjectSkillRecord[]>(`/skills/${encodeURIComponent(skillId)}/versions`),
+  activateSkillVersion: (skillId: string, version: number) => request<ProjectSkillRecord>(`/skills/${encodeURIComponent(skillId)}/versions/${version}/activate`, { method: "POST" }),
+  setSkillEnabled: (skillId: string, enabled: boolean) => request<ProjectSkillRecord>(`/skills/${encodeURIComponent(skillId)}/installation?enabled=${String(enabled)}`, { method: "PUT" }),
   workspaceSummary: () => request<WorkspaceSummary>("/workspace/summary"),
   listCharacters: () => request<CharacterRecord[]>("/characters"),
   startCharacterLoraTraining: (characterId: string, payload: { trigger_word: string; steps?: number; learning_rate?: number }) => request<CharacterLoraTrainingState>(`/characters/${characterId}/lora-training`, { method: "POST", body: JSON.stringify(payload) }),

@@ -154,7 +154,7 @@ Prompt에 글자를 입력하면 별도 Run 없이 즉시 입력 준비 상태�
 
 Prompt를 수정하면 직접 연결된 기존 생성 결과는 무효화되고 다시 실행 가능한 상태로 바뀐다.
 
-`Skill Executor`는 연결된 Prompt를 프로젝트의 `.codex/skills/*/SKILL.md` 규칙으로 변환해 `Prompt`로 출력한다. 이 출력을 두 번째 `Prompt` 노드에 연결하면 생성된 내용을 그 노드에서 편집할 수 있고, 이미지 입력도 같은 노드에 함께 연결할 수 있다. Inspector에서 등록된 Skill과 Google/OpenAI 텍스트 모델을 선택한다.
+`Skill Executor`는 연결된 Prompt를 DB에 등록된 immutable SkillVersion 규칙으로 변환해 `Prompt`로 출력한다. 이 출력을 두 번째 `Prompt` 노드에 연결하면 생성된 내용을 그 노드에서 편집할 수 있고, 이미지 입력도 같은 노드에 함께 연결할 수 있다. `/settings/skills`에서 `SKILL.md`를 등록하고 과거 버전을 조회·활성화할 수 있으며 Inspector에서는 활성 Skill과 Google/OpenAI 텍스트 모델을 선택한다. 저장소의 `.codex/skills`는 API 최초 기동 시 idempotent하게 DB로 Seed된다.
 
 ```text
 Prompt → Skill Executor → Prompt 2 → Image / Video Generator
@@ -414,6 +414,7 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 - Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS
 - Chirp 3 Speech-to-Text와 Gemini 기반 Translate Video
 - OpenAI Responses API, ChatGPT Latest, GPT Image 2, GPT-4o Mini TTS, TTS-1, TTS-1 HD
+- Local Subscription Agent (`agent.execute@1`): Codex CLI의 ChatGPT 구독 또는 Claude Code setup token으로 Text Artifact 생성
 - 테스트 전용 Fixture Provider
 - yt-dlp Reference Ingest Adapter
 

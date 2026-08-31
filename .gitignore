@@ -3,6 +3,7 @@ node_modules/
 dist/
 .env
 .env.local
+.local/
 compose.override.yaml
 .venv/
 __pycache__/
@@ -11,6 +12,7 @@ __pycache__/
 *.tsbuildinfo
 *.db
 artifacts/
+/imports/
 /output/
 /*.ass
 /*.mp4

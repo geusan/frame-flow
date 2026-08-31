@@ -1,4 +1,4 @@
-.PHONY: setup dev-storage dev-web dev-api test build check
+.PHONY: setup dev-storage dev-web dev-api seed-skills seed-assets test build check
 
 ifneq (,$(wildcard .env))
 include .env
@@ -7,6 +7,7 @@ endif
 
 API_PORT ?= 8000
 MINIO_PORT ?= 9000
+IMPORT_ROOT ?= /imports
 
 setup:
 	python3 -m venv .venv
@@ -22,6 +23,12 @@ dev-storage:
 dev-api: dev-storage
 	cd apps/api && ../../.venv/bin/alembic upgrade head
 	cd apps/api && API_PUBLIC_BASE_URL=$${API_PUBLIC_BASE_URL:-http://localhost:$(API_PORT)} STORAGE_ENDPOINT=$${STORAGE_ENDPOINT:-http://localhost:$(MINIO_PORT)} STORAGE_PUBLIC_ENDPOINT=$${STORAGE_PUBLIC_ENDPOINT:-http://localhost:$(MINIO_PORT)} ../../.venv/bin/uvicorn app.main:app --reload --port $(API_PORT)
+
+seed-skills:
+	cd apps/api && ../../.venv/bin/python -m app.seed skills --root "$(IMPORT_ROOT)"
+
+seed-assets:
+	cd apps/api && ../../.venv/bin/python -m app.seed assets --root "$(IMPORT_ROOT)"
 
 test:
 	cd apps/api && ../../.venv/bin/pytest -q

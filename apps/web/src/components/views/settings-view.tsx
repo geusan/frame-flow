@@ -70,7 +70,7 @@ function providerIcon(provider: ProviderSetting["provider"]): ReactNode {
 }
 
 function authCommand(provider: ProviderSetting["provider"], method: ProviderAuthMethod): string | null {
-  if (provider === "openai" && method.key === "chatgpt_oauth") return "codex login";
+  if (provider === "openai" && method.key === "chatgpt_oauth") return "codex login --device-auth";
   if (provider === "claude" && method.key === "setup_token") return "claude setup-token";
   return null;
 }
@@ -228,6 +228,14 @@ export function SettingsView() {
                 <span>{sourceLabel(provider.source)}</span>
                 <span>Updated {new Date(provider.updated_at).toLocaleString("ko-KR")}</span>
               </div>
+
+              {savedMethodIsSelected && provider.connection && (
+                <p className={`provider-save-message ${provider.connection.ready ? "success" : "error"}`}>
+                  {provider.connection.ready ? <Check size={13} /> : <CircleAlert size={13} />}
+                  {provider.connection.message}
+                  {provider.connection.plan && ` · ${provider.connection.plan}`}
+                </p>
+              )}
 
               {provider.auth_methods.length > 1 && (
                 <div className="provider-auth-section">

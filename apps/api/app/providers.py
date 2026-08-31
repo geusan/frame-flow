@@ -57,12 +57,25 @@ OPENAI_MODEL_REGISTRY = {
     "openai.tts.quality": "tts-1-hd",
 }
 
+LOCAL_SUBSCRIPTION_MODEL_REGISTRY = {
+    "chatgpt.local.quality": "gpt-5.6-terra",
+    "chatgpt.local.fast": "gpt-5.6-luna",
+    "claude.local.sonnet": "claude-sonnet-4-6",
+    "claude.local.opus": "claude-opus-4-6",
+    "claude.local.haiku": "claude-haiku-4-5-20251001",
+}
+
 FAL_MODEL_REGISTRY = {
     "fal.image.flux2-lora": "fal-ai/flux-2/lora",
     "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",
 }
 
-ALL_MODEL_REGISTRY = {**MODEL_REGISTRY, **OPENAI_MODEL_REGISTRY, **FAL_MODEL_REGISTRY}
+ALL_MODEL_REGISTRY = {
+    **MODEL_REGISTRY,
+    **OPENAI_MODEL_REGISTRY,
+    **LOCAL_SUBSCRIPTION_MODEL_REGISTRY,
+    **FAL_MODEL_REGISTRY,
+}
 
 
 def model_id_for_alias(logical_alias: str, *, gemini_api: bool = False) -> str | None:

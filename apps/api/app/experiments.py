@@ -139,7 +139,7 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
         return definition.execution.model_alias, definition.execution.revision
     if is_local_operation(node_key):
         return resolve_local_model(node_key)
-    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.")) else f"google.{model_alias}"
+    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "chatgpt.", "claude.")) else f"google.{model_alias}"
     exact = model_id_for_alias(
         normalized,
         gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
@@ -344,13 +344,16 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     payload = resolve_prompt_image_variables(payload)
     payload = resolve_character_lora_parameters(db, payload)
     if payload.node_key == "skill.execute":
-        payload = payload.model_copy(update={"parameters": snapshot_skill_parameters(payload.parameters)})
+        payload = payload.model_copy(update={"parameters": snapshot_skill_parameters(payload.parameters, db)})
+    definition = node_registry.get(payload.node_key)
+    configured_model_alias = str(payload.parameters.get("model_alias") or "").strip()
+    if definition and not node_registry.uses_legacy_runtime(definition) and configured_model_alias:
+        payload = payload.model_copy(update={"model_alias": configured_model_alias})
     model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key)
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
     if requested_provider and model_alias.startswith(("google.", "openai.", "fal.")) and not model_alias.startswith(f"{requested_provider}."):
         raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")
     validate_model_for_node(payload.node_key, model_alias)
-    definition = node_registry.get(payload.node_key)
     contract_parameters = {key: value for key, value in payload.parameters.items() if key != "provider"}
     normalized_parameters = node_registry.resolve_config(definition, contract_parameters) if definition else payload.parameters
     if definition:

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.database import ProviderSettingRecord, SessionLocal
 from app import provider_settings as provider_settings_module
 from app.google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV
+from app.local_subscription_agents import LocalAuthStatus
 from app.provider_settings import ensure_provider_settings, provider_settings_payload
 from app.providers_localization import GoogleChirp3Recognizer
 
@@ -87,6 +88,15 @@ def test_provider_auth_method_controls_required_secret_and_environment(client: T
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    monkeypatch.setattr(
+        provider_settings_module,
+        "check_local_provider_auth",
+        lambda provider, method, values: (
+            LocalAuthStatus(True, "ready", f"{provider} local subscription ready")
+            if (provider, method) in {("claude", "setup_token"), ("openai", "chatgpt_oauth")}
+            else None
+        ),
+    )
 
     saved = client.put("/settings/providers/claude", json={
         "enabled": True,
@@ -121,7 +131,8 @@ def test_provider_auth_method_controls_required_secret_and_environment(client: T
     })
     assert oauth.status_code == 200
     assert oauth.json()["auth_method"] == "chatgpt_oauth"
-    assert oauth.json()["configured"] is False
+    assert oauth.json()["configured"] is True
+    assert oauth.json()["connection"]["state"] == "ready"
 
     unknown = client.put("/settings/providers/claude", json={
         "enabled": True,

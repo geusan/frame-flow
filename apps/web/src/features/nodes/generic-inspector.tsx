@@ -20,7 +20,7 @@ export function GenericNodeInspector({ definition, value, onChange }: {
       const update = (next: string | number | boolean) => onChange({ ...value, [key]: next });
       if (field.enum?.length) {
         return <label className="field-label" key={key}><span>{label}</span><NativeSelect value={String(current)} onChange={(event) => update(field.type === "integer" || field.type === "number" ? Number(event.target.value) : event.target.value)}>
-          {field.enum.map((option) => <option value={String(option)} key={String(option)}>{String(option)}</option>)}
+          {field.enum.map((option) => <option value={String(option)} key={String(option)}>{field["x-enum-labels"]?.[String(option)] ?? String(option)}</option>)}
         </NativeSelect>{field.description && <small>{field.description}</small>}</label>;
       }
       if (field.type === "boolean") {

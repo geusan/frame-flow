@@ -1,4 +1,5 @@
 {
+  "agent.execute@1": "sha256:d3825abc73997d77bf856c4b522b12bae35f6a8027feff6c4f1d6cfb8232dd62",
   "asset.select@1": "sha256:e7550f81c149bfc86d80c7940ca9c916288fc1ee3eab992fd4e361b9a10a05ca",
   "candidate.select@1": "sha256:06b33887a566219bdf8a12f689cfb96865db10ea7d392f8bff52a731b6696bc5",
   "character.generate@1": "sha256:9ad298386ff8acf6ef51db689cedc253bdd67cb243e2a0edc627e285472c634b",
