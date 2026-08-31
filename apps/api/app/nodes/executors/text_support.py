@@ -37,7 +37,7 @@ def complete_text_execution(
     execution_revision: str,
 ) -> NodeExecutionResult:
     artifact_contract = context.definition.artifact_contract
-    input_artifact_ids, input_roles = _input_lineage(context, typed_inputs)
+    input_artifact_ids, input_roles = input_lineage(context, typed_inputs)
     title = (
         "Generated script"
         if artifact_contract.primary_type == "Script"
@@ -86,7 +86,7 @@ def complete_text_execution(
     )
 
 
-def _input_lineage(context: NodeExecutionContext, typed_inputs: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
+def input_lineage(context: NodeExecutionContext, typed_inputs: list[dict[str, Any]]) -> tuple[list[str], dict[str, str]]:
     artifact_ids: list[str] = []
     roles: dict[str, str] = {}
     for item in typed_inputs:

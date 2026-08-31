@@ -9,6 +9,7 @@ from .motion_segment import MotionSegmentExecutor
 from .video_retime import VideoRetimeExecutor
 from .video_generation import VideoGenerationCapabilityExecutor
 from .text_generation import TextGenerationCapabilityExecutor
+from .speech_generation import SpeechGenerationCapabilityExecutor
 from .xai_text import XAITextCapabilityExecutor
 
 __all__ = [
@@ -23,5 +24,6 @@ __all__ = [
     "VideoRetimeExecutor",
     "VideoGenerationCapabilityExecutor",
     "TextGenerationCapabilityExecutor",
+    "SpeechGenerationCapabilityExecutor",
     "XAITextCapabilityExecutor",
 ]

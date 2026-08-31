@@ -357,6 +357,68 @@ def test_video_generation_routes_through_registry_capability(client: TestClient,
     assert artifact["metadata"]["exact_model_id"] == "gemini-omni-test"
 
 
+def test_google_speech_generation_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeSpeechService:
+        def generate_speech(self, **kwargs):
+            assert kwargs["logical_model"] == "google.tts.fast"
+            assert kwargs["voice_name"] == "Kore"
+            assert kwargs["locale"] == "ko-KR"
+            return GeneratedBinary(b"RIFF-google", "audio/wav", "gemini-tts-test", "google_tts_registry")
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.speech_generation.get_google_generation_services",
+        lambda: FakeSpeechService(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_tts_registry",
+        "node_id": "tts_google",
+        "node_key": "tts.generate",
+        "prompt": "안녕하세요",
+        "model_alias": "google.tts.fast",
+        "parameters": {"voice_name": "Kore", "language": "ko-KR", "style_prompt": "Speak clearly."},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["provider_request_id"] == "google_tts_registry"
+    assert result["cost_usd"] == 0.12
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "audio.generated.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
+
+
+def test_openai_speech_generation_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeSpeechService:
+        def generate_speech(self, **kwargs):
+            assert kwargs["logical_model"] == "openai.tts.default"
+            assert kwargs["voice_name"] == "coral"
+            return b"RIFF-openai", "openai_tts_registry", "gpt-4o-mini-tts"
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.speech_generation.get_openai_generation_services",
+        lambda: FakeSpeechService(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_openai_tts_registry",
+        "node_id": "tts_openai",
+        "node_key": "tts.generate",
+        "prompt": "Hello",
+        "model_alias": "openai.tts.default",
+        "parameters": {"voice_name": "coral", "language": "en-US", "style_prompt": "Speak clearly."},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["provider_request_id"] == "openai_tts_registry"
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "audio.generated.v1"
+    assert artifact["metadata"]["provider"] == "openai"
+
+
 def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):
     class FakeOpenAIServices:
         def generate_text(self, *, logical_model, prompt, instructions):

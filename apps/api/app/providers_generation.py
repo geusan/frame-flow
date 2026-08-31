@@ -217,6 +217,24 @@ class GoogleGenerationServices:
             poll_interval_seconds=float(os.getenv("GOOGLE_VIDEO_POLL_SECONDS", "10")),
         )
 
+    def generate_speech(
+        self,
+        *,
+        logical_model: str,
+        text: str,
+        style_prompt: str,
+        voice_name: str,
+        locale: str,
+    ) -> GeneratedBinary:
+        generated = self.tts.synthesize(
+            text=text,
+            style_prompt=style_prompt,
+            voice_name=voice_name,
+            locale=locale,
+            logical_model=logical_model,
+        )
+        return GeneratedBinary(_audio_to_wav(generated), "audio/wav", generated.exact_model_id, generated.provider_request_id)
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
         input_ids = [item.artifact_id for item in inputs]
@@ -281,17 +299,16 @@ class GoogleGenerationServices:
             )
 
         if payload.node_key == "tts.generate":
-            generated = self.tts.synthesize(
+            generated = self.generate_speech(
+                logical_model=logical_model,
                 text=payload.prompt,
                 style_prompt=str(payload.parameters.get("style_prompt") or "Read naturally and clearly for a short-form video."),
                 voice_name=str(payload.parameters.get("voice_name") or "Kore"),
                 locale=str(payload.parameters.get("language") or "ko-KR"),
-                logical_model=logical_model,
             )
-            wav = _audio_to_wav(generated)
             return LiveGenerationResult(
                 {"kind": "audio", "title": "Generated voiceover", "mimeType": "audio/wav"},
-                "Audio", "google.tts.v1", generated.provider_request_id, wav,
+                "Audio", "google.tts.v1", generated.provider_request_id, generated.data,
                 "audio/wav", "voiceover.wav", input_ids,
             )
 

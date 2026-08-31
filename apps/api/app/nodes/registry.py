@@ -16,6 +16,7 @@ from .executors import (
     LocalSubscriptionAgentExecutor,
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
+    SpeechGenerationCapabilityExecutor,
     TextGenerationCapabilityExecutor,
     VideoRetimeExecutor,
     VideoGenerationCapabilityExecutor,
@@ -115,7 +116,7 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
-        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor())),
+        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor())),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),

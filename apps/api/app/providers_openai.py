@@ -141,6 +141,33 @@ class OpenAIGenerationServices:
             tuple(generated_assets),
         )
 
+    def generate_speech(
+        self,
+        *,
+        logical_model: str,
+        text: str,
+        voice_name: str,
+        style_prompt: str,
+    ) -> tuple[bytes, str, str]:
+        try:
+            exact_model = OPENAI_MODEL_REGISTRY[logical_model]
+        except KeyError as exc:
+            raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
+        speech_request = {
+            "model": exact_model,
+            "voice": voice_name,
+            "input": text,
+            "response_format": "wav",
+        }
+        if exact_model.startswith("gpt-4o-mini-tts"):
+            speech_request["instructions"] = style_prompt
+        response = self.client.audio.speech.create(**speech_request)
+        audio = bytes(response.content)
+        if not audio:
+            raise RuntimeError("OpenAI Speech API returned no audio")
+        request_id = f"openai_{hashlib.sha256((text + exact_model).encode()).hexdigest()[:20]}"
+        return audio, request_id, exact_model
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias
         try:
@@ -202,22 +229,12 @@ class OpenAIGenerationServices:
             )
 
         if payload.node_key == "tts.generate":
-            speech_request = {
-                "model": exact_model,
-                "voice": str(payload.parameters.get("voice_name") or "coral"),
-                "input": payload.prompt,
-                "response_format": "wav",
-            }
-            if exact_model.startswith("gpt-4o-mini-tts"):
-                speech_request["instructions"] = str(
-                    payload.parameters.get("style_prompt")
-                    or "Speak naturally and clearly for a short-form video."
-                )
-            response = self.client.audio.speech.create(**speech_request)
-            audio = bytes(response.content)
-            if not audio:
-                raise RuntimeError("OpenAI Speech API returned no audio")
-            request_id = f"openai_{hashlib.sha256((payload.prompt + exact_model).encode()).hexdigest()[:20]}"
+            audio, request_id, _ = self.generate_speech(
+                logical_model=logical_model,
+                text=payload.prompt,
+                voice_name=str(payload.parameters.get("voice_name") or "coral"),
+                style_prompt=str(payload.parameters.get("style_prompt") or "Speak naturally and clearly for a short-form video."),
+            )
             return LiveGenerationResult(
                 {"kind": "audio", "title": "Generated voiceover", "mimeType": "audio/wav"},
                 "Audio", "openai.tts.v1", request_id, audio, "audio/wav", "voiceover.wav", input_ids,
