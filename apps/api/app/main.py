@@ -76,6 +76,7 @@ from .domain import (
     utc_now,
 )
 from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
+from .canvas_documents import canonical_canvas_graph, canonicalize_canvas_document, legacy_canvas_graph
 from .artifact_lineage import artifact_lineage_graph
 from .character_lora import character_lora_state, refresh_character_lora_training, start_character_lora_training as submit_character_lora_training
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
@@ -256,7 +257,7 @@ def workspace_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 def canvas_document_payload(record: CanvasRecord, last_run: CanvasRunRecord | None = None) -> dict[str, Any]:
-    graph = record.graph_json or {}
+    graph = legacy_canvas_graph(record.graph_json)
     return {
         "id": record.id,
         "created_at": record.created_at,
@@ -271,6 +272,11 @@ def canvas_document_payload(record: CanvasRecord, last_run: CanvasRunRecord | No
         "base_version_id": record.base_version_id,
         "revision": record.revision,
         "draft_contract": record.draft_contract_json or DEFAULT_DRAFT_CONTRACT,
+        "storage_schema_version": (
+            str((record.graph_json or {}).get("schema_version"))
+            if (record.graph_json or {}).get("schema_version")
+            else "canvas.legacy.v1"
+        ),
         "last_run": ({
             "id": last_run.id,
             "status": last_run.status,
@@ -295,7 +301,7 @@ def create_canvas_document(payload: CanvasDocumentRequest, db: Session = Depends
     record = CanvasRecord(
         id=new_id("canvas"),
         name=payload.name,
-        graph_json={"nodes": payload.nodes, "edges": payload.edges},
+        graph_json=canonicalize_canvas_document(payload.nodes, payload.edges),
         active_run_id=payload.active_run_id,
         revision=1,
         draft_contract_json=payload.draft_contract or DEFAULT_DRAFT_CONTRACT,
@@ -329,16 +335,20 @@ def save_canvas_document(canvas_id: str, payload: CanvasDocumentRequest, db: Ses
             created_at=utc_now(),
             updated_at=utc_now(),
             name=payload.name,
-            graph_json={},
+            graph_json=canonicalize_canvas_document([], []),
             revision=1,
             draft_contract_json=payload.draft_contract or DEFAULT_DRAFT_CONTRACT,
         )
         db.add(record)
     elif payload.expected_revision is not None and record.revision != payload.expected_revision:
         raise HTTPException(409, f"Canvas revision conflict: expected {payload.expected_revision}, current {record.revision}")
-    next_graph = {"nodes": payload.nodes, "edges": payload.edges}
+    next_graph = canonicalize_canvas_document(payload.nodes, payload.edges)
     next_contract = payload.draft_contract if payload.draft_contract is not None else (record.draft_contract_json or DEFAULT_DRAFT_CONTRACT)
-    definition_changed = record.name != payload.name or record.graph_json != next_graph or record.draft_contract_json != next_contract
+    definition_changed = (
+        record.name != payload.name
+        or canonical_canvas_graph(record.graph_json) != canonical_canvas_graph(next_graph)
+        or record.draft_contract_json != next_contract
+    )
     record.name = payload.name
     record.graph_json = next_graph
     record.draft_contract_json = next_contract

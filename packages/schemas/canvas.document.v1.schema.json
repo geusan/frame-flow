@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.dev/schemas/canvas.document.v1.schema.json",
+  "title": "Frameflow Canvas Document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "graph", "runtime"],
+  "properties": {
+    "schema_version": { "const": "canvas.document.v1" },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "nodes", "elements", "edges"],
+      "properties": {
+        "schema_version": { "const": "canvas.graph.v1" },
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "elements": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/element" }
+        },
+        "edges": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/edge" }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "nodes"],
+      "properties": {
+        "schema_version": { "const": "canvas.runtime.v1" },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": { "type": "object" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "position": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["order", "position", "label", "description", "react_flow"],
+      "properties": {
+        "order": { "type": "integer", "minimum": 0 },
+        "position": { "$ref": "#/$defs/position" },
+        "label": { "type": "string" },
+        "description": { "type": "string" },
+        "react_flow": { "type": "object" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type_key", "contract_version", "definition_digest", "config", "execution", "ui", "editor"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "type_key": { "type": "string" },
+        "contract_version": { "type": "integer", "minimum": 1 },
+        "definition_digest": { "type": ["string", "null"] },
+        "config": { "type": "object" },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["model_alias", "provider"],
+          "properties": {
+            "model_alias": { "type": "string" },
+            "provider": { "type": "string" }
+          }
+        },
+        "ui": { "$ref": "#/$defs/ui" },
+        "editor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["legacy_data"],
+          "properties": {
+            "legacy_data": { "type": "object" }
+          }
+        },
+        "unknown": { "type": "boolean" }
+      }
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "element_type", "ui", "editor"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "element_type": { "type": "string", "minLength": 1 },
+        "ui": { "$ref": "#/$defs/ui" },
+        "editor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["data"],
+          "properties": {
+            "data": { "type": "object" }
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "source_port", "target_port", "ui"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "source_port": { "type": ["string", "null"] },
+        "target_port": { "type": ["string", "null"] },
+        "ui": { "type": "object" }
+      }
+    }
+  }
+}

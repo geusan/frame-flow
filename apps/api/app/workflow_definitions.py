@@ -10,6 +10,12 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .canvas_documents import (
+    canonicalize_canvas_document,
+    legacy_canvas_graph,
+    legacy_node_config,
+    logical_model_alias,
+)
 from .database import (
     ArtifactRecord,
     CanvasRecord,
@@ -41,35 +47,6 @@ DEFAULT_DRAFT_CONTRACT = {
     "bindings": [],
     "outputs": [],
 }
-
-LEGACY_CONFIG_FIELDS = {
-    "resolution": "resolution",
-    "aspectRatio": "aspect_ratio",
-    "batchSize": "output_count",
-    "characterName": "character_name",
-    "shotCount": "shot_count",
-    "durationSeconds": "duration_seconds",
-    "loraUrl": "lora_url",
-    "loraScale": "lora_scale",
-    "triggerWord": "trigger_word",
-    "transition": "transition",
-    "targetDurationSeconds": "target_duration_seconds",
-    "sourceLanguage": "source_language",
-    "separateMusic": "separate_music",
-    "sceneThreshold": "scene_threshold",
-    "motionSampleFps": "motion_sample_fps",
-    "motionMaxWidth": "motion_max_width",
-    "motionMinConfidence": "motion_min_confidence",
-    "motionFaceBlendshapes": "motion_face_blendshapes",
-    "targetLanguage": "target_language",
-    "voiceName": "voice_name",
-    "captionX": "caption_x",
-    "captionY": "caption_y",
-    "captionAlign": "caption_align",
-    "captionFontSize": "caption_font_size",
-    "skillId": "skill_id",
-}
-
 
 class WorkflowContractError(ValueError):
     pass
@@ -155,7 +132,7 @@ def create_workflow_definition(db: Session, payload: WorkflowCreateRequest) -> W
         canvas = CanvasRecord(
             id=new_id("canvas"),
             name=payload.name,
-            graph_json={"nodes": [], "edges": []},
+            graph_json=canonicalize_canvas_document([], []),
             active_run_id=None,
             revision=1,
             draft_contract_json=deepcopy(DEFAULT_DRAFT_CONTRACT),
@@ -196,33 +173,6 @@ def update_workflow_definition(db: Session, record: WorkflowDefinitionRecord, pa
     db.commit()
     db.refresh(record)
     return record
-
-
-def _legacy_config(data: dict[str, Any], type_key: str) -> dict[str, Any]:
-    config = dict(data.get("config") or data.get("parameters") or {})
-    for source, target in LEGACY_CONFIG_FIELDS.items():
-        if target not in config and data.get(source) is not None:
-            config[target] = data[source]
-    if type_key in {"prompt.input", "generation.brief"}:
-        config.setdefault("text", str(data.get("configText") or ""))
-    if type_key == "asset.select":
-        artifact_ids = list(data.get("outputArtifactIds") or [])
-        config.setdefault("artifact_id", str(data.get("configText") or (artifact_ids[0] if artifact_ids else "")))
-        config.setdefault("artifact_type", str(data.get("outputType") or "ReferenceAsset"))
-    if type_key == "character.select":
-        artifact_ids = list(data.get("outputArtifactIds") or [])
-        config.setdefault("character_id", str(data.get("configText") or (artifact_ids[0] if artifact_ids else "")))
-    if type_key == "format.profile":
-        config.setdefault("format_id", str(data.get("configText") or ""))
-    return config
-
-
-def _logical_model_alias(data: dict[str, Any], default_alias: str, provider: str) -> str:
-    value = str(data.get("model") or default_alias)
-    if value.startswith(("google.", "openai.", "fal.", "local.", "reference-analysis.")):
-        return value
-    selected_provider = str(data.get("provider") or provider or "google")
-    return f"{selected_provider}.{value}" if selected_provider in {"google", "openai", "fal"} else value
 
 
 def _normalize_contract(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -311,7 +261,7 @@ def _assert_acyclic(node_ids: set[str], edges: list[dict[str, Any]]) -> None:
 
 
 def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflowVersion:
-    raw_graph = canvas.graph_json or {}
+    raw_graph = legacy_canvas_graph(canvas.graph_json)
     raw_nodes = list(raw_graph.get("nodes") or [])
     raw_edges = list(raw_graph.get("edges") or [])
     raw_ids = [str(node.get("id") or "") for node in raw_nodes]
@@ -354,7 +304,7 @@ def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflo
             raise WorkflowContractError(f"Node Definition was not found: {type_key}@{contract_version}")
         if definition.lifecycle in {"RETIRED", "BLOCKED"}:
             raise WorkflowContractError(f"Node cannot be published: {type_key}@{contract_version} is {definition.lifecycle}")
-        config = node_registry.resolve_config(definition, _legacy_config(data, type_key))
+        config = node_registry.resolve_config(definition, legacy_node_config(data, type_key))
         if type_key == "asset.select" and config.get("artifact_id"):
             if not db.get(ArtifactRecord, str(config["artifact_id"])):
                 raise WorkflowContractError(f"input Artifact was not found: {config['artifact_id']}")
@@ -368,7 +318,7 @@ def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflo
             "definition_digest": definition.definition_digest,
             "config": config,
             "runtime": {
-                "model_alias": _logical_model_alias(data, definition.execution.model_alias, definition.execution.provider),
+                "model_alias": logical_model_alias(data, definition.execution.model_alias, definition.execution.provider),
                 "provider": str(data.get("provider") or definition.execution.provider),
             },
             "ui": {

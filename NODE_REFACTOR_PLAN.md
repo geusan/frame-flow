@@ -11,11 +11,11 @@ Status: Proposed
 - Phase 0 완료: 35개 기존 key를 30개 production contract와 5개 Canvas-only 요소로 고정했다.
 - Phase 1 완료: Node Definition Schema, Port Type Registry, immutable digest와 Registry API가 있다.
 - Phase 2 완료: production Node 30개에 `@1` Manifest를 등록했고 Legacy Pipeline 8개는 `DEPRECATED`다.
-- Phase 3 진행 중: Registry-native Node와 Legacy Canvas Adapter가 공존한다. Canonical Canvas 저장 shape 분리는 아직 남았다.
+- Phase 3 진행 중: 신규 Canvas 저장은 `canvas.document.v1`의 Canonical Node/Canvas element/Runtime sidecar로 분리되고 기존 Canvas는 다음 저장 시 전환된다. Web은 아직 Legacy React Flow Adapter payload를 사용한다.
 - Phase 4 진행 중: 신규 Node 6개는 native Executor, 기존 Node 26개는 `legacy-compatibility` Executor Adapter를 사용한다.
 - Phase 5 진행 중: Registry-native Generic Inspector와 관리 화면이 연결됐지만 기존 `nodeTemplates` Source of Truth 제거는 남았다.
 - Phase 6 Backend/Web 수직 단면 완료: WorkflowVersion Publish, Annotation, Version Run, Frozen Viewer, `Expose as input`과 Artifact/Character Picker Run Form이 연결됐다. Prompt Template 다중 binding과 복수 Output 선택 UX는 남았다.
-- Phase 7 미착수: Legacy write 제거와 Architecture CI guard가 남았다.
+- Phase 7 진행 중: Canvas의 직접 Legacy JSON literal write를 막는 Architecture test가 추가됐다. Web Legacy write payload, `nodeTemplates` Source of Truth와 중앙 dispatch 제거는 남았다.
 
 ## 1. 목적
 
