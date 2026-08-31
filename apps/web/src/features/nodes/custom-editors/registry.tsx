@@ -254,30 +254,42 @@ function CandidateEditor({ onOpenCandidate }: NodeCustomEditorProps) {
   return <button className="candidate-preview-button" type="button" onClick={onOpenCandidate}><span className="candidate-stack"><i /><i /><i /></span><span><strong>Open candidate grid</strong><small>Compare connected video outputs</small></span><ChevronRight size={16} /></button>;
 }
 
-// Phase 5 compatibility adapter: existing immutable contracts declare
-// editor.kind=legacy. Pin every editor to type_key@contract_version so a future
-// contract cannot silently inherit an older UI. Phase 7 can replace these
-// entries with explicit Manifest editor refs after the protocol supports them.
-const legacyCustomEditorRegistry: Record<string, (props: NodeCustomEditorProps) => ReactNode> = {
-  "image.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "lora.image.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "character.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "video.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "tts.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "llm.assistant@1": (props) => <ProviderGenerationEditor {...props} />,
-  "llm.assistant@2": (props) => <ProviderGenerationEditor {...props} />,
-  "skill.execute@1": (props) => <ProviderGenerationEditor {...props} />,
-  "skill.execute@2": (props) => <ProviderGenerationEditor {...props} />,
-  "script.generate@1": (props) => <ProviderGenerationEditor {...props} />,
-  "script.generate@2": (props) => <ProviderGenerationEditor {...props} />,
-  "video.edit@1": (props) => <VideoEditor {...props} />,
-  "timeline.compose@1": (props) => <CaptionLayoutCustomEditor {...props} />,
-  "video.translate@1": (props) => <VideoTranslateEditor {...props} />,
-  "reference.decompose@1": (props) => <ReferenceAnalysisEditor {...props} />,
-  "motion.extract@1": (props) => <MotionExtractorEditor {...props} />,
-  "candidate.select@1": (props) => <CandidateEditor {...props} />,
+const customEditorRegistry: Record<string, (props: NodeCustomEditorProps) => ReactNode> = {
+  "provider-generation": (props) => <ProviderGenerationEditor {...props} />,
+  "video-edit": (props) => <VideoEditor {...props} />,
+  "caption-layout": (props) => <CaptionLayoutCustomEditor {...props} />,
+  "video-translate": (props) => <VideoTranslateEditor {...props} />,
+  "reference-analysis": (props) => <ReferenceAnalysisEditor {...props} />,
+  "motion-extractor": (props) => <MotionExtractorEditor {...props} />,
+  "candidate-selection": (props) => <CandidateEditor {...props} />,
+};
+
+// Existing immutable contracts declare editor.kind=legacy. This exact-version
+// adapter preserves their digests while new contracts can declare a custom ref
+// directly in the Manifest.
+const legacyEditorRefAdapter: Record<string, string> = {
+  "image.generate@1": "provider-generation",
+  "lora.image.generate@1": "provider-generation",
+  "character.generate@1": "provider-generation",
+  "video.generate@1": "provider-generation",
+  "tts.generate@1": "provider-generation",
+  "llm.assistant@1": "provider-generation",
+  "llm.assistant@2": "provider-generation",
+  "skill.execute@1": "provider-generation",
+  "skill.execute@2": "provider-generation",
+  "script.generate@1": "provider-generation",
+  "script.generate@2": "provider-generation",
+  "video.edit@1": "video-edit",
+  "timeline.compose@1": "caption-layout",
+  "video.translate@1": "video-translate",
+  "reference.decompose@1": "reference-analysis",
+  "motion.extract@1": "motion-extractor",
+  "candidate.select@1": "candidate-selection",
 };
 
 export function renderCustomEditor(definition: NodeDefinitionRecord, props: NodeCustomEditorProps): ReactNode | undefined {
-  return legacyCustomEditorRegistry[`${definition.type_key}@${definition.contract_version}`]?.(props);
+  const ref = definition.editor.kind === "custom"
+    ? definition.editor.ref
+    : legacyEditorRefAdapter[`${definition.type_key}@${definition.contract_version}`];
+  return ref ? customEditorRegistry[ref]?.(props) : undefined;
 }

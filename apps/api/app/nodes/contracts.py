@@ -61,7 +61,16 @@ class NodeExecution(BaseModel):
 class NodeEditor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["generic", "legacy"]
+    kind: Literal["generic", "legacy", "custom"]
+    ref: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+
+    @model_validator(mode="after")
+    def validate_ref(self) -> "NodeEditor":
+        if self.kind == "custom" and not self.ref:
+            raise ValueError("custom editor requires ref")
+        if self.kind != "custom" and self.ref is not None:
+            raise ValueError(f"{self.kind} editor cannot declare ref")
+        return self
 
 
 class NodeArtifactContract(BaseModel):
@@ -117,7 +126,7 @@ class NodeDefinition(BaseModel):
 
     @property
     def definition_digest(self) -> str:
-        payload = self.model_dump(mode="json")
+        payload = self._contract_payload()
         # model_families was added as backward-compatible capability metadata.
         # Do not rewrite digests for already published fixed-model contracts.
         if not payload["execution"]["model_families"]:
@@ -126,7 +135,13 @@ class NodeDefinition(BaseModel):
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
     def public_payload(self) -> dict[str, Any]:
-        return {**self.model_dump(mode="json"), "definition_digest": self.definition_digest}
+        return {**self._contract_payload(), "definition_digest": self.definition_digest}
+
+    def _contract_payload(self) -> dict[str, Any]:
+        payload = self.model_dump(mode="json")
+        if payload["editor"].get("ref") is None:
+            payload["editor"].pop("ref")
+        return payload
 
 
 @dataclass(frozen=True)

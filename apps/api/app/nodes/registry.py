@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
+from .editor_refs import node_editor_ref_registry
 from .executors import (
     FalLoraTrainingExecutor,
     LegacyCompatibilityExecutor,
@@ -30,6 +31,8 @@ class NodeRegistry:
                     raise ValueError(f"duplicate Node Definition: {definition.type_key}@{definition.contract_version}")
                 if definition.execution.executor not in executors:
                     raise ValueError(f"unregistered Node executor: {definition.execution.executor}")
+                if definition.editor.kind == "custom" and not node_editor_ref_registry.contains(str(definition.editor.ref)):
+                    raise ValueError(f"unregistered Node editor ref: {definition.editor.ref}")
                 self._definitions[key] = definition
 
     def list(self, *, lifecycle: str | None = None) -> list[NodeDefinition]:

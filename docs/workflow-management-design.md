@@ -1005,6 +1005,10 @@ Migration이 없는 Breaking change는 자동 Upgrade하지 않고 새 Node로 �
 
 Caption layout, Drawing Canvas, Asset Picker처럼 상호작용이 복잡한 Node만 Custom Editor가 필요하다. Custom Editor가 설치되지 않은 환경에서도 Generic Inspector 또는 읽기 전용 Fallback으로 Workflow 구조와 설정을 볼 수 있어야 한다.
 
+Custom Editor를 사용하는 신규 계약은 `editor.kind=custom`과 안정적인 `editor.ref`를 Manifest에 선언한다. `editor.ref`는 서버 소유 catalog에 먼저 등록하며 API Node Registry는 시작 시 ref 존재 여부를 검증한다. Web Custom Editor Registry 구현과 catalog의 불일치는 Architecture test에서 실패한다.
+
+이미 게시 가능한 상태로 배포된 `editor.kind=legacy` 계약은 editor metadata만 바꾸기 위해 같은 contract version을 덮어쓰지 않는다. 기존 definition digest를 유지한 채 `type_key@contract_version` Legacy Adapter로 Custom Editor ref에 연결하고, 새 contract부터 명시적인 Manifest ref를 사용한다. ref 구현이 없거나 로드되지 않으면 저장 Config를 삭제하지 않고 read-only fallback으로 연다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.

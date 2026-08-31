@@ -323,7 +323,7 @@ export interface NodeDefinitionRecord {
     model_alias: string;
     model_families: string[];
   };
-  editor: { kind: string };
+  editor: { kind: "generic" | "legacy" | "custom"; ref?: string };
   artifact_contract: {
     primary_type: string;
     schema_id: string;

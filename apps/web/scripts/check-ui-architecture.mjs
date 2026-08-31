@@ -59,15 +59,29 @@ if (/\bnodeKey\b|\bnode_key\b/.test(modelOptions)) {
 
 const customEditorRegistryPath = join(sourceRoot, "features", "nodes", "custom-editors", "registry.tsx");
 const customEditorRegistry = readFileSync(customEditorRegistryPath, "utf8");
-const customEditorIds = [...customEditorRegistry.matchAll(/^\s*"([a-z][a-z0-9_.]*@[1-9][0-9]*)":/gm)].map((match) => match[1]);
+const implementedEditorRefs = new Set([...customEditorRegistry.matchAll(/^\s*"([a-z][a-z0-9-]*)": \(props\) =>/gm)].map((match) => match[1]));
+const legacyEditorMappings = [...customEditorRegistry.matchAll(/^\s*"([a-z][a-z0-9_.]*@[1-9][0-9]*)": "([a-z][a-z0-9-]*)",/gm)].map((match) => ({ contractId: match[1], ref: match[2] }));
 const definitionsRoot = resolve(projectRoot, "..", "api", "app", "nodes", "definitions");
-const definitionIds = new Set(readdirSync(definitionsRoot).filter((entry) => entry.endsWith(".json")).flatMap((entry) => {
+const definitions = readdirSync(definitionsRoot).filter((entry) => entry.endsWith(".json")).flatMap((entry) => {
   const document = JSON.parse(readFileSync(join(definitionsRoot, entry), "utf8"));
-  const definitions = Array.isArray(document) ? document : [document];
-  return definitions.map((definition) => `${definition.type_key}@${definition.contract_version}`);
-}));
-for (const editorId of customEditorIds) {
-  if (!definitionIds.has(editorId)) violations.push(`src/features/nodes/custom-editors/registry.tsx: unknown Node contract ${editorId}`);
+  return Array.isArray(document) ? document : [document];
+});
+const definitionIds = new Set(definitions.map((definition) => `${definition.type_key}@${definition.contract_version}`));
+const editorCatalogPath = resolve(projectRoot, "..", "api", "app", "nodes", "editor_refs.v1.json");
+const editorCatalog = JSON.parse(readFileSync(editorCatalogPath, "utf8"));
+const catalogRefs = new Set(editorCatalog.refs);
+for (const ref of catalogRefs) {
+  if (!implementedEditorRefs.has(ref)) violations.push(`src/features/nodes/custom-editors/registry.tsx: missing implementation for editor ref ${ref}`);
+}
+for (const ref of implementedEditorRefs) {
+  if (!catalogRefs.has(ref)) violations.push(`src/features/nodes/custom-editors/registry.tsx: unregistered editor ref ${ref}`);
+}
+for (const mapping of legacyEditorMappings) {
+  if (!definitionIds.has(mapping.contractId)) violations.push(`src/features/nodes/custom-editors/registry.tsx: unknown Node contract ${mapping.contractId}`);
+  if (!catalogRefs.has(mapping.ref)) violations.push(`src/features/nodes/custom-editors/registry.tsx: unknown legacy editor ref ${mapping.ref}`);
+}
+for (const definition of definitions.filter((item) => item.editor?.kind === "custom")) {
+  if (!implementedEditorRefs.has(definition.editor.ref)) violations.push(`src/features/nodes/custom-editors/registry.tsx: missing Manifest editor ${definition.editor.ref}`);
 }
 
 if (violations.length) {

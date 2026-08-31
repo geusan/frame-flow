@@ -15,9 +15,11 @@ from app.experiments import request_fingerprint, resolve_model
 from app.motion_control_video import MOTION_CONTROL_VIDEO_REVISION, RenderedMotionControlVideo, parse_motion_track, render_motion_control_video
 from app.motion_segmentation import MOTION_SEGMENT_REVISION, segment_motion_track
 from app.nodes import node_registry
-from app.nodes.contracts import NodeExecutionContext
+from app.nodes.contracts import NodeDefinition, NodeExecutionContext
+from app.nodes.editor_refs import node_editor_ref_registry
 from app.nodes.inventory import canvas_only_keys, load_node_inventory, production_node_keys
 from app.nodes.port_types import port_type_registry
+from app.nodes.registry import NodeRegistry
 from app.nodes.executors import lora_train as lora_train_module
 from app.nodes.executors.lora_train import FalLoraTrainingExecutor
 from app.nodes.executors import motion_control_video as motion_control_module
@@ -102,6 +104,41 @@ def test_all_node_definition_digests_match_the_v1_golden_snapshot():
         for definition in node_registry.list()
     }
     assert actual == expected
+
+
+def test_custom_editor_contract_requires_a_registered_ref(tmp_path):
+    source = node_registry.get("image.generate", 1)
+    assert source is not None
+    payload = source.model_dump(mode="json")
+    payload["editor"] = {"kind": "custom", "ref": "provider-generation"}
+    definition = NodeDefinition.model_validate(payload)
+    assert definition.editor.ref == "provider-generation"
+    assert node_editor_ref_registry.contains("provider-generation")
+    assert definition.public_payload()["editor"] == {"kind": "custom", "ref": "provider-generation"}
+
+    payload["editor"] = {"kind": "custom"}
+    with pytest.raises(ValueError, match="custom editor requires ref"):
+        NodeDefinition.model_validate(payload)
+
+    payload["editor"] = {"kind": "generic", "ref": "provider-generation"}
+    with pytest.raises(ValueError, match="generic editor cannot declare ref"):
+        NodeDefinition.model_validate(payload)
+
+    payload["editor"] = {"kind": "custom", "ref": "missing-editor"}
+    (tmp_path / "custom.json").write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="unregistered Node editor ref: missing-editor"):
+        NodeRegistry(definitions_dir=tmp_path, executors={"legacy-compatibility": object()})
+    payload["editor"]["ref"] = "provider-generation"
+    (tmp_path / "custom.json").write_text(json.dumps(payload))
+    assert NodeRegistry(definitions_dir=tmp_path, executors={"legacy-compatibility": object()}).get("image.generate", 1) is not None
+
+
+def test_legacy_editor_payload_and_digest_remain_backward_compatible():
+    definition = node_registry.get("image.generate", 1)
+    assert definition is not None
+    assert definition.editor.kind == "legacy"
+    assert definition.editor.ref is None
+    assert definition.public_payload()["editor"] == {"kind": "legacy"}
 
 
 def test_node_definition_api_exposes_active_contracts_only(client):

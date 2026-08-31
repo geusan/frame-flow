@@ -1,0 +1,12 @@
+{
+  "schema_version": "node.editor-refs.v1",
+  "refs": [
+    "candidate-selection",
+    "caption-layout",
+    "motion-extractor",
+    "provider-generation",
+    "reference-analysis",
+    "video-edit",
+    "video-translate"
+  ]
+}
