@@ -222,6 +222,20 @@ export interface CanvasDocument {
   last_run?: { id: string; status: string; progress: number; created_at: string };
 }
 
+export interface CanvasDocumentV1 {
+  schema_version: "canvas.document.v1";
+  graph: {
+    schema_version: "canvas.graph.v1";
+    nodes: Array<Record<string, unknown>>;
+    elements: Array<Record<string, unknown>>;
+    edges: Array<Record<string, unknown>>;
+  };
+  runtime: {
+    schema_version: "canvas.runtime.v1";
+    nodes: Record<string, Record<string, unknown>>;
+  };
+}
+
 export interface CanvasPackageImport extends CanvasDocument {
   import_warnings: string[];
   package_source: { canvas_id?: string; name?: string; revision?: number };
@@ -609,6 +623,12 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
   return { blob: await response.blob(), filename };
 }
 
+const EMPTY_CANVAS_DOCUMENT: CanvasDocumentV1 = {
+  schema_version: "canvas.document.v1",
+  graph: { schema_version: "canvas.graph.v1", nodes: [], elements: [], edges: [] },
+  runtime: { schema_version: "canvas.runtime.v1", nodes: {} },
+};
+
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
@@ -627,9 +647,9 @@ export const frameflowApi = {
   startCharacterLoraTraining: (characterId: string, payload: { trigger_word: string; steps?: number; learning_rate?: number }) => request<CharacterLoraTrainingState>(`/characters/${characterId}/lora-training`, { method: "POST", body: JSON.stringify(payload) }),
   getCharacterLoraTraining: (characterId: string) => request<CharacterLoraTrainingState>(`/characters/${characterId}/lora-training`),
   listCanvases: () => request<CanvasDocument[]>("/canvases"),
-  createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
+  createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, document: EMPTY_CANVAS_DOCUMENT }) }),
   getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),
-  saveCanvas: (canvasId: string, payload: { name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; active_run_id?: string; expected_revision?: number; draft_contract?: WorkflowDraftContract }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  saveCanvas: (canvasId: string, payload: { name: string; document?: CanvasDocumentV1; nodes?: Array<Record<string, unknown>>; edges?: Array<Record<string, unknown>>; active_run_id?: string; expected_revision?: number; draft_contract?: WorkflowDraftContract }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
   exportCanvasPackage: (canvasId: string) => requestBlob(`/canvases/${canvasId}/export`),
   importCanvasPackage: (file: File) => {
     const body = new FormData();

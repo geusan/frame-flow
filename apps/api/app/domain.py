@@ -287,6 +287,7 @@ class CanvasRunRequest(BaseModel):
 
 class CanvasDocumentRequest(BaseModel):
     name: str = Field(default="Untitled canvas", min_length=1, max_length=255)
+    document: dict[str, Any] | None = None
     nodes: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     edges: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
     active_run_id: str | None = Field(default=None, max_length=128)

@@ -1011,6 +1011,8 @@ Custom Editor를 사용하는 신규 계약은 `editor.kind=custom`과 안정적
 
 Canvas의 신규 Edge는 source/target Node의 고정된 contract version에서 Port ID와 cardinality를 해석하고 서버 Port Registry의 compatibility로 검증한다. 기존 React Flow의 `input-Prompt-0` 같은 Handle은 Legacy Adapter에서만 Port key로 변환한다. Unknown Node 또는 과거에 허용된 비호환 Edge는 Load 중 삭제하지 않고 Draft에 보존하며 Validate/Publish에서 명확한 오류를 반환한다.
 
+Web의 Canvas autosave와 명시적 저장은 React Flow `nodes/edges`를 API에 직접 쓰지 않고 `canvas.document.v1` serializer를 거친다. API는 전환 기간 동안 기존 `nodes/edges` 요청도 허용하지만 Canonical 요청 역시 서버 Adapter로 재검증·정규화한 뒤 저장한다. 로컬 스토리지에서 과거 Canvas를 한 번 가져오는 경로만 Legacy write 요청을 사용하며, 조회와 Draft Run의 Legacy graph Adapter는 별도 단계에서 제거한다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.

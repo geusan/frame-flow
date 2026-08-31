@@ -77,7 +77,7 @@ from .domain import (
     utc_now,
 )
 from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
-from .canvas_documents import canonical_canvas_graph, canonicalize_canvas_document, legacy_canvas_graph
+from .canvas_documents import canonical_canvas_graph, canonicalize_canvas_document, legacy_canvas_graph, normalize_canvas_document
 from .canvas_packages import (
     PACKAGE_MAX_BYTES,
     PACKAGE_MEDIA_TYPE,
@@ -415,6 +415,13 @@ def canvas_document_payload(record: CanvasRecord, last_run: CanvasRunRecord | No
     }
 
 
+def _canvas_request_document(payload: CanvasDocumentRequest) -> dict[str, Any]:
+    try:
+        return normalize_canvas_document(payload.document) if payload.document is not None else canonicalize_canvas_document(payload.nodes, payload.edges)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/canvases")
 def list_canvases(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     records = db.scalars(select(CanvasRecord).order_by(CanvasRecord.updated_at.desc())).all()
@@ -427,10 +434,11 @@ def list_canvases(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
 
 @app.post("/canvases", status_code=status.HTTP_201_CREATED)
 def create_canvas_document(payload: CanvasDocumentRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+    document = _canvas_request_document(payload)
     record = CanvasRecord(
         id=new_id("canvas"),
         name=payload.name,
-        graph_json=canonicalize_canvas_document(payload.nodes, payload.edges),
+        graph_json=document,
         active_run_id=payload.active_run_id,
         revision=1,
         draft_contract_json=payload.draft_contract or DEFAULT_DRAFT_CONTRACT,
@@ -538,7 +546,7 @@ def save_canvas_document(canvas_id: str, payload: CanvasDocumentRequest, db: Ses
         db.add(record)
     elif payload.expected_revision is not None and record.revision != payload.expected_revision:
         raise HTTPException(409, f"Canvas revision conflict: expected {payload.expected_revision}, current {record.revision}")
-    next_graph = canonicalize_canvas_document(payload.nodes, payload.edges)
+    next_graph = _canvas_request_document(payload)
     next_contract = payload.draft_contract if payload.draft_contract is not None else (record.draft_contract_json or DEFAULT_DRAFT_CONTRACT)
     definition_changed = (
         record.name != payload.name
@@ -552,9 +560,11 @@ def save_canvas_document(canvas_id: str, payload: CanvasDocumentRequest, db: Ses
     if not created and definition_changed:
         record.revision += 1
     record.updated_at = utc_now()
+    saved_graph = legacy_canvas_graph(next_graph)
     audit(db, "canvas.imported" if created else "canvas.saved", record.id, {
-        "node_count": len(payload.nodes),
-        "edge_count": len(payload.edges),
+        "node_count": len(saved_graph["nodes"]),
+        "edge_count": len(saved_graph["edges"]),
+        "write_schema_version": str(next_graph.get("schema_version") or "canvas.legacy.v1"),
     })
     db.commit()
     db.refresh(record)

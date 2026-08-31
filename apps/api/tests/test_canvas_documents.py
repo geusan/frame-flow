@@ -115,6 +115,17 @@ def test_canvas_document_canonicalizes_contract_runtime_and_canvas_elements(clie
     assert stored["graph"]["edges"][0]["target_port"] == "input-Prompt-0"
     assert "selected" not in stored["graph"]["edges"][0]["ui"]
 
+    canonical_saved = client.put(f"/canvases/{payload['id']}", json={
+        "name": payload["name"],
+        "document": stored,
+        "expected_revision": payload["revision"],
+        "draft_contract": payload["draft_contract"],
+    })
+    assert canonical_saved.status_code == 200, canonical_saved.text
+    assert canonical_saved.json()["revision"] == payload["revision"]
+    with SessionLocal() as db:
+        assert db.get(CanvasRecord, payload["id"]).graph_json == stored
+
     saved = client.put(f"/canvases/{payload['id']}", json={
         "name": payload["name"],
         "nodes": payload["nodes"],
@@ -192,6 +203,37 @@ def test_legacy_canvas_document_reads_without_rewrite_and_upgrades_on_save(clien
     assert upgraded.json()["storage_schema_version"] == CANVAS_DOCUMENT_SCHEMA_VERSION
     with SessionLocal() as db:
         assert db.get(CanvasRecord, "canvas_legacy_fixture").graph_json["schema_version"] == CANVAS_DOCUMENT_SCHEMA_VERSION
+
+
+def test_canvas_api_accepts_canonical_document_writes_and_rejects_invalid_schema(client):
+    canonical = canonicalize_canvas_document([{
+        "id": "prompt",
+        "position": {"x": 8, "y": 12},
+        "data": {
+            "key": "prompt.input",
+            "label": "Prompt",
+            "description": "Canonical write",
+            "configText": "write canonical directly",
+            "status": "SUCCEEDED",
+            "outputType": "Prompt",
+        },
+    }], [])
+    created = client.post("/canvases", json={"name": "Canonical direct", "document": canonical})
+    assert created.status_code == 201, created.text
+    assert created.json()["storage_schema_version"] == CANVAS_DOCUMENT_SCHEMA_VERSION
+    assert created.json()["nodes"][0]["data"]["configText"] == "write canonical directly"
+    with SessionLocal() as db:
+        assert db.get(CanvasRecord, created.json()["id"]).graph_json == canonical
+
+    invalid = deepcopy(canonical)
+    invalid["graph"]["schema_version"] = "canvas.graph.v0"
+    rejected = client.put(f"/canvases/{created.json()['id']}", json={
+        "name": "Canonical direct",
+        "document": invalid,
+        "expected_revision": created.json()["revision"],
+    })
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "document.graph.schema_version must be canvas.graph.v1"
 
 
 def test_canvas_document_schema_and_adapter_fixture_are_stable():

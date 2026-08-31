@@ -92,6 +92,25 @@ def is_canonical_canvas_document(document: dict[str, Any] | None) -> bool:
     return bool(document and document.get("schema_version") == CANVAS_DOCUMENT_SCHEMA_VERSION)
 
 
+def normalize_canvas_document(document: dict[str, Any]) -> dict[str, Any]:
+    if not is_canonical_canvas_document(document):
+        raise ValueError(f"document.schema_version must be {CANVAS_DOCUMENT_SCHEMA_VERSION}")
+    graph = document.get("graph")
+    runtime = document.get("runtime")
+    if not isinstance(graph, dict) or graph.get("schema_version") != CANVAS_GRAPH_SCHEMA_VERSION:
+        raise ValueError(f"document.graph.schema_version must be {CANVAS_GRAPH_SCHEMA_VERSION}")
+    if not isinstance(runtime, dict) or runtime.get("schema_version") != CANVAS_RUNTIME_SCHEMA_VERSION:
+        raise ValueError(f"document.runtime.schema_version must be {CANVAS_RUNTIME_SCHEMA_VERSION}")
+    if not all(isinstance(graph.get(key), list) for key in ("nodes", "elements", "edges")):
+        raise ValueError("document.graph nodes, elements and edges must be arrays")
+    if not isinstance(runtime.get("nodes"), dict):
+        raise ValueError("document.runtime.nodes must be an object")
+    if len(graph["nodes"]) + len(graph["elements"]) > 500 or len(graph["edges"]) > 2000:
+        raise ValueError("Canvas document exceeds the Node or Edge limit")
+    legacy = legacy_canvas_graph(document)
+    return canonicalize_canvas_document(legacy["nodes"], legacy["edges"])
+
+
 def legacy_node_config(data: dict[str, Any], type_key: str) -> dict[str, Any]:
     config = dict(data.get("config") or data.get("parameters") or {})
     definition = node_registry.get(type_key, int(data.get("contractVersion") or 1))

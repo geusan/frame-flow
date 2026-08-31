@@ -87,6 +87,7 @@ import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
 import { latestNodeTemplates } from "@/features/nodes/contracts";
+import { LEGACY_CONFIG_DATA_FIELDS, serializeCanvasDocument } from "@/features/nodes/canvas-document-adapter";
 import { NodeInspectorEditor } from "@/features/nodes/node-inspector-editor";
 import { nodeConnectionCompatible, targetPortContract } from "@/features/nodes/port-contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
@@ -99,40 +100,12 @@ const SMOOTH_STEP_ROUTING_GAP = 40;
 const SPACE_PAN_HOLD_DELAY_MS = 600;
 const EMPTY_WORKFLOW_DRAFT: WorkflowDraftContract = { schema_version: "workflow.contract.draft.v1", inputs: [], bindings: [], outputs: [] };
 const EMPTY_PORT_TYPE_REGISTRY: NodePortTypeRegistryRecord = { schema_version: "port-types.v1", types: [] };
-const CONFIG_DATA_FIELDS: Record<string, keyof StudioFlowNode["data"]> = {
-  resolution: "resolution",
-  aspect_ratio: "aspectRatio",
-  output_count: "batchSize",
-  character_name: "characterName",
-  shot_count: "shotCount",
-  duration_seconds: "durationSeconds",
-  lora_url: "loraUrl",
-  lora_scale: "loraScale",
-  trigger_word: "triggerWord",
-  transition: "transition",
-  target_duration_seconds: "targetDurationSeconds",
-  source_language: "sourceLanguage",
-  separate_music: "separateMusic",
-  scene_threshold: "sceneThreshold",
-  motion_sample_fps: "motionSampleFps",
-  motion_max_width: "motionMaxWidth",
-  motion_min_confidence: "motionMinConfidence",
-  motion_face_blendshapes: "motionFaceBlendshapes",
-  target_language: "targetLanguage",
-  voice_name: "voiceName",
-  caption_x: "captionX",
-  caption_y: "captionY",
-  caption_align: "captionAlign",
-  caption_font_size: "captionFontSize",
-  skill_id: "skillId",
-};
-
 function exposedConfigValue(node: StudioFlowNode, configKey: string, fallback: unknown): unknown {
   if (node.data.config && node.data.config[configKey] !== undefined) return node.data.config[configKey];
   if (configKey === "text") return node.data.configText ?? fallback;
   if (configKey === "artifact_id" || configKey === "character_id") return node.data.configText || node.data.outputArtifactIds?.[0] || fallback;
   if (configKey === "artifact_type") return node.data.outputType ?? fallback;
-  const dataKey = CONFIG_DATA_FIELDS[configKey];
+  const dataKey = LEGACY_CONFIG_DATA_FIELDS[configKey];
   return dataKey && node.data[dataKey] !== undefined ? node.data[dataKey] : fallback;
 }
 
@@ -741,12 +714,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setSaveState("Saving");
       const backup = { ...cloneGraph(nodes, edges), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
       window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
-      frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract })
+      frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodes, edges, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract })
         .then((document) => { setCanvasRevision(document.revision); setSaveState("Saved"); })
         .catch((saveError) => { setSaveState("Unsaved"); notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error"); });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [activeCanvasRunId, canvasId, canvasName, draftContract, edges, nodes, notify, saveState]);
+  }, [activeCanvasRunId, canvasId, canvasName, draftContract, edges, nodeDefinitions, nodes, notify, saveState]);
 
   const markUnsaved = useCallback(() => setSaveState("Unsaved"), []);
 
@@ -755,7 +728,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
     window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
     try {
-      const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, nodes: backup.nodes, edges: backup.edges, active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract });
+      const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodesRef.current, edgesRef.current, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract });
       setCanvasRevision(document.revision);
       setSaveState("Saved");
       return true;
@@ -764,7 +737,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error");
       return false;
     }
-  }, [activeCanvasRunId, canvasId, canvasName, draftContract, notify]);
+  }, [activeCanvasRunId, canvasId, canvasName, draftContract, nodeDefinitions, notify]);
 
   const pushHistory = useCallback((snapshot?: GraphSnapshot) => {
     setHistory((current) => [...current, snapshot ?? cloneGraph(nodesRef.current, edgesRef.current)].slice(-40));
@@ -1320,8 +1293,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
       const saved = await frameflowApi.saveCanvas(canvasId, {
         name: canvasName,
-        nodes: backup.nodes,
-        edges: backup.edges,
+        document: serializeCanvasDocument(backup.nodes, backup.edges, nodeDefinitions),
         active_run_id: activeCanvasRunId ?? undefined,
         draft_contract: nextContract,
       });
@@ -1340,7 +1312,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     } finally {
       setPublishing(false);
     }
-  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, notify, registryConnectionCompatible, workflowDefinitionId]);
+  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, nodeDefinitions, notify, registryConnectionCompatible, workflowDefinitionId]);
 
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const targetNodeId = typeof run.graph.target_node_id === "string" ? run.graph.target_node_id : undefined;

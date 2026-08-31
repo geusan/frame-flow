@@ -68,6 +68,9 @@ if (/node\.data\.key\s*(?:===|!==)|\bnodeKey\b|\bnode_key\b/.test(portContracts)
 if (/\.filter\(\(edge\) => isConnectionCompatible/.test(generationCanvas)) {
   violations.push("src/components/views/generation-canvas.tsx: Legacy or Unknown edges must be preserved during load");
 }
+if ([...generationCanvas.matchAll(/frameflowApi\.saveCanvas/g)].some((match) => /\b(?:nodes|edges):/.test(generationCanvas.slice(match.index, match.index + 500)))) {
+  violations.push("src/components/views/generation-canvas.tsx: Canvas writes must use the canonical document serializer");
+}
 
 const customEditorRegistryPath = join(sourceRoot, "features", "nodes", "custom-editors", "registry.tsx");
 const customEditorRegistry = readFileSync(customEditorRegistryPath, "utf8");
