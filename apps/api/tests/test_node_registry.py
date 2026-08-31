@@ -123,7 +123,11 @@ def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
     video_definition = node_registry.get("video.generate", 1)
     assert video_definition is not None
     video_context = SimpleNamespace(definition=video_definition, payload=payload.model_copy(update={"node_key": "video.generate", "node_contract_version": 1, "model_alias": "google.video.fast"}))
-    assert node_registry.can_execute(video_context) is False
+    assert node_registry.can_execute(video_context) is True
+    tts_definition = node_registry.get("tts.generate", 1)
+    assert tts_definition is not None
+    tts_context = SimpleNamespace(definition=tts_definition, payload=payload.model_copy(update={"node_key": "tts.generate", "node_contract_version": 1, "model_alias": "google.tts.fast"}))
+    assert node_registry.can_execute(tts_context) is False
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "fixture")
     assert node_registry.can_execute(context) is False
 
@@ -136,12 +140,14 @@ def test_experiments_does_not_dispatch_xai_provider_directly():
     image_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "image_generation.py").read_text()
     character_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "character_generation.py").read_text()
     fal_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "fal_lora_image.py").read_text()
+    video_executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "video_generation.py").read_text()
     assert "get_xai_text_services" not in experiments_source
     assert "payload.node_key" not in executor_source
     assert "payload.node_key" not in text_executor_source
     assert "payload.node_key" not in image_executor_source
     assert "payload.node_key" not in character_executor_source
     assert "payload.node_key" not in fal_executor_source
+    assert "payload.node_key" not in video_executor_source
     assert 'payload.node_key != "lora.image.generate"' not in experiments_source
     assert "artifact_contract.primary_type" in text_support_source
     assert "complete_text_execution" in text_executor_source

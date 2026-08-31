@@ -172,6 +172,51 @@ class GoogleGenerationServices:
             tuple(generated_assets),
         )
 
+    def generate_videos(
+        self,
+        *,
+        logical_model: str,
+        prompt: str,
+        duration_seconds: int,
+        candidate_count: int,
+        aspect_ratio: str,
+        resolution: str,
+        seed: int | None,
+        image_inputs: list[InputMedia],
+        video_inputs: list[InputMedia],
+    ) -> list[GeneratedBinary]:
+        normalized_resolution = resolution.lower()
+        if normalized_resolution not in {"720p", "1080p"}:
+            normalized_resolution = "1080p"
+        if logical_model == "google.video.omni":
+            return self.video.generate_omni(
+                prompt=prompt,
+                logical_model=logical_model,
+                aspect_ratio=aspect_ratio,
+                resolution=normalized_resolution,
+                reference_images=[(item.data, item.content_type) for item in image_inputs[:3]],
+                reference_videos=[(item.data, item.content_type) for item in video_inputs[:1]],
+            )
+        if video_inputs:
+            raise ValueError("Reference Video input requires the Gemini Omni 1.1 Flash model")
+        submission = self.video.submit(
+            prompt=prompt,
+            logical_model=logical_model,
+            duration_seconds=duration_seconds,
+            candidate_count=max(1, min(4, candidate_count)),
+            aspect_ratio=aspect_ratio,
+            seed=seed,
+            output_gcs_uri=os.getenv("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
+            reference_images=[(item.data, item.content_type) for item in image_inputs[:3]],
+            resolution=normalized_resolution,
+        )
+        return self.video.wait_for_generated(
+            submission,
+            logical_model=logical_model,
+            timeout_seconds=int(os.getenv("GOOGLE_VIDEO_TIMEOUT_SECONDS", "900")),
+            poll_interval_seconds=float(os.getenv("GOOGLE_VIDEO_POLL_SECONDS", "10")),
+        )
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
         input_ids = [item.artifact_id for item in inputs]
@@ -215,50 +260,23 @@ class GoogleGenerationServices:
         if payload.node_key == "video.generate":
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
             video_inputs = [item for item in inputs if item.artifact_type in {"Video", "FinalVideo"}][:1]
-            duration = int(payload.parameters.get("duration_seconds") or 6)
-            resolution = str(payload.parameters.get("resolution") or "720p").lower()
-            if resolution not in {"720p", "1080p"}:
-                resolution = "1080p"
-            candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
-            if logical_model == "google.video.omni":
-                generated_videos = self.video.generate_omni(
-                    prompt=payload.prompt,
-                    logical_model=logical_model,
-                    aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                    resolution=resolution,
-                    reference_images=[(item.data, item.content_type) for item in image_inputs],
-                    reference_videos=[(item.data, item.content_type) for item in video_inputs],
-                )
-                generated = generated_videos[0]
-                return LiveGenerationResult(
-                    {"kind": "video", "title": "Generated character video", "mimeType": generated.mime_type},
-                    "Video", "google.video.omni.v1", generated.provider_request_id, generated.data,
-                    generated.mime_type, "generated-character.mp4", input_ids,
-                )
-            if video_inputs:
-                raise ValueError("Reference Video input requires the Gemini Omni 1.1 Flash model")
-            submission = self.video.submit(
+            generated_videos = self.generate_videos(
+                logical_model=logical_model,
                 prompt=payload.prompt,
-                logical_model=logical_model,
-                duration_seconds=duration,
-                candidate_count=candidate_count,
+                duration_seconds=int(payload.parameters.get("duration_seconds") or 6),
+                candidate_count=int(payload.parameters.get("output_count") or 1),
                 aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+                resolution=str(payload.parameters.get("resolution") or "720p"),
                 seed=seed_value,
-                output_gcs_uri=os.getenv("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
-                reference_images=[(item.data, item.content_type) for item in image_inputs],
-                resolution=resolution,
-            )
-            generated_videos = self.video.wait_for_generated(
-                submission,
-                logical_model=logical_model,
-                timeout_seconds=int(os.getenv("GOOGLE_VIDEO_TIMEOUT_SECONDS", "900")),
-                poll_interval_seconds=float(os.getenv("GOOGLE_VIDEO_POLL_SECONDS", "10")),
+                image_inputs=image_inputs,
+                video_inputs=video_inputs,
             )
             generated = generated_videos[0]
+            omni = logical_model == "google.video.omni"
             return LiveGenerationResult(
-                {"kind": "video", "title": "Generated video", "mimeType": generated.mime_type},
-                "Video", "google.video.v1", generated.provider_request_id, generated.data,
-                generated.mime_type, "generated.mp4", input_ids,
+                {"kind": "video", "title": "Generated character video" if omni else "Generated video", "mimeType": generated.mime_type},
+                "Video", "google.video.omni.v1" if omni else "google.video.v1", generated.provider_request_id, generated.data,
+                generated.mime_type, "generated-character.mp4" if omni else "generated.mp4", input_ids,
                 tuple(GeneratedAsset(item.data, item.mime_type, f"generated-{index}.mp4") for index, item in enumerate(generated_videos[1:], start=2)),
             )
 

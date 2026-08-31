@@ -322,6 +322,41 @@ def test_character_generation_routes_bundle_and_views_through_registry(client: T
     assert character["input_artifact_ids"] == character["metadata"]["image_artifact_ids"]
 
 
+def test_video_generation_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeVideoService:
+        def generate_videos(self, **kwargs):
+            assert kwargs["logical_model"] == "google.video.omni"
+            assert kwargs["resolution"] == "1080p"
+            assert kwargs["image_inputs"] == []
+            assert kwargs["video_inputs"] == []
+            return [GeneratedBinary(b"video-registry", "video/mp4", "gemini-omni-test", "google_video_registry")]
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.video_generation.get_google_generation_services",
+        lambda: FakeVideoService(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_video_registry",
+        "node_id": "video_registry",
+        "node_key": "video.generate",
+        "prompt": "Animate the scene",
+        "model_alias": "google.video.omni",
+        "parameters": {"resolution": "1080p", "aspect_ratio": "9:16", "duration_seconds": 6, "output_count": 1},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["provider_request_id"] == "google_video_registry"
+    assert result["cost_usd"] == 1.4
+    assert result["output"]["title"] == "Generated character video"
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "video.generated.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
+    assert artifact["metadata"]["exact_model_id"] == "gemini-omni-test"
+
+
 def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):
     class FakeOpenAIServices:
         def generate_text(self, *, logical_model, prompt, instructions):
