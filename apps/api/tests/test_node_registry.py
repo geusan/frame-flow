@@ -90,6 +90,36 @@ def test_text_generation_v2_adds_xai_without_mutating_v1_contracts():
     assert request_fingerprint(v1_payload, model_alias, exact_model_id) != request_fingerprint(v2_payload, model_alias, exact_model_id)
 
 
+def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
+    definition = node_registry.get("llm.assistant", 2)
+    assert definition is not None
+    payload = ExperimentRunRequest(
+        canvas_id="canvas_xai_registry",
+        node_id="assistant_xai",
+        node_key=definition.type_key,
+        node_contract_version=definition.contract_version,
+        prompt="Summarize this",
+        model_alias="xai.text.quality",
+        parameters={"temperature": 0.4},
+        inputs=[],
+    )
+    context = SimpleNamespace(definition=definition, payload=payload)
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    assert node_registry.can_execute(context) is True
+    google_context = SimpleNamespace(definition=definition, payload=payload.model_copy(update={"model_alias": "google.text.fast"}))
+    assert node_registry.can_execute(google_context) is False
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "fixture")
+    assert node_registry.can_execute(context) is False
+
+
+def test_experiments_does_not_dispatch_xai_provider_directly():
+    experiments_source = (Path(__file__).parents[1] / "app" / "experiments.py").read_text()
+    executor_source = (Path(__file__).parents[1] / "app" / "nodes" / "executors" / "xai_text.py").read_text()
+    assert "get_xai_text_services" not in experiments_source
+    assert "payload.node_key" not in executor_source
+    assert "artifact_contract.primary_type" in executor_source
+
+
 def test_every_node_manifest_materializes_a_closed_config():
     for definition in node_registry.list():
         resolved = node_registry.resolve_config(definition, {})

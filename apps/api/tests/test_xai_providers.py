@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import experiments as experiments_module
 from app import providers_xai as providers_xai_module
+from app.nodes.executors import xai_text as xai_text_executor_module
 from app.providers_xai import XAI_API_BASE_URL, XAIProviderConfig, XAITextResult, XAITextServices
 
 
@@ -94,7 +94,7 @@ def test_llm_assistant_v2_runs_through_registered_xai_provider(client, monkeypat
                 cost_usd=0.00042,
             )
 
-    monkeypatch.setattr(experiments_module, "get_xai_text_services", lambda: FakeService())
+    monkeypatch.setattr(xai_text_executor_module, "get_xai_text_services", lambda: FakeService())
     connected = client.put("/settings/providers/xai", json={
         "enabled": True,
         "auth_method": "api_key",
@@ -126,10 +126,16 @@ def test_llm_assistant_v2_runs_through_registered_xai_provider(client, monkeypat
     assert payload["model_alias"] == "xai.text.quality"
     assert payload["exact_model_id"] == "grok-4.6"
     assert payload["provider_request_id"] == "xai_node_response"
+    assert len(payload["output_artifact_ids"]) == 1
     assert payload["output"]["text"] == "Grok Node result"
     assert payload["cost_usd"] == pytest.approx(0.00042)
     assert captured["reasoning_effort"] == "high"
     assert captured["prompt_cache_key"] == payload["request_hash"]
+    artifact = client.get(f"/artifacts/{payload['output_artifact_ids'][0]}").json()
+    assert artifact["type"] == "Text"
+    assert artifact["schema_id"] == "text.generated.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
+    assert artifact["metadata"]["normalized_config"] == {"temperature": 0.4}
 
     model = next(item for item in client.get("/models").json() if item["logical_alias"] == "xai.text.quality")
     assert model["provider"] == "xAI"

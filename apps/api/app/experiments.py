@@ -33,8 +33,8 @@ from .providers_generation import (
     get_google_generation_services,
 )
 from .providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
-from .providers_xai import XAI_LIVE_REVISION, get_xai_text_services
-from .project_skills import project_skill_system_prompt, snapshot_skill_parameters
+from .providers_xai import XAI_LIVE_REVISION
+from .project_skills import snapshot_skill_parameters
 from .service import audit, create_artifact, new_id
 from .storage import artifact_content_url, get_storage, storage_location
 
@@ -306,48 +306,6 @@ def execute_live_provider(db: Session, payload: ExperimentRunRequest, request_ha
             artifact_ids.insert(0, item["artifact_id"])
         for artifact_id_value in artifact_ids:
             append_artifact(str(artifact_id_value))
-    if payload.model_alias.startswith("xai."):
-        if payload.node_key == "skill.execute":
-            instructions = project_skill_system_prompt(
-                str(payload.parameters.get("skill_id") or ""),
-                str(payload.parameters.get("skill_version") or "") or None,
-            )
-        else:
-            instructions = (
-                "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add meta commentary."
-                if payload.node_key == "script.generate"
-                else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
-            )
-        generated = get_xai_text_services().generate(
-            model_alias=payload.model_alias,
-            prompt=payload.prompt,
-            instructions=instructions,
-            reasoning_effort="high",
-            timeout_seconds=300,
-            prompt_cache_key=request_hash,
-        )
-        artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
-        skill_execution = payload.node_key == "skill.execute"
-        return LiveGenerationResult(
-            output={
-                "kind": "text",
-                "title": "Generated script" if artifact_type == "Script" else "Generated master prompt" if skill_execution else "Generated text",
-                "text": generated.text,
-            },
-            artifact_type=artifact_type,
-            schema_id="script.v1" if artifact_type == "Script" else "prompt.master.v1" if skill_execution else "text.generated.v1",
-            provider_request_id=generated.provider_request_id,
-            content=generated.text.encode(),
-            content_type="text/plain",
-            filename="master-prompt.txt" if skill_execution else "result.txt",
-            input_artifact_ids=input_ids,
-            metadata={
-                "provider": "xai",
-                "exact_model_id": generated.exact_model_id,
-                "usage": {"input_tokens": generated.input_tokens, "output_tokens": generated.output_tokens},
-            },
-            cost_usd=generated.cost_usd,
-        )
     services = (
         get_openai_generation_services()
         if payload.model_alias.startswith("openai.")
@@ -437,9 +395,10 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
 
     started = time.perf_counter()
     try:
-        if definition and not node_registry.uses_legacy_runtime(definition):
+        context = NodeExecutionContext(db=db, payload=payload, definition=definition, request_hash=digest, experiment_id=record.id) if definition else None
+        if context and node_registry.can_execute(context):
             result = node_registry.execute(
-                NodeExecutionContext(db=db, payload=payload, definition=definition, request_hash=digest, experiment_id=record.id),
+                context,
                 payload.parameters,
                 payload.inputs,
             )

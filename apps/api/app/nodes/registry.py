@@ -14,6 +14,7 @@ from .executors import (
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
     VideoRetimeExecutor,
+    XAITextCapabilityExecutor,
 )
 
 
@@ -54,6 +55,11 @@ class NodeRegistry:
     ) -> NodeExecutionResult:
         config = self.resolve_config(context.definition, parameters)
         return self._executors[context.definition.execution.executor].execute(context, config, typed_inputs)
+
+    def can_execute(self, context: NodeExecutionContext) -> bool:
+        executor = self._executors[context.definition.execution.executor]
+        supports = getattr(executor, "supports", None)
+        return bool(supports(context)) if callable(supports) else True
 
     @staticmethod
     def resolve_config(definition: NodeDefinition, parameters: dict[str, Any]) -> dict[str, Any]:
@@ -104,7 +110,7 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
-        "legacy-compatibility": LegacyCompatibilityExecutor(),
+        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(),)),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),

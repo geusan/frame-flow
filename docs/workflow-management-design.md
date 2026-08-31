@@ -1017,6 +1017,8 @@ Draft Run 직전 Web은 현재 Canonical Canvas를 저장하고 응답 revision�
 
 저장된 Canvas에서 만든 Run의 Node 설정은 snapshot의 materialized `config`만 사용하고 Node Registry `resolve_config`로 다시 검증한다. `canvas_runs.py`가 camelCase UI 필드를 공통 parameter 객체로 수동 평탄화하지 않는다. 구버전 Raw graph 요청에서만 별도 Legacy Run Adapter가 과거 필드를 Canonical config key로 변환하며, 이 Adapter는 신규 Run 경로의 Source of Truth가 아니다.
 
+기존 Manifest가 `executor=legacy-compatibility`로 이미 digest에 고정된 경우 contract를 덮어쓰지 않는다. Legacy Executor 내부에서 provider/model capability별 지원을 점진적으로 등록하고, 지원된 capability는 `NodeRegistry.execute`와 공통 `NodeExecutionResult`를 사용한다. 첫 전환인 xAI text는 개별 Node key가 아니라 `xai.text.*` capability, Config Schema와 Artifact contract로 Prompt/Script/Text 결과를 생성한다. 아직 등록되지 않은 capability만 기존 실행 Adapter로 fallback한다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.
