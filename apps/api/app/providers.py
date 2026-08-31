@@ -65,6 +65,10 @@ LOCAL_SUBSCRIPTION_MODEL_REGISTRY = {
     "claude.local.haiku": "claude-haiku-4-5-20251001",
 }
 
+XAI_MODEL_REGISTRY = {
+    "xai.text.quality": "grok-4.6",
+}
+
 FAL_MODEL_REGISTRY = {
     "fal.image.flux2-lora": "fal-ai/flux-2/lora",
     "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",
@@ -74,6 +78,7 @@ ALL_MODEL_REGISTRY = {
     **MODEL_REGISTRY,
     **OPENAI_MODEL_REGISTRY,
     **LOCAL_SUBSCRIPTION_MODEL_REGISTRY,
+    **XAI_MODEL_REGISTRY,
     **FAL_MODEL_REGISTRY,
 }
 

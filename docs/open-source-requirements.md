@@ -21,7 +21,7 @@ Status: Draft
 - PostgreSQL, MinIO 또는 S3 호환 Object Storage
 - 버전이 있는 Node Definition Registry와 Port type
 - Canvas Draft, immutable WorkflowVersion, WorkflowRun, Annotation
-- Google, OpenAI, fal.ai Provider 실행 경로와 Provider 설정 UI
+- Google, OpenAI, xAI, fal.ai Provider 실행 경로와 Provider 설정 UI
 - 파일 또는 URL 기반 단일 Artifact 업로드
 - 파일시스템 `.codex/skills/<skill-id>/SKILL.md` 기반 Project Skill 조회와 실행
 - Docker Compose 개발 스택과 GCS/Cloud SQL 기반 Terraform 일부

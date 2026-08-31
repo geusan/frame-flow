@@ -18,6 +18,7 @@ def test_provider_settings_are_created_and_secrets_are_write_only(client: TestCl
     assert initial.status_code == 200
     assert [record["label"] for record in initial.json()] == [
         "OpenAI",
+        "xAI",
         "Google AI",
         "Claude",
         "ElevenLabs",

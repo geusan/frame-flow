@@ -58,6 +58,7 @@ function sourceLabel(source: ProviderSetting["source"]): string {
 
 function providerIcon(provider: ProviderSetting["provider"]): ReactNode {
   if (provider === "openai") return <KeyRound size={19} />;
+  if (provider === "xai") return <Zap size={19} />;
   if (provider === "google") return <Sparkles size={19} />;
   if (provider === "claude") return <Bot size={19} />;
   if (provider === "elevenlabs") return <Volume2 size={19} />;

@@ -92,7 +92,7 @@ from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
 from .media_compat import BrowserVideoError
 from .nodes import node_registry
-from .providers import FAL_MODEL_REGISTRY, LOCAL_SUBSCRIPTION_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, model_id_for_alias
+from .providers import FAL_MODEL_REGISTRY, LOCAL_SUBSCRIPTION_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, XAI_MODEL_REGISTRY, model_id_for_alias
 from .providers_fal import get_fal_generation_services
 from .r2_training_storage import get_r2_training_dataset_store
 from .provider_settings import (
@@ -224,6 +224,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "format_provider_mode": os.getenv("FORMAT_PROVIDER_MODE", "live"),
         "google_configured": bool(settings.get("google") and provider_is_configured(settings["google"])),
         "openai_configured": bool(settings.get("openai") and provider_is_configured(settings["openai"])),
+        "xai_configured": bool(settings.get("xai") and provider_is_configured(settings["xai"])),
         "claude_configured": bool(settings.get("claude") and provider_is_configured(settings["claude"])),
         "execution_backend": os.getenv("EXECUTION_BACKEND", "local").lower(),
     }
@@ -2139,6 +2140,19 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         ),
         **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     } for alias, model_id in LOCAL_SUBSCRIPTION_MODEL_REGISTRY.items())
+    xai_settings = get_provider_record(db, "xai")
+    xai_configured = bool(xai_settings and provider_is_configured(xai_settings))
+    rows.extend({
+        "logical_alias": alias,
+        "exact_model_id": model_id,
+        "provider": "xAI",
+        "modality": "text",
+        "region": "xAI Responses API",
+        "status": "active" if xai_configured else "disabled",
+        "configured": xai_configured,
+        "configuration": "XAI_API_KEY configured" if xai_configured else "XAI_API_KEY is not set",
+        **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
+    } for alias, model_id in XAI_MODEL_REGISTRY.items())
     fal_settings = get_provider_record(db, "fal")
     fal_configured = bool(fal_settings and provider_is_configured(fal_settings))
     rows.extend({

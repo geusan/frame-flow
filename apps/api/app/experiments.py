@@ -28,11 +28,13 @@ from .providers_generation import (
     CharacterGenerationResult,
     CharacterImageAsset,
     InputMedia,
+    LiveGenerationResult,
     character_shot_prompts,
     get_google_generation_services,
 )
 from .providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
-from .project_skills import snapshot_skill_parameters
+from .providers_xai import XAI_LIVE_REVISION, get_xai_text_services
+from .project_skills import project_skill_system_prompt, snapshot_skill_parameters
 from .service import audit, create_artifact, new_id
 from .storage import artifact_content_url, get_storage, storage_location
 
@@ -121,6 +123,8 @@ def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
     if mode == "live":
         if model_alias.startswith("openai."):
             return OPENAI_LIVE_REVISION
+        if model_alias.startswith("xai."):
+            return XAI_LIVE_REVISION
         if model_alias.startswith("fal."):
             return FAL_LIVE_REVISION
         return LIVE_GENERATION_REVISION
@@ -131,15 +135,15 @@ def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
     raise ValueError("GENERATION_PROVIDER_MODE must be live or fixture")
 
 
-def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
-    definition = node_registry.get(node_key)
+def resolve_model(model_alias: str, node_key: str, contract_version: int = 1) -> tuple[str, str]:
+    definition = node_registry.get(node_key, contract_version)
     if definition and not node_registry.uses_legacy_runtime(definition) and definition.execution.provider == "local":
         if model_alias != definition.execution.model_alias:
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         return definition.execution.model_alias, definition.execution.revision
     if is_local_operation(node_key):
         return resolve_local_model(node_key)
-    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "chatgpt.", "claude.")) else f"google.{model_alias}"
+    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "chatgpt.", "claude.", "xai.")) else f"google.{model_alias}"
     exact = model_id_for_alias(
         normalized,
         gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
@@ -149,8 +153,8 @@ def resolve_model(model_alias: str, node_key: str) -> tuple[str, str]:
     return normalized, exact
 
 
-def validate_model_for_node(node_key: str, model_alias: str) -> None:
-    definition = node_registry.get(node_key)
+def validate_model_for_node(node_key: str, model_alias: str, contract_version: int = 1) -> None:
+    definition = node_registry.get(node_key, contract_version)
     if definition:
         if definition.execution.model_families:
             if not model_alias.startswith(tuple(definition.execution.model_families)):
@@ -174,19 +178,19 @@ def validate_model_for_node(node_key: str, model_alias: str) -> None:
         raise ValueError(f"{node_key} requires one of these model families: {', '.join(allowed_families)}")
 
 
-def resolved_executor_revision(node_key: str, model_alias: str) -> str:
-    definition = node_registry.get(node_key)
+def resolved_executor_revision(node_key: str, model_alias: str, contract_version: int = 1) -> str:
+    definition = node_registry.get(node_key, contract_version)
     if definition and not node_registry.uses_legacy_runtime(definition):
         return definition.execution.revision
     return executor_revision(node_key) if is_local_operation(node_key) else generation_executor_revision(model_alias)
 
 
 def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_model_id: str) -> str:
-    definition = node_registry.get(payload.node_key)
+    definition = node_registry.get(payload.node_key, payload.node_contract_version)
     normalized_parameters = node_registry.resolve_config(definition, payload.parameters) if definition else payload.parameters
     snapshot = {
-        "executor_revision": resolved_executor_revision(payload.node_key, model_alias),
-        "node_contract_version": definition.contract_version if definition else 1,
+        "executor_revision": resolved_executor_revision(payload.node_key, model_alias, payload.node_contract_version),
+        "node_contract_version": definition.contract_version if definition else payload.node_contract_version,
         "node_definition_digest": definition.definition_digest if definition else None,
         "node_key": payload.node_key,
         "prompt": payload.prompt,
@@ -269,7 +273,7 @@ def execute_fixture(payload: ExperimentRunRequest, exact_model_id: str, digest: 
     return FixtureResult(output, "Text", "experiment.text.v1", provider_request_id, refined.encode(), "text/plain", "result.txt")
 
 
-def execute_live_provider(db: Session, payload: ExperimentRunRequest):
+def execute_live_provider(db: Session, payload: ExperimentRunRequest, request_hash: str):
     storage = get_storage()
     input_ids: list[str] = []
     inputs: list[InputMedia] = []
@@ -302,6 +306,48 @@ def execute_live_provider(db: Session, payload: ExperimentRunRequest):
             artifact_ids.insert(0, item["artifact_id"])
         for artifact_id_value in artifact_ids:
             append_artifact(str(artifact_id_value))
+    if payload.model_alias.startswith("xai."):
+        if payload.node_key == "skill.execute":
+            instructions = project_skill_system_prompt(
+                str(payload.parameters.get("skill_id") or ""),
+                str(payload.parameters.get("skill_version") or "") or None,
+            )
+        else:
+            instructions = (
+                "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add meta commentary."
+                if payload.node_key == "script.generate"
+                else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
+            )
+        generated = get_xai_text_services().generate(
+            model_alias=payload.model_alias,
+            prompt=payload.prompt,
+            instructions=instructions,
+            reasoning_effort="high",
+            timeout_seconds=300,
+            prompt_cache_key=request_hash,
+        )
+        artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
+        skill_execution = payload.node_key == "skill.execute"
+        return LiveGenerationResult(
+            output={
+                "kind": "text",
+                "title": "Generated script" if artifact_type == "Script" else "Generated master prompt" if skill_execution else "Generated text",
+                "text": generated.text,
+            },
+            artifact_type=artifact_type,
+            schema_id="script.v1" if artifact_type == "Script" else "prompt.master.v1" if skill_execution else "text.generated.v1",
+            provider_request_id=generated.provider_request_id,
+            content=generated.text.encode(),
+            content_type="text/plain",
+            filename="master-prompt.txt" if skill_execution else "result.txt",
+            input_artifact_ids=input_ids,
+            metadata={
+                "provider": "xai",
+                "exact_model_id": generated.exact_model_id,
+                "usage": {"input_tokens": generated.input_tokens, "output_tokens": generated.output_tokens},
+            },
+            cost_usd=generated.cost_usd,
+        )
     services = (
         get_openai_generation_services()
         if payload.model_alias.startswith("openai.")
@@ -345,15 +391,15 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     payload = resolve_character_lora_parameters(db, payload)
     if payload.node_key == "skill.execute":
         payload = payload.model_copy(update={"parameters": snapshot_skill_parameters(payload.parameters, db)})
-    definition = node_registry.get(payload.node_key)
+    definition = node_registry.get(payload.node_key, payload.node_contract_version)
     configured_model_alias = str(payload.parameters.get("model_alias") or "").strip()
     if definition and not node_registry.uses_legacy_runtime(definition) and configured_model_alias:
         payload = payload.model_copy(update={"model_alias": configured_model_alias})
-    model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key)
+    model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key, payload.node_contract_version)
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
-    if requested_provider and model_alias.startswith(("google.", "openai.", "fal.")) and not model_alias.startswith(f"{requested_provider}."):
+    if requested_provider and model_alias.startswith(("google.", "openai.", "fal.", "xai.")) and not model_alias.startswith(f"{requested_provider}."):
         raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")
-    validate_model_for_node(payload.node_key, model_alias)
+    validate_model_for_node(payload.node_key, model_alias, payload.node_contract_version)
     contract_parameters = {key: value for key, value in payload.parameters.items() if key != "provider"}
     normalized_parameters = node_registry.resolve_config(definition, contract_parameters) if definition else payload.parameters
     if definition:
@@ -367,7 +413,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     record = ExperimentRunRecord(
         id=new_id("exp"), canvas_id=payload.canvas_id, node_id=payload.node_id, node_key=payload.node_key,
         status=NodeStatus.RUNNING,
-        execution_mode=resolved_executor_revision(payload.node_key, model_alias),
+        execution_mode=resolved_executor_revision(payload.node_key, model_alias, payload.node_contract_version),
         prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=normalized_parameters,
         input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},
@@ -399,8 +445,8 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             )
         elif is_local_operation(payload.node_key):
             result = execute_canvas_operation(db, payload, digest)
-        elif generation_executor_revision(model_alias) in {LIVE_GENERATION_REVISION, OPENAI_LIVE_REVISION, FAL_LIVE_REVISION}:
-            result = execute_live_provider(db, payload)
+        elif generation_executor_revision(model_alias) in {LIVE_GENERATION_REVISION, OPENAI_LIVE_REVISION, XAI_LIVE_REVISION, FAL_LIVE_REVISION}:
+            result = execute_live_provider(db, payload, digest)
         else:
             result = execute_fixture(payload, exact_model_id, digest)
         input_artifact_ids = getattr(result, "input_artifact_ids", [])
@@ -545,7 +591,13 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         output["url"] = artifact_content_url(artifact.id)
     record.output_payload = output
     record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
-    record.cost_usd = result.cost_usd if isinstance(result, NodeExecutionResult) else MODEL_COSTS.get(model_alias, 0) * (len(result.images) if isinstance(result, CharacterGenerationResult) else 1)
+    record.cost_usd = (
+        result.cost_usd
+        if isinstance(result, NodeExecutionResult)
+        else result.cost_usd
+        if isinstance(result, LiveGenerationResult) and result.cost_usd is not None
+        else MODEL_COSTS.get(model_alias, 0) * (len(result.images) if isinstance(result, CharacterGenerationResult) else 1)
+    )
     audit(db, "experiment.succeeded", record.id, {"request_hash": digest, "artifact_ids": record.output_artifact_ids})
     db.commit()
     db.refresh(record)

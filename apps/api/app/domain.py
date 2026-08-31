@@ -270,6 +270,7 @@ class ExperimentRunRequest(BaseModel):
     canvas_id: str = Field(min_length=1, max_length=128)
     node_id: str = Field(min_length=1, max_length=128)
     node_key: str = Field(min_length=1, max_length=128)
+    node_contract_version: int = Field(default=1, ge=1)
     prompt: str = Field(default="", max_length=32_000)
     model_alias: str = Field(min_length=1, max_length=128)
     parameters: dict[str, Any] = Field(default_factory=dict)

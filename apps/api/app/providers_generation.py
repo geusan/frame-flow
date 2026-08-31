@@ -4,7 +4,7 @@ import io
 import os
 import re
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .domain import ExperimentRunRequest
@@ -59,6 +59,8 @@ class LiveGenerationResult:
     filename: str
     input_artifact_ids: list[str]
     additional_assets: tuple[GeneratedAsset, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+    cost_usd: float | None = None
 
 
 @dataclass(frozen=True)

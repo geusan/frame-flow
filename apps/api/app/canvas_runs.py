@@ -375,6 +375,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
         canvas_id=run.canvas_id,
         node_id=node.canvas_node_id,
         node_key=node.node_key,
+        node_contract_version=int(data.get("contractVersion") or 1),
         prompt=prompt,
         model_alias=str(data.get("model") or "local"),
         parameters=parameters,

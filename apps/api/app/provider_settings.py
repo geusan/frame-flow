@@ -104,6 +104,19 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         default_auth_method="api_key",
         order=0,
     ),
+    "xai": ProviderDefinition(
+        key="xai",
+        label="xAI",
+        description="Grok text and reasoning models through the xAI API",
+        fields=(
+            _field("api_key", "xAI API key", "XAI_API_KEY", secret=True, placeholder="xai-…"),
+        ),
+        auth_methods=(
+            ProviderAuthMethod("api_key", "API key", "Use xAI Console usage-based billing.", required_fields=("api_key",)),
+        ),
+        default_auth_method="api_key",
+        order=1,
+    ),
     "google": ProviderDefinition(
         key="google",
         label="Google AI",
@@ -122,7 +135,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
             ProviderAuthMethod("vertex", "Vertex AI", "Use a Google Cloud project and Application Default Credentials.", kind="cloud", required_fields=("project_id",)),
         ),
         default_auth_method="api_key",
-        order=1,
+        order=2,
     ),
     "claude": ProviderDefinition(
         key="claude",
@@ -138,7 +151,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
             ProviderAuthMethod("setup_token", "Setup token", "Run Claude Code with a long-lived subscription token.", kind="setup_token", required_fields=("setup_token",)),
         ),
         default_auth_method="api_key",
-        order=2,
+        order=3,
     ),
     "elevenlabs": ProviderDefinition(
         key="elevenlabs",
@@ -151,7 +164,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         ),
         auth_methods=(ProviderAuthMethod("api_key", "API key", "Use a scoped ElevenLabs API key.", required_fields=("api_key",)),),
         default_auth_method="api_key",
-        order=3,
+        order=4,
     ),
     "seedance": ProviderDefinition(
         key="seedance",
@@ -163,7 +176,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         ),
         auth_methods=(ProviderAuthMethod("api_key", "API key", "Use a server-side ModelArk bearer token.", required_fields=("api_key",)),),
         default_auth_method="api_key",
-        order=4,
+        order=5,
     ),
     "kling": ProviderDefinition(
         key="kling",
@@ -176,7 +189,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         ),
         auth_methods=(ProviderAuthMethod("api_key", "API credentials", "Use the access key and secret issued by Kling AI.", required_fields=("access_key", "secret_key")),),
         default_auth_method="api_key",
-        order=5,
+        order=6,
     ),
     "minimax": ProviderDefinition(
         key="minimax",
@@ -188,7 +201,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         ),
         auth_methods=(ProviderAuthMethod("api_key", "API key", "Use a server-side MiniMax bearer token.", required_fields=("api_key",)),),
         default_auth_method="api_key",
-        order=6,
+        order=7,
     ),
     "fal": ProviderDefinition(
         key="fal",
@@ -199,7 +212,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         ),
         auth_methods=(ProviderAuthMethod("api_key", "API key", "Use a server-side fal API key.", required_fields=("api_key",)),),
         default_auth_method="api_key",
-        order=7,
+        order=8,
     ),
     "r2": ProviderDefinition(
         key="r2",
@@ -223,7 +236,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
             ),
         ),
         default_auth_method="s3_api",
-        order=8,
+        order=9,
     ),
 }
 

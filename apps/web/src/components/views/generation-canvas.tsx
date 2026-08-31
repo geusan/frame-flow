@@ -394,11 +394,12 @@ function propagateConnectedPrompts(nodes: StudioFlowNode[], edges: Edge[], sourc
 }
 
 function providerFromModel(model?: string): ProviderName {
-  return model?.startsWith("openai.") ? "openai" : model?.startsWith("fal.") ? "fal" : "google";
+  return model?.startsWith("openai.") ? "openai" : model?.startsWith("xai.") ? "xai" : model?.startsWith("fal.") ? "fal" : "google";
 }
 
-function providerOptionsForNode(nodeKey: string): Array<{ value: ProviderName; label: string }> {
+function providerOptionsForNode(nodeKey: string, contractVersion = 1): Array<{ value: ProviderName; label: string }> {
   if (nodeKey === "lora.image.generate") return [{ value: "fal", label: "fal.ai" }];
+  if (contractVersion >= 2 && ["llm.assistant", "skill.execute", "script.generate"].includes(nodeKey)) return [{ value: "google", label: "Google" }, { value: "openai", label: "OpenAI" }, { value: "xai", label: "xAI" }];
   return nodeKey === "video.generate" ? [{ value: "google", label: "Google" }] : [{ value: "google", label: "Google" }, { value: "openai", label: "OpenAI" }];
 }
 
@@ -415,6 +416,7 @@ function modelOptionsForNode(nodeKey: string, provider: ProviderName): Array<{ v
     { value: "tts.latest", label: "Gemini 3.1 Flash TTS · Preview" },
     { value: "tts.quality", label: "Gemini 2.5 Pro TTS" },
   ];
+  if (provider === "xai") return [{ value: "xai.text.quality", label: "Grok 4.6" }];
   return provider === "openai" ? [{ value: "openai.text.fast", label: "GPT-5.6 Luna" }, { value: "openai.text.quality", label: "GPT-5.6 Terra" }, { value: "openai.chat.latest", label: "ChatGPT Latest" }] : googleTextModelOptions;
 }
 
@@ -1881,7 +1883,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
                 </div>
               </div>}
               <div className="generator-setting-grid provider-model-selectors">
-                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
+                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key, selectedNode.data.contractVersion ?? 1).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
                 <label><span>Model</span><NativeSelect value={selectedNode.data.model ?? selectedModelOptions[0]?.value ?? ""} onChange={(event) => updateSelectedData({ model: event.target.value })}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
               </div>
               {selectedNode.data.resolution && <div className="generator-setting-grid">

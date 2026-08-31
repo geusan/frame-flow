@@ -11,7 +11,7 @@
 
 - React Flow 기반 Generation Canvas
 - URL 기반 분리 화면: Canvas·Image/Video Assets·Runs·Settings·Model Registry
-- Settings의 Google/OpenAI Provider 연결 정보 DB 관리와 `.env` 최초 자동 이관
+- Settings의 Google/OpenAI/xAI Provider 연결 정보 DB 관리와 `.env` 최초 자동 이관
 - Run 목록, Model Registry, Candidate Compare
 - Workspace 카운트·통합 Run·모델 사용량·Format evidence를 실제 저장 데이터로 표시하는 UI
 - PostgreSQL 기반 Canvas 문서 목록·자동 저장·localStorage 데이터 1회 이관
@@ -41,6 +41,7 @@
 - 실제 Google Provider request hash와 Veo operation submit/poll·결과 다운로드
 - Google Gen AI SDK 기반 Structured Output·Gemini Image·Veo·Gemini-TTS 운영 Adapter
 - OpenAI Responses API·ChatGPT Latest·GPT-5.6·GPT Image 2·GPT-4o Mini TTS Provider
+- xAI Responses API·Grok 4.6 Text Provider
 - Translate Video의 Chirp 3 STT → Gemini 세그먼트 번역 → Gemini-TTS → FFmpeg Mux 파이프라인
 - Temporal Workflow/Activity/Signal Worker와 `EXECUTION_BACKEND` 전환
 - yt-dlp Ingest Adapter의 권리 승인 Gate, DNS 기반 SSRF 차단과 취소
@@ -168,13 +169,15 @@ ChatGPT 또는 Claude 구독은 API Provider와 분리된 `Local Subscription Ag
 
 Compose 이미지는 두 CLI를 포함합니다. `docker compose run --rm api codex login --device-auth`로 로그인하면 세션이 `FRAMEFLOW_CODEX_AUTH_DIR`에 영속화되어 API와 Temporal Worker가 함께 사용합니다. Claude setup token은 Settings DB에 write-only로 저장되어 Worker 실행 직전에 `CLAUDE_CODE_OAUTH_TOKEN`으로 주입됩니다.
 
+xAI Grok는 Settings → xAI에서 `XAI_API_KEY`를 등록한 뒤 기존 LLM Assistant, Skill Executor 또는 Script Generator의 Provider에서 `xAI`를 선택해 실행합니다. 신규 Draft Node는 xAI model family를 추가한 `@2` 계약을 사용하고, 기존 `@1` WorkflowVersion과 Draft는 그대로 유지합니다. 논리 별칭 `xai.text.quality`는 Run 시점의 `grok-4.6`으로 Snapshot하며 xAI가 권장하는 `prompt_cache_key`에는 Node request hash를 사용합니다. Imagine 이미지·영상 API는 텍스트 출력 계약과 다르므로 이 생성 인터페이스에 포함하지 않습니다.
+
 1. `.env.example`을 `.env`로 복사합니다.
-2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다. API 최초 시작 시 Google/OpenAI 연결 값이 `provider_settings` 테이블로 자동 이관됩니다.
+2. `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, 인증 방식을 설정합니다. API 최초 시작 시 Google/OpenAI/xAI 연결 값이 `provider_settings` 테이블로 자동 이관됩니다.
 3. `GENERATION_PROVIDER_MODE`, `REFERENCE_PROVIDER_MODE`, `FORMAT_PROVIDER_MODE`, `SUBTITLE_ALIGNMENT_MODE`, `REFERENCE_ANALYSIS_MODE`가 `live`인지 확인하고 `VIDEO_DOWNLOADER_PROVIDER=yt-dlp`를 설정합니다. 음악 stem이 필요하면 `REFERENCE_AUDIO_SEPARATOR=demucs`와 `demucs` 실행 파일도 준비합니다.
 4. Provider 결과를 반환하기 전에 `provider_request_id`, `provider_operation_id`, `request_hash`를 NodeRun에 저장합니다.
 5. video operation은 제출과 완료를 분리하고 Reconciler가 operation ID로 재연결하게 합니다.
 
-이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI API Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용합니다. 로컬 구독 실행은 `CODEX_EXECUTABLE`, `CODEX_HOME`, `CLAUDE_CODE_EXECUTABLE`, `CLAUDE_CODE_OAUTH_TOKEN`을 사용합니다. fal.ai 연결은 서버 전용 `FAL_KEY`를 사용합니다.
+이관 이후 Provider 값은 `/settings`에서 관리하며 DB 값이 `.env`보다 우선합니다. OpenAI API Provider는 `OPENAI_API_KEY`와 필요에 따라 `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID`를 사용하고 xAI Grok는 `XAI_API_KEY`를 사용합니다. 로컬 구독 실행은 `CODEX_EXECUTABLE`, `CODEX_HOME`, `CLAUDE_CODE_EXECUTABLE`, `CLAUDE_CODE_OAUTH_TOKEN`을 사용합니다. fal.ai 연결은 서버 전용 `FAL_KEY`를 사용합니다.
 
 Workflow에는 실제 모델 ID를 넣지 않습니다. 논리적 별칭만 사용하고 Run 생성 시점에 정확한 모델 ID를 Snapshot합니다.
 

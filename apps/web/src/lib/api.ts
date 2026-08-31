@@ -88,7 +88,7 @@ export interface ProviderAuthMethod {
 }
 
 export interface ProviderSetting {
-  provider: "openai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "r2";
+  provider: "openai" | "xai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "r2";
   label: string;
   description: string;
   enabled: boolean;

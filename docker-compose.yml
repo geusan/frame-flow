@@ -107,6 +107,7 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
       CODEX_HOME: /root/.codex
       CODEX_EXECUTABLE: codex
       CLAUDE_CODE_EXECUTABLE: claude
@@ -187,6 +188,7 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+      XAI_API_KEY: ${XAI_API_KEY:-}
       CODEX_HOME: /root/.codex
       CODEX_EXECUTABLE: codex
       CLAUDE_CODE_EXECUTABLE: claude

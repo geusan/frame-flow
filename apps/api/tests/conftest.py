@@ -28,6 +28,7 @@ ISOLATED_ENV_KEYS = (
     "OPENAI_BASE_URL",
     "OPENAI_ORG_ID",
     "OPENAI_PROJECT_ID",
+    "XAI_API_KEY",
     "FAL_KEY",
 )
 for env_key in ISOLATED_ENV_KEYS:

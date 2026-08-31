@@ -606,7 +606,7 @@ def resolve_workflow_execution(
             data["configText"] = character.id
             data["outputArtifactIds"] = [character.id]
         if node_definition.execution.kind not in {"source", "human_gate"} or type_key == "timeline.compose":
-            normalized_alias, exact_model_id = resolve_model(model_alias, type_key)
+            normalized_alias, exact_model_id = resolve_model(model_alias, type_key, contract_version)
             model_snapshot[str(node["id"])] = {
                 "type_key": type_key,
                 "contract_version": contract_version,

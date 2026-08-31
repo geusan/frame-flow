@@ -1,0 +1,71 @@
+[
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "llm.assistant",
+    "contract_version": 2,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "LLM assistant", "description": "연결된 Prompt를 분석하거나 변환", "category": "Quick", "icon": "assistant", "cost_label": "$0.03", "keywords": ["llm", "text", "assistant"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "text", "type": "data.text.v1", "label": "Text" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat.", "xai.text."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Text", "schema_id": "text.generated.v1", "input_roles": {}, "output_role": "generated_text" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "skill.execute",
+    "contract_version": 2,
+    "lifecycle": "ACTIVE",
+    "display": { "label": "Skill executor", "description": "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", "category": "Quick", "icon": "skill", "cost_label": "$0.03", "keywords": ["skill", "prompt", "transform"] },
+    "ports": {
+      "inputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true }],
+      "outputs": [{ "key": "prompt", "type": "prompt.text.v1", "label": "Prompt" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "required": ["skill_id"], "properties": {
+        "skill_id": { "type": "string", "minLength": 1, "maxLength": 128, "default": "nottalggak-prompt-machine", "title": "Project skill", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "skill_version": { "type": "string", "maxLength": 64, "title": "Skill version" },
+        "skill_sha256": { "type": "string", "maxLength": 64, "title": "Skill hash" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat.", "xai.text."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Text", "schema_id": "prompt.master.v1", "input_roles": {}, "output_role": "master_prompt" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "script.generate",
+    "contract_version": 2,
+    "lifecycle": "DEPRECATED",
+    "display": { "label": "Script generator", "description": "Legacy GenerationSpec과 Prompt에서 대본을 생성", "category": "Advanced", "icon": "script", "cost_label": "$0.06", "keywords": ["legacy", "script"] },
+    "ports": {
+      "inputs": [
+        { "key": "prompt", "type": "prompt.text.v1", "label": "Prompt", "required": true },
+        { "key": "spec", "type": "data.generation_spec.v1", "label": "Generation spec" }
+      ],
+      "outputs": [{ "key": "script", "type": "data.script.v1", "label": "Script" }]
+    },
+    "config_schema": {
+      "type": "object", "additionalProperties": false, "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.4, "title": "Temperature" },
+        "seed": { "type": "integer", "minimum": 0, "title": "Seed" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "legacy-compatibility", "revision": "generation-provider.v1", "provider": "multi", "model_alias": "google.text.3.1-pro-preview", "model_families": ["google.text.", "openai.text.", "openai.chat.", "xai.text."] },
+    "editor": { "kind": "legacy" },
+    "artifact_contract": { "primary_type": "Script", "schema_id": "script.v1", "input_roles": { "data.generation_spec.v1": "generation_spec" }, "output_role": "script" }
+  }
+]

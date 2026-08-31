@@ -53,7 +53,7 @@ make dev-web
 | `/asset/images` | Image Artifact 목록과 lineage |
 | `/asset/videos` | Video Artifact 목록·장면 검색·프레임 캡처 |
 | `/runs` | Run 상태·비용·진행률 목록 |
-| `/settings` | Google/OpenAI Provider 연결 정보 관리 |
+| `/settings` | Google/OpenAI/xAI Provider 연결 정보 관리 |
 | `/settings/models` | 논리적 모델 별칭과 실제 모델 ID 표시 |
 
 References와 Format Lab의 독립 화면은 제거되었으며 관련 분석 계약은 기존 Backend 호환을 위해 유지한다. Provider 설정은 최초 시작 시 `.env` 값을 DB로 자동 이관한 뒤 DB를 기준으로 동작한다.
@@ -104,6 +104,8 @@ Node Library에서는 항목을 클릭하거나 Canvas로 드래그할 수 있�
 - 실행 횟수와 최근 결과
 
 Image Generator, Video Generator, Voiceover, LLM Assistant와 Script Generator는 Inspector에서 Provider와 Model을 각각 선택한다. Image·Audio·Text는 Google/OpenAI를 지원하고 Video는 현재 Google Veo를 지원한다. Provider를 바꾸면 해당 Provider의 첫 번째 호환 모델로 자동 전환되며 기존 출력과 하위 Step은 무효화된다.
+
+Grok는 기존 `llm.assistant@1`, `skill.execute@1`, `script.generate@1`을 변경하지 않고 각각의 `@2` 모델 family에 추가한다. 신규 Canvas Node는 기존 생성 Inspector에서 Provider → xAI, Model → Grok 4.6을 선택하며, 기존 `@1` Draft는 수동 교체하거나 새 Node를 추가할 때만 `@2`로 전환된다.
 
 노드를 복제하거나 삭제할 수 있으며 `Delete`와 `Backspace` 키도 지원한다. Prompt 입력 중에는 삭제 키가 노드 삭제로 전달되지 않는다.
 
@@ -414,6 +416,7 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 - Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS
 - Chirp 3 Speech-to-Text와 Gemini 기반 Translate Video
 - OpenAI Responses API, ChatGPT Latest, GPT Image 2, GPT-4o Mini TTS, TTS-1, TTS-1 HD
+- xAI Responses API, Grok 4.6 (text generation Node `@2` contracts)
 - Local Subscription Agent (`agent.execute@1`): Codex CLI의 ChatGPT 구독 또는 Claude Code setup token으로 Text Artifact 생성
 - 테스트 전용 Fixture Provider
 - yt-dlp Reference Ingest Adapter
@@ -494,6 +497,7 @@ make check
 | Canvas Temporal Activity | `apps/api/app/canvas_activities.py` |
 | Google Provider | `apps/api/app/providers_google.py` |
 | OpenAI Provider | `apps/api/app/providers_openai.py` |
+| xAI Provider | `apps/api/app/providers_xai.py` |
 | Reference Ingest | `apps/api/app/reference_ingest.py` |
 | Format Extraction | `apps/api/app/format_extraction.py` |
 | FFmpeg Worker | `apps/worker/worker/media.py` |

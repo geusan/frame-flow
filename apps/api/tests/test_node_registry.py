@@ -58,9 +58,33 @@ def test_every_production_node_has_a_v1_manifest_and_canvas_only_elements_do_not
     registered = {definition.type_key for definition in node_registry.list()}
     assert registered == production_node_keys()
     assert not registered & canvas_only_keys()
-    assert all(definition.contract_version == 1 for definition in node_registry.list())
+    assert all(node_registry.get(type_key, 1) is not None for type_key in production_node_keys())
     assert {definition.type_key for definition in node_registry.list(lifecycle="DEPRECATED")} == set(inventory["legacy_pipeline"])
     assert all(definition.editor.kind == "legacy" for definition in node_registry.list(lifecycle="DEPRECATED"))
+
+
+def test_text_generation_v2_adds_xai_without_mutating_v1_contracts():
+    for type_key in ("llm.assistant", "skill.execute", "script.generate"):
+        v1 = node_registry.get(type_key, 1)
+        v2 = node_registry.get(type_key, 2)
+        assert v1 is not None and v2 is not None
+        assert "xai.text." not in v1.execution.model_families
+        assert "xai.text." in v2.execution.model_families
+        assert v1.ports == v2.ports
+        assert v1.config_schema == v2.config_schema
+    v1_payload = ExperimentRunRequest(
+        canvas_id="canvas_1",
+        node_id="assistant_1",
+        node_key="llm.assistant",
+        node_contract_version=1,
+        prompt="Summarize this",
+        model_alias="google.text.quality",
+        parameters={},
+        inputs=[],
+    )
+    v2_payload = v1_payload.model_copy(update={"node_contract_version": 2})
+    model_alias, exact_model_id = resolve_model(v1_payload.model_alias, v1_payload.node_key, 1)
+    assert request_fingerprint(v1_payload, model_alias, exact_model_id) != request_fingerprint(v2_payload, model_alias, exact_model_id)
 
 
 def test_every_node_manifest_materializes_a_closed_config():
