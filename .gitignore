@@ -21,3 +21,6 @@ artifacts/
 .terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+*.tfplan
+!*.tfvars.example

@@ -5,7 +5,7 @@ services:
       POSTGRES_USER: frameflow
       POSTGRES_PASSWORD: frameflow
       POSTGRES_DB: frameflow
-    ports: ["${POSTGRES_PORT:-5432}:5432"]
+    ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"]
     volumes: ["postgres_data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U frameflow -d frameflow"]
@@ -24,7 +24,7 @@ services:
       POSTGRES_USER: frameflow
       POSTGRES_PWD: frameflow
       POSTGRES_SEEDS: postgres
-    ports: ["${TEMPORAL_PORT:-7233}:7233"]
+    ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${TEMPORAL_PORT:-7233}:7233"]
     healthcheck:
       test: ["CMD", "temporal", "task-queue", "describe", "--address", "temporal:7233", "--task-queue", "frameflow-generation-v1", "--command-timeout", "5s"]
       interval: 5s
@@ -40,7 +40,7 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:${WEB_PORT:-3001}
-    ports: ["${TEMPORAL_UI_PORT:-8081}:8080"]
+    ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${TEMPORAL_UI_PORT:-8081}:8080"]
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
@@ -49,8 +49,8 @@ services:
       MINIO_ROOT_USER: frameflow
       MINIO_ROOT_PASSWORD: frameflow-local-secret
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${MINIO_PORT:-9000}:9000"
+      - "${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes: ["minio_data:/data"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
@@ -122,7 +122,7 @@ services:
       R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
       HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
-    ports: ["${API_PORT:-8000}:8000"]
+    ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
       interval: 5s
@@ -215,7 +215,7 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8000}
     depends_on: [api]
-    ports: ["${WEB_PORT:-3001}:3000"]
+    ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3001}:3000"]
 
 volumes:
   postgres_data:

@@ -1,7 +1,9 @@
-# Frameflow 오픈소스·셀프호스트 요구 사양
+# Frameflow 소스 공개·셀프호스트 요구 사양
 
 Status: Draft
 작성 기준: 2026-08-31
+
+라이선스 정책: PolyForm Noncommercial License 1.0.0. 이 프로젝트는 소스가 공개되지만 상업적 사용을 제한하므로 OSI 승인 오픈소스가 아닌 source-available software로 설명한다.
 
 ## 1. 목적
 

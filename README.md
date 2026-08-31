@@ -2,6 +2,8 @@
 
 레퍼런스 영상의 원본 자산을 생성 단계와 격리하고, 추상적인 영상 포맷만 구조화해 새로운 숏츠를 만드는 그래프 기반 AI 영상 제작 시스템입니다.
 
+> **Source-available, noncommercial software.** Frameflow는 PolyForm Noncommercial License 1.0.0으로 제공됩니다. 개인 연구·학습·취미와 비영리 기관 사용은 허용되지만 상업적 사용에는 별도 서면 라이선스가 필요합니다. 비상업 제한 때문에 OSI 승인 오픈소스는 아닙니다.
+
 현재 구현과 Canvas 사용법은 [`GUIDE.md`](./GUIDE.md)를 참고하세요.
 오픈소스·셀프호스트·BYOK·데이터 이동 요구사항과 구현 순서는 [`docs/open-source-requirements.md`](./docs/open-source-requirements.md)를 참고하세요.
 
@@ -54,8 +56,18 @@
 필요 조건은 Node.js 22+, Python 3.11+, FFmpeg, Docker입니다.
 
 ```bash
-make setup
+cp .env.example .env
+make up
 ```
+
+- Web: <http://localhost:3001>
+- API: <http://localhost:8000/docs>
+- 종료: `make down` — 데이터 Volume은 보존됩니다.
+- 상태/로그: `make ps`, `make logs`
+
+기본적으로 모든 포트는 `127.0.0.1`에만 바인딩됩니다. 인증 Reverse Proxy 없이 `FRAMEFLOW_BIND_ADDRESS=0.0.0.0`으로 변경하지 마세요.
+
+소스 기반 개별 개발 환경은 `make setup`, `make dev-api`, `make dev-web`을 사용합니다.
 
 터미널 두 개에서 실행합니다.
 
@@ -216,3 +228,20 @@ R2로 바꿀 때는 `STORAGE_PROVIDER=r2`, `R2_ACCOUNT_ID`, `STORAGE_ACCESS_KEY`
 - Sentry DSN과 OpenTelemetry Exporter
 
 외부 자격증명 없이 검증할 때는 테스트 스위트가 격리된 `fixture` Provider를 사용합니다. 애플리케이션 실행은 실데이터 모드에서 가짜 결과로 폴백하지 않습니다.
+
+## Terraform
+
+`infra/terraform`은 GCS, 분리된 서비스 계정과 Cloud SQL 기반만 준비합니다. Web/API/Worker 운영 배포는 아직 포함하지 않습니다.
+
+```bash
+cp infra/terraform/environments/dev.tfvars.example infra/terraform/environments/dev.tfvars
+export TF_VAR_database_password='replace-with-a-generated-secret'
+make tf-plan TF_ENV=dev
+make tf-apply TF_ENV=dev
+```
+
+자세한 내용은 [`infra/terraform/README.md`](./infra/terraform/README.md)를 참고하세요.
+
+## License
+
+Copyright 2026 geusan. PolyForm Noncommercial License 1.0.0. 상업적 이용 문의는 저장소 소유자에게 별도 라이선스를 요청하세요.

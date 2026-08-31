@@ -1,6 +1,7 @@
 {
   "name": "video-canvas",
   "version": "0.1.0",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "workspaces": ["apps/web"],
   "scripts": {
