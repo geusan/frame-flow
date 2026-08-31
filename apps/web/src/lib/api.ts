@@ -197,7 +197,13 @@ export interface CanvasDocument {
   base_version_id?: string;
   revision: number;
   draft_contract: WorkflowDraftContract;
+  storage_schema_version: "canvas.document.v1" | "canvas.legacy.v1";
   last_run?: { id: string; status: string; progress: number; created_at: string };
+}
+
+export interface CanvasPackageImport extends CanvasDocument {
+  import_warnings: string[];
+  package_source: { canvas_id?: string; name?: string; revision?: number };
 }
 
 export interface WorkflowDefinitionRecord {
@@ -570,6 +576,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestBlob(path: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(`${API_BASE}${path}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(body.detail ?? `API request failed (${response.status})`);
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? "canvas.frameflow";
+  return { blob: await response.blob(), filename };
+}
+
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
@@ -582,6 +599,12 @@ export const frameflowApi = {
   createCanvas: (name = "Untitled canvas") => request<CanvasDocument>("/canvases", { method: "POST", body: JSON.stringify({ name, nodes: [], edges: [] }) }),
   getCanvas: (canvasId: string) => request<CanvasDocument>(`/canvases/${canvasId}`),
   saveCanvas: (canvasId: string, payload: { name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; active_run_id?: string; expected_revision?: number; draft_contract?: WorkflowDraftContract }) => request<CanvasDocument>(`/canvases/${canvasId}`, { method: "PUT", body: JSON.stringify(payload) }),
+  exportCanvasPackage: (canvasId: string) => requestBlob(`/canvases/${canvasId}/export`),
+  importCanvasPackage: (file: File) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    return request<CanvasPackageImport>("/canvases/import", { method: "POST", body });
+  },
   deleteCanvas: (canvasId: string) => request<void>(`/canvases/${canvasId}`, { method: "DELETE" }),
   listWorkflows: () => request<WorkflowDefinitionRecord[]>("/workflows"),
   createWorkflow: (payload: { name: string; description?: string; tags?: string[]; source_canvas_id?: string }) => request<WorkflowDefinitionRecord>("/workflows", { method: "POST", body: JSON.stringify(payload) }),

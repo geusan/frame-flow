@@ -21,3 +21,10 @@
 .rights-notice strong { color: #3e5246; font-size: var(--text-sm); }
 .rights-notice small { color: #75847a; font-size: var(--text-xs); }
 .modal-actions { padding: 13px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 7px; }
+
+.canvas-document-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 2px; }
+.canvas-document-actions > button { width: 27px; height: 27px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #a1a39d; display: grid; place-items: center; cursor: pointer; }
+.canvas-document-actions > button:hover:not(:disabled) { background: var(--brand-soft); color: var(--brand); }
+.canvas-document-actions > button:last-child:hover:not(:disabled) { background: var(--red-soft); color: var(--red); }
+.canvas-document-actions > button:disabled { cursor: wait; opacity: .55; }
+.canvas-library-page > .experiment-history-state.success { color: var(--green); }

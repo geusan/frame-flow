@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Clock3, GitBranch, Plus, RefreshCw, Trash2, Workflow } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Clock3, Download, GitBranch, Plus, RefreshCw, Trash2, Upload, Workflow } from "lucide-react";
 
 import { ConfirmAction } from "@/components/shared/confirm-action";
 import { PageHeader } from "@/components/shared/page-header";
@@ -23,7 +23,11 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
   const [canvases, setCanvases] = useState<CanvasDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const packageInputRef = useRef<HTMLInputElement>(null);
 
   const loadCanvases = useCallback(async () => {
     setLoading(true);
@@ -81,6 +85,47 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
     }
   };
 
+  const importCanvasPackage = async (file: File) => {
+    setImporting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const imported = await frameflowApi.importCanvasPackage(file);
+      setCanvases((current) => [imported, ...current.filter((item) => item.id !== imported.id)]);
+      setNotice(imported.import_warnings.length
+        ? `Canvas를 가져왔습니다. 확인할 경고 ${imported.import_warnings.length}개: ${imported.import_warnings.join(" · ")}`
+        : "Canvas template을 가져왔습니다.");
+      notifyWorkspaceChanged();
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Canvas package import failed");
+    } finally {
+      setImporting(false);
+      if (packageInputRef.current) packageInputRef.current.value = "";
+    }
+  };
+
+  const exportCanvasPackage = async (canvas: CanvasDocument) => {
+    setExportingId(canvas.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const exported = await frameflowApi.exportCanvasPackage(canvas.id);
+      const url = URL.createObjectURL(exported.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = exported.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setNotice("Canvas template을 내보냈습니다. 로컬 Asset과 실행 상태는 package에서 제외됩니다.");
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Canvas package export failed");
+    } finally {
+      setExportingId(null);
+    }
+  };
+
   const deleteCanvas = async (canvas: CanvasDocument) => {
     try {
       await frameflowApi.deleteCanvas(canvas.id);
@@ -92,8 +137,22 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
   };
 
   return <div className="view-page canvas-library-page">
-    <PageHeader title="Canvases" description="독립 실험 Canvas와 Workflow의 편집 가능한 Draft를 관리합니다." actions={<><Button type="button" variant="secondary" onClick={() => void loadCanvases()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button><Button type="button" onClick={() => void createCanvas()} disabled={creating}><Plus size={14} /> {creating ? "Creating…" : "New canvas"}</Button></>} />
+    <PageHeader title="Canvases" description="독립 실험 Canvas와 Workflow의 편집 가능한 Draft를 관리합니다." actions={<>
+      <input
+        ref={packageInputRef}
+        type="file"
+        accept=".frameflow,application/vnd.frameflow.package+zip"
+        hidden
+        onChange={(event) => { const file = event.target.files?.[0]; if (file) void importCanvasPackage(file); }}
+      />
+      <Button type="button" variant="secondary" onClick={() => packageInputRef.current?.click()} disabled={importing}>
+        <Upload size={14} /> {importing ? "Importing…" : "Import"}
+      </Button>
+      <Button type="button" variant="secondary" onClick={() => void loadCanvases()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button>
+      <Button type="button" onClick={() => void createCanvas()} disabled={creating}><Plus size={14} /> {creating ? "Creating…" : "New canvas"}</Button>
+    </>} />
     {error && <p className="experiment-history-state error">{error}</p>}
+    {notice && !error && <p className="experiment-history-state success">{notice}</p>}
     {!error && loading && <p className="experiment-history-state">Loading persisted canvases…</p>}
     {!error && !loading && !canvases.length && <div className="canvas-library-empty"><span><Workflow size={24} /></span><strong>No saved canvases</strong><p>새 Canvas를 만들면 그래프가 PostgreSQL에 자동 저장됩니다.</p><Button type="button" onClick={() => void createCanvas()}><Plus size={14} /> Create first canvas</Button></div>}
     <div className="canvas-document-grid">{canvases.map((canvas) => <article className="canvas-document-card" key={canvas.id}>
@@ -103,7 +162,10 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
         <span className="canvas-document-count"><b>{canvas.node_count}</b><small>nodes</small></span>
       </button>
       <div className="canvas-document-meta"><span><GitBranch size={12} /> {canvas.edge_count} connections</span><span><Clock3 size={12} /> {new Date(canvas.updated_at).toLocaleString("ko-KR")}</span></div>
-      <div className="canvas-document-footer"><span>{canvas.last_run ? <><i className={`run-dot status-${canvas.last_run.status.toLowerCase()}`} /> Last run · {canvas.last_run.status} · {canvas.last_run.progress}%</> : canvas.workflow_definition_id ? "Managed Workflow draft" : "No runs yet"}</span>{!canvas.workflow_definition_id && <ConfirmAction trigger={<button type="button" aria-label={`Delete ${canvas.name}`}><Trash2 size={13} /></button>} title={`Delete “${canvas.name}”?`} description="Canvas runs and artifacts remain immutable, but this canvas document will be removed." confirmLabel="Delete canvas" onConfirm={() => deleteCanvas(canvas)} />}</div>
+      <div className="canvas-document-footer"><span>{canvas.last_run ? <><i className={`run-dot status-${canvas.last_run.status.toLowerCase()}`} /> Last run · {canvas.last_run.status} · {canvas.last_run.progress}%</> : canvas.workflow_definition_id ? "Managed Workflow draft" : "No runs yet"}</span><div className="canvas-document-actions">
+        <button type="button" aria-label={`Export ${canvas.name}`} title="Export template" disabled={exportingId === canvas.id} onClick={() => void exportCanvasPackage(canvas)}>{exportingId === canvas.id ? <RefreshCw className="spin" size={13} /> : <Download size={13} />}</button>
+        {!canvas.workflow_definition_id && <ConfirmAction trigger={<button type="button" aria-label={`Delete ${canvas.name}`}><Trash2 size={13} /></button>} title={`Delete “${canvas.name}”?`} description="Canvas runs and artifacts remain immutable, but this canvas document will be removed." confirmLabel="Delete canvas" onConfirm={() => deleteCanvas(canvas)} />}
+      </div></div>
     </article>)}</div>
   </div>;
 }

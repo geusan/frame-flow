@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.dev/schemas/frameflow.package.v1.schema.json",
+  "title": "Frameflow Package Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package_kind",
+    "exporter_version",
+    "source",
+    "requirements",
+    "warnings",
+    "files"
+  ],
+  "properties": {
+    "schema_version": { "const": "frameflow.package.v1" },
+    "package_kind": { "const": "canvas.template" },
+    "exporter_version": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canvas_id", "name", "revision"],
+      "properties": {
+        "canvas_id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "revision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_contracts", "skills"],
+      "properties": {
+        "node_contracts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["type_key", "contract_version", "definition_digest"],
+            "properties": {
+              "type_key": { "type": "string" },
+              "contract_version": { "type": "integer", "minimum": 1 },
+              "definition_digest": { "type": "string" }
+            }
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["skill_id", "skill_version"],
+            "properties": {
+              "skill_id": { "type": "string", "minLength": 1 },
+              "skill_version": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "files": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "canvas/document.json" },
+        { "const": "canvas/contract.json" }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    }
+  }
+}

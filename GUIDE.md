@@ -132,6 +132,14 @@ Upload 노드와 클립보드 이미지는 Artifact Upload API에 저장되며 �
 - Version 메모를 수정해도 content hash, Cache와 Run payload는 변하지 않는다.
 - Workflow 상세의 입력 Form은 게시된 input schema를 사용하며 실행 시 resolved graph와 정확한 모델 ID를 Snapshot한다.
 
+### 4.7 Canvas template 내보내기와 가져오기
+
+`/canvases` 목록에서 각 Canvas의 Download 버튼을 누르면 `.frameflow` template package를 내려받는다. 상단 `Import`에서 같은 파일을 선택하면 새 독립 Canvas Draft로 가져온다.
+
+Template package에는 Canonical Node 계약, Config, Edge, Workflow input/binding/output 계약과 Canvas-only 요소가 포함된다. 실행 상태, 로그, 결과, Credential, Signed URL과 로컬 Artifact/Character/Format ID는 포함하지 않는다. 로컬 참조가 제거되거나 설치되지 않은 Node가 있으면 Import 결과에 경고가 표시되며 Unknown Node는 삭제하지 않고 read-only 상태로 보존한다.
+
+현재 구현은 graph template 전용이다. Artifact blob을 함께 옮기는 Portable package는 후속 범위다.
+
 ## 5. Prompt와 생성 노드 규칙
 
 Prompt는 독립된 입력 노드다. 생성 노드 내부에는 별도 Prompt 입력창이 없다.

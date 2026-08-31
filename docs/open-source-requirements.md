@@ -206,6 +206,8 @@ Docker에서는 호스트 경로를 `/imports:ro`로 mount한다. 일반 API가 
 
 ## 8. Canvas/Workflow package export/import
 
+2026-08-31 구현 상태: `frameflow.package.v1`의 `canvas.template` export/import, checksum 검증, Runtime·Secret·Signed URL 제외, 로컬 Artifact 참조 제거와 Unknown Node 보존이 Backend/Web에 연결됐다. Artifact blob을 포함하는 `portable` mode와 WorkflowVersion package는 남아 있다.
+
 ### 8.1 Package 형식
 
 파일 확장자는 `.frameflow`를 사용하고 내부는 ZIP 기반 `frameflow.package.v1`로 시작한다.
@@ -340,4 +342,3 @@ Local profile의 인증 비활성화는 명시적 설정으로만 허용하며 �
 
 - Staging cloud stack
 - Quota, 관측성, 백업·복구와 E2E 검증
-

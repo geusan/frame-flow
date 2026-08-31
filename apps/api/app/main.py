@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import mimetypes
 import os
@@ -77,6 +78,13 @@ from .domain import (
 )
 from .canvas_runs import canvas_dependencies, canvas_run_response, create_canvas_run, local_canvas_engine, record_canvas_approval, record_canvas_selection
 from .canvas_documents import canonical_canvas_graph, canonicalize_canvas_document, legacy_canvas_graph
+from .canvas_packages import (
+    PACKAGE_MAX_BYTES,
+    PACKAGE_MEDIA_TYPE,
+    CanvasPackageError,
+    export_canvas_template,
+    import_canvas_template,
+)
 from .artifact_lineage import artifact_lineage_graph
 from .character_lora import character_lora_state, refresh_character_lora_training, start_character_lora_training as submit_character_lora_training
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
@@ -314,6 +322,47 @@ def create_canvas_document(payload: CanvasDocumentRequest, db: Session = Depends
     return canvas_document_payload(record)
 
 
+@app.post("/canvases/import", status_code=status.HTTP_201_CREATED)
+async def import_canvas_document_package(
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    content = await file.read(PACKAGE_MAX_BYTES + 1)
+    if len(content) > PACKAGE_MAX_BYTES:
+        raise HTTPException(413, "Canvas package exceeds the 20 MB template limit")
+    try:
+        imported = import_canvas_template(content)
+    except CanvasPackageError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    imported_name = (name.strip() if name is not None else imported.name) or imported.name
+    if len(imported_name) > 255:
+        raise HTTPException(422, "Canvas name is too long")
+    record = CanvasRecord(
+        id=new_id("canvas"),
+        name=imported_name,
+        graph_json=imported.document,
+        active_run_id=None,
+        revision=1,
+        draft_contract_json=imported.draft_contract,
+        updated_at=utc_now(),
+    )
+    db.add(record)
+    audit(db, "canvas.package_imported", record.id, {
+        "filename": file.filename or "canvas.frameflow",
+        "package_sha256": hashlib.sha256(content).hexdigest(),
+        "source": imported.source,
+        "warnings": imported.warnings,
+    })
+    db.commit()
+    db.refresh(record)
+    return {
+        **canvas_document_payload(record),
+        "import_warnings": imported.warnings,
+        "package_source": imported.source,
+    }
+
+
 @app.get("/canvases/{canvas_id}")
 def get_canvas_document(canvas_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     record = db.get(CanvasRecord, canvas_id)
@@ -323,6 +372,32 @@ def get_canvas_document(canvas_id: str, db: Session = Depends(get_db)) -> dict[s
         select(CanvasRunRecord).where(CanvasRunRecord.canvas_id == canvas_id).order_by(CanvasRunRecord.created_at.desc())
     )
     return canvas_document_payload(record, last_run)
+
+
+@app.get("/canvases/{canvas_id}/export")
+def export_canvas_document_package(canvas_id: str, db: Session = Depends(get_db)) -> Response:
+    record = db.get(CanvasRecord, canvas_id)
+    if not record:
+        raise HTTPException(404, "canvas not found")
+    try:
+        content = export_canvas_template(
+            canvas_id=record.id,
+            name=record.name,
+            revision=record.revision,
+            graph_document=record.graph_json or {},
+            draft_contract=record.draft_contract_json,
+        )
+    except CanvasPackageError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    safe_id = re.sub(r"[^A-Za-z0-9_-]+", "-", record.id).strip("-") or "canvas"
+    return Response(
+        content=content,
+        media_type=PACKAGE_MEDIA_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_id}.frameflow"',
+            "Content-Length": str(len(content)),
+        },
+    )
 
 
 @app.put("/canvases/{canvas_id}")
