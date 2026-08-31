@@ -280,7 +280,8 @@ class ExperimentRunRequest(BaseModel):
 class CanvasRunRequest(BaseModel):
     canvas_id: str = Field(min_length=1, max_length=128)
     name: str = Field(default="Untitled canvas", min_length=1, max_length=255)
-    nodes: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+    canvas_revision: int | None = Field(default=None, ge=1)
+    nodes: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     edges: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
     target_node_id: str | None = Field(default=None, min_length=1, max_length=128)
 

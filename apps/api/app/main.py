@@ -861,7 +861,7 @@ async def start_canvas_run(payload: CanvasRunRequest, db: Session = Depends(get_
         canvas.active_run_id = run.id
         canvas.updated_at = utc_now()
         db.commit()
-    await _schedule_canvas_run(run, payload.nodes)
+    await _schedule_canvas_run(run, list((run.graph_snapshot or {}).get("nodes") or []))
     return canvas_run_response(run)
 
 

@@ -724,7 +724,7 @@ export const frameflowApi = {
     const query = new URLSearchParams({ direction, depth: String(depth) });
     return request<ArtifactLineageGraph>(`/artifacts/${artifactId}/lineage?${query}`);
   },
-  createCanvasRun: (payload: { canvas_id: string; name: string; nodes: Array<Record<string, unknown>>; edges: Array<Record<string, unknown>>; target_node_id?: string }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
+  createCanvasRun: (payload: { canvas_id: string; name: string; canvas_revision?: number; target_node_id?: string }) => request<CanvasRunRecord>("/canvas-runs", { method: "POST", body: JSON.stringify(payload) }),
   getCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}`),
   cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),
   selectCanvasCandidate: (runId: string, canvasNodeId: string, artifactId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/select`, { method: "POST", body: JSON.stringify({ artifact_id: artifactId }) }),

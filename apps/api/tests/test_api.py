@@ -1,9 +1,11 @@
-from fastapi.testclient import TestClient
+from copy import deepcopy
 import json
 import subprocess
 import threading
 import time
 from types import SimpleNamespace
+
+from fastapi.testclient import TestClient
 
 from app.canvas_operations import executor_revision
 from app.database import ExperimentRunRecord
@@ -939,6 +941,54 @@ def test_canvas_worker_single_node_run_executes_only_target(client: TestClient, 
     non_executable = client.post("/canvas-runs", json={**graph, "target_node_id": "prompt"})
     assert non_executable.status_code == 422
     assert non_executable.json()["detail"] == "Canvas target node is not executable"
+
+
+def test_canvas_run_snapshots_the_saved_canonical_canvas_revision(client: TestClient):
+    created = client.post("/canvases", json={
+        "name": "Stored run source",
+        "nodes": [{
+            "id": "prompt",
+            "position": {"x": 10, "y": 20},
+            "data": {
+                "key": "prompt.input",
+                "label": "Prompt",
+                "description": "Stored snapshot",
+                "configText": "original snapshot",
+                "outputType": "Prompt",
+                "executable": False,
+            },
+        }],
+        "edges": [],
+    }).json()
+    started = client.post("/canvas-runs", json={
+        "canvas_id": created["id"],
+        "name": "Stored snapshot run",
+        "canvas_revision": created["revision"],
+    })
+    assert started.status_code == 201, started.text
+    assert started.json()["graph"]["canvas_revision"] == created["revision"]
+    assert started.json()["graph"]["nodes"][0]["data"]["configText"] == "original snapshot"
+
+    edited_nodes = deepcopy(created["nodes"])
+    edited_nodes[0]["data"]["configText"] = "changed after run"
+    saved = client.put(f"/canvases/{created['id']}", json={
+        "name": created["name"],
+        "nodes": edited_nodes,
+        "edges": [],
+        "expected_revision": created["revision"],
+    })
+    assert saved.status_code == 200
+    assert saved.json()["revision"] == created["revision"] + 1
+    frozen = client.get(f"/canvas-runs/{started.json()['id']}").json()
+    assert frozen["graph"]["nodes"][0]["data"]["configText"] == "original snapshot"
+
+    stale = client.post("/canvas-runs", json={
+        "canvas_id": created["id"],
+        "name": "Stale run",
+        "canvas_revision": created["revision"],
+    })
+    assert stale.status_code == 422
+    assert stale.json()["detail"] == f"Canvas revision conflict: expected {created['revision']}, current {saved.json()['revision']}"
 
 
 def test_canvas_worker_runs_independent_nodes_in_parallel_and_streams_state(client: TestClient, monkeypatch):

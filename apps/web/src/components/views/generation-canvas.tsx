@@ -731,11 +731,11 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodesRef.current, edgesRef.current, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract });
       setCanvasRevision(document.revision);
       setSaveState("Saved");
-      return true;
+      return document;
     } catch (saveError) {
       setSaveState("Unsaved");
       notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error");
-      return false;
+      return null;
     }
   }, [activeCanvasRunId, canvasId, canvasName, draftContract, nodeDefinitions, notify]);
 
@@ -1237,11 +1237,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     });
     notify(`${node.data.label}을 Worker에 전달하는 중…`, "info");
     try {
+      const saved = await saveNow();
+      if (!saved) throw new Error("Canvas snapshot save failed");
       const run = await frameflowApi.createCanvasRun({
         canvas_id: canvasId,
         name: `${canvasName} · ${node.data.label}`.slice(0, 255),
-        nodes: nodesRef.current.map((candidate) => ({ ...candidate, data: { ...candidate.data, output: candidate.data.output?.url?.startsWith("blob:") ? undefined : candidate.data.output } })) as Array<Record<string, unknown>>,
-        edges: edgesRef.current as Array<Record<string, unknown>>,
+        canvas_revision: saved.revision,
         target_node_id: nodeId,
       });
       setActiveCanvasRunId(run.id);
@@ -1257,7 +1258,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(message, "error");
       return false;
     }
-  }, [canvasId, canvasName, markUnsaved, notify, setNodes]);
+  }, [canvasId, canvasName, markUnsaved, notify, saveNow, setNodes]);
 
   const validateAndOpen = useCallback(() => {
     const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
@@ -1423,11 +1424,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     cancelRunRef.current = false;
     setNodes((current) => current.map((node) => node.data.executable === false ? node : { ...node, data: { ...node.data, status: "QUEUED" as NodeStatus, runProgress: 0 } }));
     try {
+      const saved = await saveNow();
+      if (!saved) throw new Error("Canvas snapshot save failed");
       const run = await frameflowApi.createCanvasRun({
         canvas_id: canvasId,
         name: canvasName,
-        nodes: nodesRef.current.map((node) => ({ ...node, data: { ...node.data, output: node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output } })) as Array<Record<string, unknown>>,
-        edges: edgesRef.current as Array<Record<string, unknown>>,
+        canvas_revision: saved.revision,
       });
       setActiveCanvasRunId(run.id);
       setSaveState("Unsaved");
@@ -1438,7 +1440,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setGraphRunning(false);
       notify(error instanceof Error ? error.message : "Canvas Run 시작에 실패했습니다.", "error");
     }
-  }, [applyCanvasRunUpdate, canvasId, canvasName, notify, registryConnectionCompatible, setNodes, subscribeCanvasRun]);
+  }, [applyCanvasRunUpdate, canvasId, canvasName, notify, registryConnectionCompatible, saveNow, setNodes, subscribeCanvasRun]);
 
   const stopGraph = async () => {
     cancelRunRef.current = true;

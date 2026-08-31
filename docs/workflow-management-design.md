@@ -1013,6 +1013,8 @@ Canvas의 신규 Edge는 source/target Node의 고정된 contract version에서 
 
 Web의 Canvas autosave와 명시적 저장은 React Flow `nodes/edges`를 API에 직접 쓰지 않고 `canvas.document.v1` serializer를 거친다. API는 전환 기간 동안 기존 `nodes/edges` 요청도 허용하지만 Canonical 요청 역시 서버 Adapter로 재검증·정규화한 뒤 저장한다. 로컬 스토리지에서 과거 Canvas를 한 번 가져오는 경로만 Legacy write 요청을 사용하며, 조회와 Draft Run의 Legacy graph Adapter는 별도 단계에서 제거한다.
 
+Draft Run 직전 Web은 현재 Canonical Canvas를 저장하고 응답 revision과 `canvas_id`만 Run API에 전달한다. 서버는 해당 revision이 현재 저장 상태와 일치하는지 확인한 뒤 Canonical 문서를 Legacy execution graph로 변환해 불변 `graph_snapshot`으로 저장한다. 이후 Canvas autosave나 편집은 이미 생성된 Run payload를 변경하지 않는다. Raw `nodes/edges` Run 요청은 전환 기간의 구버전 API 호환에만 남긴다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.

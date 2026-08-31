@@ -8,7 +8,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .database import CanvasNodeRunRecord, CanvasRunRecord, SessionLocal
+from .canvas_documents import legacy_canvas_graph
+from .database import CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, SessionLocal
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
 from .nodes import node_registry
@@ -51,17 +52,32 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
 
 
 def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord:
-    node_ids = [str(node.get("id") or "") for node in payload.nodes]
+    if payload.nodes:
+        nodes = payload.nodes
+        edges = payload.edges
+        canvas_revision = payload.canvas_revision
+    else:
+        canvas = db.get(CanvasRecord, payload.canvas_id)
+        if not canvas:
+            raise ValueError("Canvas was not found")
+        if payload.canvas_revision is not None and canvas.revision != payload.canvas_revision:
+            raise ValueError(f"Canvas revision conflict: expected {payload.canvas_revision}, current {canvas.revision}")
+        graph = legacy_canvas_graph(canvas.graph_json)
+        nodes = list(graph.get("nodes") or [])
+        edges = list(graph.get("edges") or [])
+        canvas_revision = canvas.revision
+    if not nodes:
+        raise ValueError("Canvas graph has no nodes")
+    node_ids = [str(node.get("id") or "") for node in nodes]
     if any(not node_id for node_id in node_ids) or len(set(node_ids)) != len(node_ids):
         raise ValueError("Canvas node IDs must be present and unique")
     known = set(node_ids)
     if payload.target_node_id and payload.target_node_id not in known:
         raise ValueError("Canvas target node is not present in the graph")
     if payload.target_node_id:
-        target = next(node for node in payload.nodes if str(node["id"]) == payload.target_node_id)
+        target = next(node for node in nodes if str(node["id"]) == payload.target_node_id)
         if dict(target.get("data") or {}).get("executable") is False:
             raise ValueError("Canvas target node is not executable")
-    edges = payload.edges
     if any(str(edge.get("source")) not in known or str(edge.get("target")) not in known for edge in edges):
         raise ValueError("Canvas edge references an unknown node")
     _assert_acyclic(node_ids, edges)
@@ -71,10 +87,10 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         name=payload.name,
         status=NodeStatus.READY,
         progress=0,
-        graph_snapshot={"nodes": payload.nodes, "edges": payload.edges, "target_node_id": payload.target_node_id},
+        graph_snapshot={"nodes": nodes, "edges": edges, "target_node_id": payload.target_node_id, **({"canvas_revision": canvas_revision} if canvas_revision is not None else {})},
     )
     db.add(run)
-    for ordinal, node in enumerate(payload.nodes):
+    for ordinal, node in enumerate(nodes):
         data = dict(node.get("data") or {})
         normally_executable = data.get("executable") is not False
         executable = normally_executable and (payload.target_node_id is None or payload.target_node_id == str(node["id"]))
