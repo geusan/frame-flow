@@ -18,7 +18,7 @@ from app.providers_localization import (
     TranscriptResult,
     TranslationResult,
 )
-from app.providers_generation import LiveGenerationResult
+from app.providers_google import GeneratedBinary
 
 
 def test_executor_revision_fits_persisted_execution_mode(monkeypatch):
@@ -209,17 +209,13 @@ def test_single_experiment_snapshots_inputs_caches_and_sets_baseline(client: Tes
 
 def test_live_generation_mode_uses_google_service_without_deterministic_fallback(client: TestClient, monkeypatch):
     class FakeLiveServices:
-        def execute(self, payload, inputs):
-            assert payload.node_key == "image.generate"
-            assert inputs == []
-            return LiveGenerationResult(
-                {"kind": "image", "title": "Live image", "mimeType": "image/png"},
-                "Image", "google.image.v1", "google_live_request", b"\x89PNG\r\n\x1a\n",
-                "image/png", "generated.png", [],
-            )
+        def generate_images(self, **kwargs):
+            assert kwargs["logical_model"] == "google.image.fast"
+            assert kwargs["reference_images"] == []
+            return [GeneratedBinary(b"\x89PNG\r\n\x1a\n", "image/png", "gemini-image-test", "google_live_request")]
 
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
-    monkeypatch.setattr("app.experiments.get_google_generation_services", lambda: FakeLiveServices())
+    monkeypatch.setattr("app.nodes.executors.image_generation.get_google_generation_services", lambda: FakeLiveServices())
     response = client.post("/experiments", json={
         "canvas_id": "canvas_live",
         "node_id": "image_live",
@@ -231,10 +227,45 @@ def test_live_generation_mode_uses_google_service_without_deterministic_fallback
     })
     assert response.status_code == 201
     result = response.json()
-    assert result["status"] == "SUCCEEDED"
+    assert result["status"] == "SUCCEEDED", result.get("error")
     assert result["execution_mode"] == "google-live.v1"
     assert result["provider_request_id"] == "google_live_request"
-    assert result["output"]["title"] == "Live image"
+    assert result["output"]["title"] == "Generated image"
+    assert result["cost_usd"] == 0.067
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "image.generated.v1"
+    assert artifact["metadata"]["source"] == "node_executor_registry"
+
+
+def test_openai_image_provider_routes_through_registry_capability(client: TestClient, monkeypatch):
+    class FakeOpenAIImages:
+        def generate_images(self, **kwargs):
+            assert kwargs["logical_model"] == "openai.image.default"
+            assert kwargs["aspect_ratio"] == "1:1"
+            assert kwargs["reference_images"] == []
+            return [b"\x89PNG\r\n\x1a\n-openai"], "openai_image_registry"
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.image_generation.get_openai_generation_services",
+        lambda: FakeOpenAIImages(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_openai_image",
+        "node_id": "image_openai",
+        "node_key": "image.generate",
+        "prompt": "OpenAI image",
+        "model_alias": "openai.image.default",
+        "parameters": {"aspect_ratio": "1:1", "resolution": "2K", "output_count": 1},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED"
+    assert result["provider_request_id"] == "openai_image_registry"
+    artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert artifact["schema_id"] == "image.generated.v1"
+    assert artifact["metadata"]["provider"] == "openai"
 
 
 def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):

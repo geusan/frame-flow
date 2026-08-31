@@ -354,6 +354,8 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     if definition and not node_registry.uses_legacy_runtime(definition) and configured_model_alias:
         payload = payload.model_copy(update={"model_alias": configured_model_alias})
     model_alias, exact_model_id = resolve_model(payload.model_alias, payload.node_key, payload.node_contract_version)
+    if payload.model_alias != model_alias:
+        payload = payload.model_copy(update={"model_alias": model_alias})
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
     if requested_provider and model_alias.startswith(("google.", "openai.", "fal.", "xai.")) and not model_alias.startswith(f"{requested_provider}."):
         raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")

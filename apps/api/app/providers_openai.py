@@ -70,6 +70,38 @@ class OpenAIGenerationServices:
             raise RuntimeError("OpenAI Responses API returned no text")
         return text, str(response.id)
 
+    def generate_images(
+        self,
+        *,
+        logical_model: str,
+        prompt: str,
+        count: int,
+        aspect_ratio: str,
+        quality: str,
+        reference_images: list[InputMedia],
+    ) -> tuple[list[bytes], str]:
+        try:
+            exact_model = OPENAI_MODEL_REGISTRY[logical_model]
+        except KeyError as exc:
+            raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
+        common = {
+            "model": exact_model,
+            "prompt": prompt,
+            "n": max(1, min(4, count)),
+            "size": _image_size(aspect_ratio),
+            "quality": quality,
+            "output_format": "png",
+        }
+        response = self.client.images.edit(
+            image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(reference_images[:4], start=1)],
+            **common,
+        ) if reference_images else self.client.images.generate(**common)
+        images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
+        if not images:
+            raise RuntimeError("OpenAI Images API returned no image")
+        request_id = f"openai_{hashlib.sha256((prompt + str(response.created)).encode()).hexdigest()[:20]}"
+        return images, request_id
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias
         try:
@@ -146,24 +178,15 @@ class OpenAIGenerationServices:
 
         if payload.node_key in {"image.generate", "image.edit"}:
             count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
-            size = _image_size(str(payload.parameters.get("aspect_ratio") or "9:16"))
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
-            common = {
-                "model": exact_model,
-                "prompt": payload.prompt,
-                "n": count,
-                "size": size,
-                "quality": str(payload.parameters.get("quality") or "medium"),
-                "output_format": "png",
-            }
-            response = self.client.images.edit(
-                image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(image_inputs, start=1)],
-                **common,
-            ) if image_inputs else self.client.images.generate(**common)
-            images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
-            if not images:
-                raise RuntimeError("OpenAI Images API returned no image")
-            request_id = f"openai_{hashlib.sha256((payload.prompt + str(response.created)).encode()).hexdigest()[:20]}"
+            images, request_id = self.generate_images(
+                logical_model=logical_model,
+                prompt=payload.prompt,
+                count=count,
+                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+                quality=str(payload.parameters.get("quality") or "medium"),
+                reference_images=image_inputs,
+            )
             editing = payload.node_key == "image.edit"
             return LiveGenerationResult(
                 {"kind": "image", "title": "AI edited image" if editing else "Generated image", "mimeType": "image/png"},

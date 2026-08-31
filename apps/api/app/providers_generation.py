@@ -113,6 +113,25 @@ class GoogleGenerationServices:
         self.video = video
         self.tts = tts
 
+    def generate_images(
+        self,
+        *,
+        logical_model: str,
+        prompt: str,
+        candidate_count: int,
+        aspect_ratio: str,
+        seed: int | None,
+        reference_images: list[InputMedia],
+    ) -> list[GeneratedBinary]:
+        return self.image.generate(
+            prompt=prompt,
+            logical_model=logical_model,
+            candidate_count=candidate_count,
+            aspect_ratio=aspect_ratio,
+            seed=seed,
+            reference_images=[(item.data, item.content_type) for item in reference_images[:4]],
+        )
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
         input_ids = [item.artifact_id for item in inputs]
@@ -162,13 +181,13 @@ class GoogleGenerationServices:
         if payload.node_key in {"image.generate", "image.edit"}:
             candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
             image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
-            generated_images = self.image.generate(
-                prompt=payload.prompt,
+            generated_images = self.generate_images(
                 logical_model=logical_model,
+                prompt=payload.prompt,
                 candidate_count=candidate_count,
                 aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
                 seed=seed_value,
-                reference_images=[(item.data, item.content_type) for item in image_inputs],
+                reference_images=image_inputs,
             )
             generated = generated_images[0]
             extension = ".png" if "png" in generated.mime_type else ".jpg"
