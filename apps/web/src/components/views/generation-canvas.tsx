@@ -62,12 +62,12 @@ import {
   canvasElementTemplates,
   graphCost,
   inputHandleId,
-  isConnectionCompatible,
   nodeTemplates,
   refreshReadyStatuses,
   stepInputError,
   validateGraph,
   type CanvasOutput,
+  type ConnectionCompatibilityValidator,
   type DrawingDocument,
   type IconName,
   type NodeTemplate,
@@ -88,8 +88,9 @@ import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-can
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
 import { latestNodeTemplates } from "@/features/nodes/contracts";
 import { NodeInspectorEditor } from "@/features/nodes/node-inspector-editor";
+import { nodeConnectionCompatible, targetPortContract } from "@/features/nodes/port-contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
+import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type NodePortTypeRegistryRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
@@ -97,6 +98,7 @@ const EDGE_TYPE = "adaptive";
 const SMOOTH_STEP_ROUTING_GAP = 40;
 const SPACE_PAN_HOLD_DELAY_MS = 600;
 const EMPTY_WORKFLOW_DRAFT: WorkflowDraftContract = { schema_version: "workflow.contract.draft.v1", inputs: [], bindings: [], outputs: [] };
+const EMPTY_PORT_TYPE_REGISTRY: NodePortTypeRegistryRecord = { schema_version: "port-types.v1", types: [] };
 const CONFIG_DATA_FIELDS: Record<string, keyof StudioFlowNode["data"]> = {
   resolution: "resolution",
   aspect_ratio: "aspectRatio",
@@ -380,7 +382,7 @@ function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = no
     const index = sourceType && target?.data.inputTypes?.indexOf(sourceType);
     const migratedEdge = edge.type === "smoothstep" || !edge.type ? { ...edge, type: EDGE_TYPE } : edge;
     return sourceType && index !== undefined && index >= 0 ? { ...migratedEdge, targetHandle: inputHandleId(sourceType, index) } : migratedEdge;
-  }).filter((edge) => isConnectionCompatible(edge, migratedNodes));
+  });
   return { ...graph, nodes: refreshReadyStatuses(migratedNodes, migratedEdges), edges: migratedEdges };
 }
 
@@ -488,6 +490,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const [characterOptions, setCharacterOptions] = useState<CharacterRecord[]>([]);
   const [projectSkills, setProjectSkills] = useState<ProjectSkillRecord[]>([]);
   const [nodeDefinitions, setNodeDefinitions] = useState<NodeDefinitionRecord[]>([]);
+  const [portTypeRegistry, setPortTypeRegistry] = useState<NodePortTypeRegistryRecord>(EMPTY_PORT_TYPE_REGISTRY);
   const [models, setModels] = useState<ModelRecord[]>([]);
   const [registryTemplates, setRegistryTemplates] = useState<NodeTemplate[]>([]);
   const selectedNodeId = useStudioStore((state) => state.selectedNodeId);
@@ -621,12 +624,14 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.getCanvas(canvasId),
       frameflowApi.listExperiments(canvasId, undefined, 100).catch(() => []),
       frameflowApi.listNodeDefinitions().catch(() => []),
+      frameflowApi.listNodePortTypes().catch(() => EMPTY_PORT_TYPE_REGISTRY),
       frameflowApi.listModels().catch(() => []),
-    ]).then(([document, experiments, definitions, availableModels]) => {
+    ]).then(([document, experiments, definitions, availablePortTypes, availableModels]) => {
       if (!active) return;
       const manifestTemplates = latestNodeTemplates(definitions);
       const templates = [...canvasElementTemplates, ...manifestTemplates];
       setNodeDefinitions(definitions);
+      setPortTypeRegistry(availablePortTypes);
       setModels(availableModels);
       setRegistryTemplates(manifestTemplates);
       const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id }, templates);
@@ -835,13 +840,19 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     notify(`${type} 입력 연결을 해제했습니다.`, "success");
   }, [markUnsaved, notify, pushHistory, setEdges, setNodes]);
 
+  const registryConnectionCompatible = useCallback<ConnectionCompatibilityValidator>((connection, currentNodes) => (
+    nodeConnectionCompatible(connection, currentNodes, nodeDefinitions, portTypeRegistry)
+  ), [nodeDefinitions, portTypeRegistry]);
+
   const isValidConnection = useCallback((connection: Connection | Edge) => {
-    if (!isConnectionCompatible(connection, nodesRef.current)) return false;
+    if (!registryConnectionCompatible(connection, nodesRef.current)) return false;
+    const targetPort = targetPortContract(connection, nodesRef.current, nodeDefinitions, portTypeRegistry);
+    if (targetPort?.multiple) return true;
     const target = nodesRef.current.find((node) => node.id === connection.target);
     const targetType = target?.data.inputTypes?.find((type, index) => connection.targetHandle === inputHandleId(type, index));
-    if (targetType && target?.data.multiInputTypes?.includes(targetType)) return true;
+    if (!targetPort && targetType && target?.data.multiInputTypes?.includes(targetType)) return true;
     return !edgesRef.current.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle);
-  }, []);
+  }, [nodeDefinitions, portTypeRegistry, registryConnectionCompatible]);
 
   const onConnect = useCallback((connection: Connection) => {
     if (!isValidConnection(connection)) {
@@ -1276,15 +1287,15 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   }, [canvasId, canvasName, markUnsaved, notify, setNodes]);
 
   const validateAndOpen = useCallback(() => {
-    const errors = validateGraph(nodesRef.current, edgesRef.current);
+    const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
     setCompileErrors(errors);
     setCompileOpen(true);
     notify(errors.length ? `${errors.length}개의 그래프 문제를 확인하세요.` : "그래프 검증을 통과했습니다.", errors.length ? "error" : "success");
-  }, [notify]);
+  }, [notify, registryConnectionCompatible]);
 
   const publishDraft = useCallback(async () => {
     if (!workflowDefinitionId) return;
-    const errors = validateGraph(nodesRef.current, edgesRef.current);
+    const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
     if (errors.length) {
       setCompileErrors(errors);
       setCompileOpen(true);
@@ -1329,7 +1340,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     } finally {
       setPublishing(false);
     }
-  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, notify, workflowDefinitionId]);
+  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, notify, registryConnectionCompatible, workflowDefinitionId]);
 
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const targetNodeId = typeof run.graph.target_node_id === "string" ? run.graph.target_node_id : undefined;
@@ -1428,7 +1439,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   }, [activeCanvasRunId, applyCanvasRunUpdate, subscribeCanvasRun]);
 
   const runGraph = useCallback(async () => {
-    const errors = validateGraph(nodesRef.current, edgesRef.current);
+    const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
     if (errors.length) {
       setCompileErrors(errors);
       setCompileOpen(true);
@@ -1455,7 +1466,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setGraphRunning(false);
       notify(error instanceof Error ? error.message : "Canvas Run 시작에 실패했습니다.", "error");
     }
-  }, [applyCanvasRunUpdate, canvasId, canvasName, notify, setNodes, subscribeCanvasRun]);
+  }, [applyCanvasRunUpdate, canvasId, canvasName, notify, registryConnectionCompatible, setNodes, subscribeCanvasRun]);
 
   const stopGraph = async () => {
     cancelRunRef.current = true;

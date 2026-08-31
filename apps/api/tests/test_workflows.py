@@ -329,6 +329,36 @@ def test_publish_rejects_binding_with_incompatible_input_type(client):
     assert "incompatible" in rejected.json()["detail"]
 
 
+def test_publish_rejects_edges_with_incompatible_manifest_ports(client):
+    workflow, canvas = create_configured_workflow(client)
+    nodes = deepcopy(canvas["nodes"])
+    nodes.append({
+        "id": "voice",
+        "position": {"x": 40, "y": 220},
+        "data": {
+            "key": "tts.generate",
+            "label": "Voice",
+            "description": "Audio cannot feed a Prompt port",
+            "model": "google.tts.fast",
+            "provider": "google",
+            "inputTypes": ["Prompt"],
+            "requiredInputTypes": ["Prompt"],
+            "outputType": "Audio",
+        },
+    })
+    edges = [{"id": "audio-image", "source": "voice", "target": "image", "targetHandle": "input-Prompt-0"}]
+    saved = client.put(f"/canvases/{canvas['id']}", json={
+        "name": canvas["name"],
+        "nodes": nodes,
+        "edges": edges,
+        "expected_revision": canvas["revision"],
+        "draft_contract": canvas["draft_contract"],
+    }).json()
+    rejected = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": saved["revision"]})
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "Incompatible Node ports: media.audio.v1 → prompt.text.v1"
+
+
 def test_artifact_workflow_input_hydrates_a_typed_source_node(client):
     uploaded = client.post(
         "/artifacts/upload",

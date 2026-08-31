@@ -1009,6 +1009,8 @@ Custom Editor를 사용하는 신규 계약은 `editor.kind=custom`과 안정적
 
 이미 게시 가능한 상태로 배포된 `editor.kind=legacy` 계약은 editor metadata만 바꾸기 위해 같은 contract version을 덮어쓰지 않는다. 기존 definition digest를 유지한 채 `type_key@contract_version` Legacy Adapter로 Custom Editor ref에 연결하고, 새 contract부터 명시적인 Manifest ref를 사용한다. ref 구현이 없거나 로드되지 않으면 저장 Config를 삭제하지 않고 read-only fallback으로 연다.
 
+Canvas의 신규 Edge는 source/target Node의 고정된 contract version에서 Port ID와 cardinality를 해석하고 서버 Port Registry의 compatibility로 검증한다. 기존 React Flow의 `input-Prompt-0` 같은 Handle은 Legacy Adapter에서만 Port key로 변환한다. Unknown Node 또는 과거에 허용된 비호환 Edge는 Load 중 삭제하지 않고 Draft에 보존하며 Validate/Publish에서 명확한 오류를 반환한다.
+
 ### 17.10 새 Node 추가 절차
 
 새 Node를 추가하는 표준 절차는 다음과 같다.

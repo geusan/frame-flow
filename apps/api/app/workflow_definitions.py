@@ -261,6 +261,58 @@ def _assert_acyclic(node_ids: set[str], edges: list[dict[str, Any]]) -> None:
         raise WorkflowContractError("Canvas graph contains a cycle")
 
 
+def _manifest_port(definition: Any, handle: Any, *, direction: str) -> Any | None:
+    ports = definition.ports.outputs if direction == "output" else definition.ports.inputs
+    if direction == "output" and (not handle or handle == "output"):
+        return ports[0] if ports else None
+    if direction == "input" and not handle and len(ports) == 1:
+        return ports[0]
+    for index, port in enumerate(ports):
+        legacy = port_type_registry.get(port.type)
+        candidates = {port.key, f"{direction}-{port.key}"}
+        if direction == "input" and legacy:
+            candidates.add(f"input-{legacy.legacy_type}-{index}")
+        if handle in candidates:
+            return port
+    return None
+
+
+def _effective_output_type(node: dict[str, Any], port: Any) -> str:
+    if port.type != "data.reference_asset.v1":
+        return str(port.type)
+    artifact_type = str((node.get("config") or {}).get("artifact_type") or "ReferenceAsset")
+    dynamic = next((item.id for item in port_type_registry.types if item.legacy_type == artifact_type), None)
+    return dynamic or str(port.type)
+
+
+def _validate_graph_ports(graph: dict[str, Any]) -> None:
+    nodes = {str(node["id"]): node for node in graph.get("nodes", [])}
+    connected_inputs: dict[tuple[str, str], int] = {}
+    for edge in graph.get("edges", []):
+        source_node = nodes.get(str(edge.get("source") or ""))
+        target_node = nodes.get(str(edge.get("target") or ""))
+        if not source_node or not target_node:
+            raise WorkflowContractError(f"Edge references a missing Node: {edge.get('id')}")
+        source_definition = node_registry.get(str(source_node["type_key"]), int(source_node["contract_version"]))
+        target_definition = node_registry.get(str(target_node["type_key"]), int(target_node["contract_version"]))
+        source_port = _manifest_port(source_definition, edge.get("source_port"), direction="output")
+        target_port = _manifest_port(target_definition, edge.get("target_port"), direction="input")
+        if not source_port or not target_port:
+            raise WorkflowContractError(f"Edge references an unknown Node port: {edge.get('id')}")
+        source_type = _effective_output_type(source_node, source_port)
+        if not port_type_registry.compatible(source_type, target_port.type):
+            raise WorkflowContractError(f"Incompatible Node ports: {source_type} → {target_port.type}")
+        target_key = (str(target_node["id"]), str(target_port.key))
+        connected_inputs[target_key] = connected_inputs.get(target_key, 0) + 1
+        if connected_inputs[target_key] > 1 and not target_port.multiple:
+            raise WorkflowContractError(f"Node input does not accept multiple edges: {target_node['id']}.{target_port.key}")
+    for node in nodes.values():
+        definition = node_registry.get(str(node["type_key"]), int(node["contract_version"]))
+        for port in definition.ports.inputs:
+            if port.required and not connected_inputs.get((str(node["id"]), str(port.key))):
+                raise WorkflowContractError(f"Required Node input is not connected: {node['id']}.{port.key}")
+
+
 def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflowVersion:
     raw_graph = legacy_canvas_graph(canvas.graph_json)
     raw_nodes = list(raw_graph.get("nodes") or [])
@@ -368,6 +420,7 @@ def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflo
         "nodes": [canonical_by_id[node_id] for node_id in raw_ids if node_id in reachable],
         "edges": [edge for edge in canonical_edges if edge["source"] in reachable and edge["target"] in reachable],
     }
+    _validate_graph_ports(graph)
     graph_nodes = {node["id"]: node for node in graph["nodes"]}
     _validate_bindings(bindings, input_schema, graph_nodes)
     for output in outputs:

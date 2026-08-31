@@ -92,6 +92,7 @@ from .format_extraction import FormatSource, get_format_extractor
 from .media_capture import MediaCaptureError, capture_video_frame
 from .media_compat import BrowserVideoError
 from .nodes import node_registry
+from .nodes.port_types import port_type_registry
 from .providers import FAL_MODEL_REGISTRY, LOCAL_SUBSCRIPTION_MODEL_REGISTRY, MODEL_REGISTRY, OPENAI_MODEL_REGISTRY, XAI_MODEL_REGISTRY, model_id_for_alias
 from .providers_fal import get_fal_generation_services
 from .r2_training_storage import get_r2_training_dataset_store
@@ -233,6 +234,11 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
 @app.get("/node-definitions")
 def list_node_definitions() -> list[dict[str, Any]]:
     return [definition.public_payload() for definition in node_registry.list(lifecycle="ACTIVE")]
+
+
+@app.get("/node-port-types")
+def list_node_port_types() -> dict[str, Any]:
+    return port_type_registry.model_dump(mode="json")
 
 
 @app.get("/skills")

@@ -160,6 +160,15 @@ def test_port_type_registry_covers_legacy_canvas_contracts():
     assert port_type_registry.get("data.reference_asset.v1").legacy_type == "ReferenceAsset"
 
 
+def test_port_type_registry_is_exposed_for_web_connection_validation(client):
+    response = client.get("/node-port-types")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == "port-types.v1"
+    assert {item["id"] for item in payload["types"]} == port_type_registry.ids
+    assert next(item for item in payload["types"] if item["id"] == "media.video.v1")["legacy_type"] == "Video"
+
+
 def test_lora_train_manifest_is_registered_and_digest_is_stable():
     definition = node_registry.get("lora.train", 1)
     assert definition is not None

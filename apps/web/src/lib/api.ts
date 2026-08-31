@@ -64,6 +64,16 @@ export interface ModelRecord {
   last_used_at?: string;
 }
 
+export interface NodePortTypeRegistryRecord {
+  schema_version: "port-types.v1";
+  types: Array<{
+    id: string;
+    label: string;
+    legacy_type: string;
+    compatible_with: string[];
+  }>;
+}
+
 export interface ProviderSettingField {
   key: string;
   label: string;
@@ -602,6 +612,7 @@ async function requestBlob(path: string): Promise<{ blob: Blob; filename: string
 export const frameflowApi = {
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
+  listNodePortTypes: () => request<NodePortTypeRegistryRecord>("/node-port-types"),
   listSkills: (includeDisabled = false) => request<ProjectSkillRecord[]>(`/skills${includeDisabled ? "?include_disabled=true" : ""}`),
   registerSkill: (file: File) => {
     const body = new FormData();

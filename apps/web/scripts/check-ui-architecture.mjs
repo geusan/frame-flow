@@ -44,6 +44,9 @@ if (/definitions\.filter\(\(definition\) => definition\.editor\.kind === ["']gen
 if (/providerOptionsForNode|modelOptionsForNode|googleTextModelOptions/.test(generationCanvas)) {
   violations.push("src/components/views/generation-canvas.tsx: Provider/model choices must come from Manifest capabilities and the Model Registry");
 }
+if (/\bisConnectionCompatible\b/.test(generationCanvas)) {
+  violations.push("src/components/views/generation-canvas.tsx: production connections must use versioned Registry Port contracts");
+}
 const inspectorStart = generationCanvas.indexOf('<div className="inspector-content">');
 const inspectorEnd = generationCanvas.indexOf('<div className="inspector-edit-actions">', inspectorStart);
 const inspectorSource = inspectorStart >= 0 && inspectorEnd > inspectorStart ? generationCanvas.slice(inspectorStart, inspectorEnd) : "";
@@ -55,6 +58,15 @@ const modelOptionsPath = join(sourceRoot, "features", "nodes", "model-options.ts
 const modelOptions = readFileSync(modelOptionsPath, "utf8");
 if (/\bnodeKey\b|\bnode_key\b/.test(modelOptions)) {
   violations.push("src/features/nodes/model-options.ts: capability resolution must not branch on Node keys");
+}
+
+const portContractsPath = join(sourceRoot, "features", "nodes", "port-contracts.ts");
+const portContracts = readFileSync(portContractsPath, "utf8");
+if (/node\.data\.key\s*(?:===|!==)|\bnodeKey\b|\bnode_key\b/.test(portContracts)) {
+  violations.push("src/features/nodes/port-contracts.ts: Port compatibility must resolve from Node Definitions, not Node keys");
+}
+if (/\.filter\(\(edge\) => isConnectionCompatible/.test(generationCanvas)) {
+  violations.push("src/components/views/generation-canvas.tsx: Legacy or Unknown edges must be preserved during load");
 }
 
 const customEditorRegistryPath = join(sourceRoot, "features", "nodes", "custom-editors", "registry.tsx");

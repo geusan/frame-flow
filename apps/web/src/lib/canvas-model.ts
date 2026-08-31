@@ -251,7 +251,9 @@ function targetType(edge: Pick<Edge, "targetHandle">, target: StudioFlowNode): P
   return types.length === 1 ? types[0] : undefined;
 }
 
-export function isConnectionCompatible(connection: Pick<Edge, "source" | "target" | "targetHandle">, nodes: StudioFlowNode[]): boolean {
+export type ConnectionCompatibilityValidator = (connection: Pick<Edge, "source" | "target" | "sourceHandle" | "targetHandle">, nodes: StudioFlowNode[]) => boolean;
+
+export function isConnectionCompatible(connection: Pick<Edge, "source" | "target" | "sourceHandle" | "targetHandle">, nodes: StudioFlowNode[]): boolean {
   if (connection.source === connection.target) return false;
   const source = nodes.find((node) => node.id === connection.source);
   const target = nodes.find((node) => node.id === connection.target);
@@ -260,11 +262,11 @@ export function isConnectionCompatible(connection: Pick<Edge, "source" | "target
   return input === "Any" || source.data.outputType === input;
 }
 
-export function validateGraph(nodes: StudioFlowNode[], edges: Edge[]): string[] {
+export function validateGraph(nodes: StudioFlowNode[], edges: Edge[], connectionCompatible: ConnectionCompatibilityValidator = isConnectionCompatible): string[] {
   const errors: string[] = [];
   if (!nodes.length) return ["그래프에 노드가 없습니다."];
   for (const edge of edges) {
-    if (!isConnectionCompatible(edge, nodes)) errors.push(`호환되지 않는 연결: ${edge.source} → ${edge.target}`);
+    if (!connectionCompatible(edge, nodes)) errors.push(`호환되지 않는 연결: ${edge.source} → ${edge.target}`);
   }
   for (const node of nodes) {
     const allInputs = node.data.inputTypes ?? [];
