@@ -41,6 +41,15 @@ if (/\[\.\.\.nodeTemplates,\s*\.\.\.registryTemplates\]/.test(generationCanvas))
 if (/definitions\.filter\(\(definition\) => definition\.editor\.kind === ["']generic["']\)/.test(generationCanvas)) {
   violations.push("src/components/views/generation-canvas.tsx: do not exclude legacy-editor manifests from the Registry Library");
 }
+if (/providerOptionsForNode|modelOptionsForNode|googleTextModelOptions/.test(generationCanvas)) {
+  violations.push("src/components/views/generation-canvas.tsx: Provider/model choices must come from Manifest capabilities and the Model Registry");
+}
+
+const modelOptionsPath = join(sourceRoot, "features", "nodes", "model-options.ts");
+const modelOptions = readFileSync(modelOptionsPath, "utf8");
+if (/\bnodeKey\b|\bnode_key\b/.test(modelOptions)) {
+  violations.push("src/features/nodes/model-options.ts: capability resolution must not branch on Node keys");
+}
 
 if (violations.length) {
   console.error(`UI architecture check failed:\n${violations.map((item) => `- ${item}`).join("\n")}`);

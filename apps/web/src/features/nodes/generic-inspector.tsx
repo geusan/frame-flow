@@ -2,12 +2,13 @@ import type { NodeDefinitionRecord } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 
-export function GenericNodeInspector({ definition, value, onChange }: {
+export function GenericNodeInspector({ definition, value, onChange, hiddenFields = [] }: {
   definition: NodeDefinitionRecord;
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
+  hiddenFields?: string[];
 }) {
-  const fields = Object.entries(definition.config_schema.properties);
+  const fields = Object.entries(definition.config_schema.properties).filter(([key]) => !hiddenFields.includes(key));
   return <div className="generic-node-settings">
     <div className="editor-input-count connected">
       <span>Contract</span>

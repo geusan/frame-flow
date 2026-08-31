@@ -92,10 +92,11 @@ import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-in
 import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
 import { GenericNodeInspector } from "@/features/nodes/generic-inspector";
 import { latestNodeTemplates } from "@/features/nodes/contracts";
+import { modelOptionsForDefinition, providerOptionsForDefinition } from "@/features/nodes/model-options";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
+import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { maximizePlaybackVolume } from "@/lib/media";
-import { googleTextModelOptions, migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
+import { migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
@@ -398,29 +399,6 @@ function providerFromModel(model?: string): ProviderName {
   return model?.startsWith("openai.") ? "openai" : model?.startsWith("xai.") ? "xai" : model?.startsWith("fal.") ? "fal" : "google";
 }
 
-function providerOptionsForNode(nodeKey: string, contractVersion = 1): Array<{ value: ProviderName; label: string }> {
-  if (nodeKey === "lora.image.generate") return [{ value: "fal", label: "fal.ai" }];
-  if (contractVersion >= 2 && ["llm.assistant", "skill.execute", "script.generate"].includes(nodeKey)) return [{ value: "google", label: "Google" }, { value: "openai", label: "OpenAI" }, { value: "xai", label: "xAI" }];
-  return nodeKey === "video.generate" ? [{ value: "google", label: "Google" }] : [{ value: "google", label: "Google" }, { value: "openai", label: "OpenAI" }];
-}
-
-function modelOptionsForNode(nodeKey: string, provider: ProviderName): Array<{ value: string; label: string }> {
-  if (nodeKey === "lora.image.generate") return [{ value: "fal.image.flux2-lora", label: "FLUX.2 LoRA" }];
-  if (["image.generate", "character.generate"].includes(nodeKey)) return provider === "openai" ? [{ value: "openai.image.default", label: "GPT Image 2" }] : [{ value: "image.fast", label: "Gemini Image Fast" }, { value: "image.quality", label: "Gemini Image Quality" }];
-  if (nodeKey === "video.generate") return [{ value: "video.omni", label: "Gemini Omni 1.1 Flash · Character + motion reference" }, { value: "video.fast", label: "Veo Fast" }, { value: "video.quality", label: "Veo Quality" }];
-  if (nodeKey === "tts.generate") return provider === "openai" ? [
-    { value: "openai.tts.default", label: "GPT-4o Mini TTS" },
-    { value: "openai.tts.fast", label: "TTS-1 · Fast" },
-    { value: "openai.tts.quality", label: "TTS-1 HD · Quality" },
-  ] : [
-    { value: "tts.fast", label: "Gemini 2.5 Flash TTS" },
-    { value: "tts.latest", label: "Gemini 3.1 Flash TTS · Preview" },
-    { value: "tts.quality", label: "Gemini 2.5 Pro TTS" },
-  ];
-  if (provider === "xai") return [{ value: "xai.text.quality", label: "Grok 4.6" }];
-  return provider === "openai" ? [{ value: "openai.text.fast", label: "GPT-5.6 Luna" }, { value: "openai.text.quality", label: "GPT-5.6 Terra" }, { value: "openai.chat.latest", label: "ChatGPT Latest" }] : googleTextModelOptions;
-}
-
 function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = nodeTemplates): GraphSnapshot {
   const isLegacyMockGraph = graph.nodes.some((node) => node.id === "brief" && node.data.description.includes("로마 도로"))
     || graph.nodes.some((node) => node.id === "format" && node.data.label === "Contrarian History");
@@ -592,6 +570,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const [characterOptions, setCharacterOptions] = useState<CharacterRecord[]>([]);
   const [projectSkills, setProjectSkills] = useState<ProjectSkillRecord[]>([]);
   const [nodeDefinitions, setNodeDefinitions] = useState<NodeDefinitionRecord[]>([]);
+  const [models, setModels] = useState<ModelRecord[]>([]);
   const [registryTemplates, setRegistryTemplates] = useState<NodeTemplate[]>([]);
   const selectedNodeId = useStudioStore((state) => state.selectedNodeId);
   const selectNode = useStudioStore((state) => state.selectNode);
@@ -724,11 +703,13 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.getCanvas(canvasId),
       frameflowApi.listExperiments(canvasId, undefined, 100).catch(() => []),
       frameflowApi.listNodeDefinitions().catch(() => []),
-    ]).then(([document, experiments, definitions]) => {
+      frameflowApi.listModels().catch(() => []),
+    ]).then(([document, experiments, definitions, availableModels]) => {
       if (!active) return;
       const manifestTemplates = latestNodeTemplates(definitions);
       const templates = [...canvasElementTemplates, ...manifestTemplates];
       setNodeDefinitions(definitions);
+      setModels(availableModels);
       setRegistryTemplates(manifestTemplates);
       const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id }, templates);
       const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments);
@@ -1676,8 +1657,20 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     onCloseNodeDetail();
   }, [onCloseNodeDetail, setInspectorOpen]);
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
-  const selectedProvider = selectedNode ? selectedNode.data.provider ?? providerFromModel(selectedNode.data.model) : "google";
-  const selectedModelOptions = selectedNode ? modelOptionsForNode(selectedNode.data.key, selectedProvider) : [];
+  const compatibleModelOptions = modelOptionsForDefinition(selectedDefinition, models, selectedNode?.data.model);
+  const selectedProviderOptions = providerOptionsForDefinition(selectedDefinition, models, selectedNode?.data.model);
+  const modelProvider = compatibleModelOptions.find((option) => option.value === selectedNode?.data.model)?.provider;
+  const inferredProvider = modelProvider ?? selectedNode?.data.provider ?? providerFromModel(selectedNode?.data.model);
+  const selectedProvider = selectedProviderOptions.some((option) => option.value === inferredProvider) ? inferredProvider : selectedProviderOptions[0]?.value ?? inferredProvider;
+  const selectedModelOptions = compatibleModelOptions.filter((option) => option.provider === selectedProvider);
+  const selectedModelValue = selectedModelOptions.some((option) => option.value === selectedNode?.data.model) ? selectedNode?.data.model ?? "" : selectedModelOptions[0]?.value ?? "";
+  const updateSelectedModel = (provider: ProviderName, model: string | undefined) => {
+    if (!selectedNode || !model) return;
+    const configPatch = selectedDefinition?.config_schema.properties.model_alias
+      ? { config: { ...(selectedNode.data.config ?? {}), model_alias: model } }
+      : {};
+    updateSelectedData({ provider, model, ...configPatch });
+  };
   const selectedProjectSkill = selectedNode?.data.skillId ? projectSkills.find((skill) => skill.id === selectedNode.data.skillId) : undefined;
   const selectedCaptionVideo = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Video" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
   const selectedCaptionSubtitle = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Subtitle" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
@@ -1860,6 +1853,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             {selectedDefinition?.editor.kind === "generic" && <GenericNodeInspector
               definition={selectedDefinition}
               value={selectedNode.data.config ?? {}}
+              hiddenFields={selectedDefinition.execution.kind === "provider" ? ["model_alias"] : []}
               onChange={(config) => updateSelectedData({
                 config,
                 ...(typeof config.model_alias === "string" ? { model: config.model_alias } : {}),
@@ -1883,10 +1877,10 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
                   <label><span>LoRA scale</span><input type="number" min="0" max="2" step="0.05" value={selectedNode.data.loraScale ?? 0.9} onChange={(event) => updateSelectedData({ loraScale: Number(event.target.value) })} /></label>
                 </div>
               </div>}
-              <div className="generator-setting-grid provider-model-selectors">
-                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value as ProviderName; const model = modelOptionsForNode(selectedNode.data.key, provider)[0]?.value; updateSelectedData({ provider, model }); }}>{providerOptionsForNode(selectedNode.data.key, selectedNode.data.contractVersion ?? 1).map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
-                <label><span>Model</span><NativeSelect value={selectedNode.data.model ?? selectedModelOptions[0]?.value ?? ""} onChange={(event) => updateSelectedData({ model: event.target.value })}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
-              </div>
+              {compatibleModelOptions.length > 0 && <div className="generator-setting-grid provider-model-selectors">
+                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value; updateSelectedModel(provider, compatibleModelOptions.find((option) => option.provider === provider)?.value); }}>{selectedProviderOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
+                <label><span>Model</span><NativeSelect value={selectedModelValue} onChange={(event) => updateSelectedModel(selectedProvider, event.target.value)}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}{option.configurationKnown && !option.configured ? " · setup needed" : ""}</option>)}</NativeSelect></label>
+              </div>}
               {selectedNode.data.resolution && <div className="generator-setting-grid">
                 <label><span>Resolution</span><NativeSelect value={selectedNode.data.resolution ?? "1080p"} onChange={(event) => updateSelectedData({ resolution: event.target.value })}><option>1080p</option><option>2K</option>{selectedNode.data.key !== "lora.image.generate" && <><option>4K</option><option>24kHz</option></>}</NativeSelect></label>
                 <label><span>Aspect ratio</span><AspectRatioSelect value={(selectedNode.data.aspectRatio ?? "9:16") as AspectRatioValue} includeAudio={selectedNode.data.key !== "lora.image.generate"} onValueChange={(aspectRatio) => updateSelectedData({ aspectRatio })} /></label>

@@ -2,7 +2,7 @@ import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { NodeStatus, PortType } from "./types";
 
 export type NodeKind = "input" | "logic" | "generate" | "compose" | "review";
-export type ProviderName = "google" | "openai" | "xai" | "fal";
+export type ProviderName = string;
 export type StickyColor = "yellow" | "pink" | "blue" | "green" | "lavender" | "gray";
 export type CaptionAlignment = "left" | "center" | "right";
 export type IconName = "brief" | "format" | "reference" | "motion" | "resolve" | "script" | "shot" | "character" | "lora" | "image" | "video" | "voice" | "select" | "subtitle" | "timeline" | "render" | "qc" | "upload" | "assets" | "folder" | "assistant" | "skill" | "text" | "sticky" | "drawing" | "changeVoice" | "translate";

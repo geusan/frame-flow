@@ -1,5 +1,5 @@
 import type { NodeDefinitionRecord } from "@/lib/api";
-import type { IconName, NodeTemplate, ProviderName } from "@/lib/canvas-model";
+import type { IconName, NodeTemplate } from "@/lib/canvas-model";
 import type { PortType } from "@/lib/types";
 
 const legacyPortTypes: Record<string, PortType> = {
@@ -65,7 +65,7 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord): No
       requiredInputTypes,
       multiInputTypes,
       outputType: output ? legacyPortType(output.type) : undefined,
-      provider: (["google", "openai", "xai", "fal"].includes(modelProvider) ? modelProvider : definition.execution.provider === "multi" ? "google" : definition.execution.provider) as ProviderName,
+      provider: definition.execution.kind === "provider" ? modelProvider : definition.execution.provider,
       model: definition.execution.model_alias,
       cost: definition.display.cost_label,
       contractVersion: definition.contract_version,
