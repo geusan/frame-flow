@@ -59,6 +59,7 @@ import { useStudioStore } from "@/lib/store";
 import type { NodeStatus, PortType } from "@/lib/types";
 import {
   createNodeFromTemplate,
+  canvasElementTemplates,
   graphCost,
   inputHandleId,
   isConnectionCompatible,
@@ -90,7 +91,7 @@ import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-can
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
 import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
 import { GenericNodeInspector } from "@/features/nodes/generic-inspector";
-import { nodeTemplateFromDefinition } from "@/features/nodes/contracts";
+import { latestNodeTemplates } from "@/features/nodes/contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
 import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { maximizePlaybackVolume } from "@/lib/media";
@@ -725,8 +726,8 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.listNodeDefinitions().catch(() => []),
     ]).then(([document, experiments, definitions]) => {
       if (!active) return;
-      const manifestTemplates = definitions.filter((definition) => definition.editor.kind === "generic").map(nodeTemplateFromDefinition);
-      const templates = [...nodeTemplates, ...manifestTemplates];
+      const manifestTemplates = latestNodeTemplates(definitions);
+      const templates = [...canvasElementTemplates, ...manifestTemplates];
       setNodeDefinitions(definitions);
       setRegistryTemplates(manifestTemplates);
       const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id }, templates);
@@ -964,7 +965,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     });
     const sequence = sequenceRef.current++;
     const targetPosition = position || pickerInsertPosition ? basePosition : { x: basePosition.x + (sequence % 4) * 34, y: basePosition.y + (sequence % 3) * 30 };
-    const node = createNodeFromTemplate(templateId, targetPosition, sequence, [...nodeTemplates, ...registryTemplates]);
+    const node = createNodeFromTemplate(templateId, targetPosition, sequence, [...canvasElementTemplates, ...registryTemplates]);
     if (!node) return;
     pushHistory();
     setNodes((current) => [...current, node]);
@@ -1729,13 +1730,13 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const paletteGroups = useMemo(() => {
     const query = paletteQuery.trim().toLowerCase();
     const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities"] as const;
-    const templates = [...nodeTemplates, ...registryTemplates];
+    const templates = [...canvasElementTemplates, ...registryTemplates];
     return groups.map((group) => ({ group, items: templates.filter((template) => template.visible !== false && template.group === group && (!query || `${template.label} ${template.data.key} ${template.data.outputType ?? ""}`.toLowerCase().includes(query))) })).filter((section) => section.items.length);
   }, [paletteQuery, registryTemplates]);
   const pickerGroups = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
     const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities"] as const;
-    const templates = [...nodeTemplates, ...registryTemplates];
+    const templates = [...canvasElementTemplates, ...registryTemplates];
     return groups.map((group) => ({ group, items: templates.filter((template) => template.visible !== false && template.group === group && (!query || `${template.label} ${template.data.key} ${template.data.outputType ?? ""}`.toLowerCase().includes(query))) })).filter((section) => section.items.length);
   }, [pickerQuery, registryTemplates]);
   const cost = graphCost(nodes);
@@ -1784,7 +1785,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       </div>
 
       {paletteOpen && <aside className="node-palette">
-        <div className="palette-title"><div><span className="subtle-label">Node library</span><strong>Add a step</strong></div><span className="node-count">{[...nodeTemplates, ...registryTemplates].filter((item) => item.visible !== false).length}</span></div>
+        <div className="palette-title"><div><span className="subtle-label">Node library</span><strong>Add a step</strong></div><span className="node-count">{[...canvasElementTemplates, ...registryTemplates].filter((item) => item.visible !== false).length}</span></div>
         <SearchField className="palette-search" icon={<Sparkles size={14} />} value={paletteQuery} onChange={(event) => setPaletteQuery(event.target.value)} placeholder="Find node…" />
         <div className="palette-groups">
           {paletteGroups.map((section) => <div className="palette-group" key={section.group}>

@@ -223,6 +223,8 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "qc", label: "Quality control", group: "Advanced", visible: false, data: { key: "media.qc", label: "Quality control", description: "ffprobe 기반 Codec·Pixel Format·Audio·Duration 검사", icon: "qc", kind: "review", inputTypes: ["Video"], outputType: "QCReport", model: "local.ffprobe", cost: "$0.00" } },
 ];
 
+export const canvasElementTemplates = nodeTemplates.filter((template) => ["utility.sticky", "folder.group", "asset.upload", "utility.drawing"].includes(template.data.key));
+
 export const inputHandleId = (type: PortType, index: number) => `input-${type}-${index}`;
 
 export function createNodeFromTemplate(templateId: string, position: XYPosition, sequence: number, templates: NodeTemplate[] = nodeTemplates): StudioFlowNode | null {

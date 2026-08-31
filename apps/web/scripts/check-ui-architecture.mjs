@@ -33,6 +33,15 @@ for (const file of sourceFiles(sourceRoot)) {
 const globalsPath = join(sourceRoot, "app", "globals.css");
 if (readFileSync(globalsPath, "utf8").length > 2_000) violations.push("src/app/globals.css: keep the global entrypoint import-only");
 
+const generationCanvasPath = join(sourceRoot, "components", "views", "generation-canvas.tsx");
+const generationCanvas = readFileSync(generationCanvasPath, "utf8");
+if (/\[\.\.\.nodeTemplates,\s*\.\.\.registryTemplates\]/.test(generationCanvas)) {
+  violations.push("src/components/views/generation-canvas.tsx: production Node Library must use Registry templates");
+}
+if (/definitions\.filter\(\(definition\) => definition\.editor\.kind === ["']generic["']\)/.test(generationCanvas)) {
+  violations.push("src/components/views/generation-canvas.tsx: do not exclude legacy-editor manifests from the Registry Library");
+}
+
 if (violations.length) {
   console.error(`UI architecture check failed:\n${violations.map((item) => `- ${item}`).join("\n")}`);
   process.exit(1);

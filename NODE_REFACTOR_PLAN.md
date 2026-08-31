@@ -13,7 +13,7 @@ Status: Proposed
 - Phase 2 완료: production Node 31개에 `@1` Manifest를 등록했고 Legacy Pipeline 8개는 `DEPRECATED`다. LLM Assistant, Skill Executor, Script Generator는 xAI 모델 범위를 추가한 `@2`도 함께 등록했다.
 - Phase 3 진행 중: 신규 Canvas 저장은 `canvas.document.v1`의 Canonical Node/Canvas element/Runtime sidecar로 분리되고 기존 Canvas는 다음 저장 시 전환된다. Web은 아직 Legacy React Flow Adapter payload를 사용한다.
 - Phase 4 진행 중: production Node 31개 중 5개는 native Executor, 26개는 `legacy-compatibility` Executor Adapter를 사용한다.
-- Phase 5 진행 중: Registry-native Generic Inspector와 관리 화면이 연결됐지만 기존 `nodeTemplates` Source of Truth 제거는 남았다.
+- Phase 5 진행 중: ACTIVE production Node Library는 최신 Registry Manifest에서 생성되고 `nodeTemplates`는 Canvas-only 요소와 Legacy read fallback으로 제한됐다. Inspector의 남은 Custom Editor 분기와 capability 기반 Provider/model UI 전환은 남았다.
   - xAI 전환은 기존 생성 Node와 같은 UI를 유지하기 위해 Legacy `nodeTemplates`의 신규 Node 기본 contract를 `@2`로 지정하고 Provider selector에 xAI를 추가했다. Manifest가 계약 Source of Truth이며 이 분기는 Phase 5/7의 schema-driven model capability UI 전환 때 제거한다.
 - Phase 6 Backend/Web 수직 단면 완료: WorkflowVersion Publish, Annotation, Version Run, Frozen Viewer, `Expose as input`과 Artifact/Character Picker Run Form이 연결됐다. Prompt Template 다중 binding과 복수 Output 선택 UX는 남았다.
 - Phase 7 진행 중: Canvas의 직접 Legacy JSON literal write를 막는 Architecture test가 추가됐다. Web Legacy write payload, `nodeTemplates` Source of Truth와 중앙 dispatch 제거는 남았다.
