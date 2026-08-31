@@ -76,26 +76,20 @@ import {
   type StudioFlowNode,
 } from "@/lib/canvas-model";
 import { Button } from "@/components/ui/button";
-import { AspectRatioSelect, type AspectRatioValue } from "@/components/ui/aspect-ratio-select";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { SearchField } from "@/components/shared/search-field";
 import { CharacterViewGallery } from "@/components/characters/character-view-gallery";
 import { ReferenceResultDetail } from "@/components/views/reference-results-view";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
-import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
-import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
-import { GenericNodeInspector } from "@/features/nodes/generic-inspector";
 import { latestNodeTemplates } from "@/features/nodes/contracts";
-import { modelOptionsForDefinition, providerOptionsForDefinition } from "@/features/nodes/model-options";
+import { NodeInspectorEditor } from "@/features/nodes/node-inspector-editor";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
-import { maximizePlaybackVolume } from "@/lib/media";
+import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
@@ -166,82 +160,6 @@ interface GraphSnapshot {
   edges: Edge[];
   name?: string;
   activeRunId?: string;
-}
-
-interface ReferenceAnalysisManifest {
-  schema_version: "reference.decomposition.v1";
-  source: { duration_ms: number; has_audio: boolean };
-  speech: { language_code?: string; text: string; segments: Array<{ start_ms: number; end_ms: number; text: string }> };
-  audio: {
-    music_intervals: Array<{ start_ms: number; end_ms: number; label: string }>;
-    sound_effects: Array<{ start_ms: number; end_ms: number; label: string }>;
-    separation: { status: string };
-  };
-  visual: {
-    shots: Array<{ index: number; start_ms: number; end_ms: number; transition_in: string }>;
-    actions: Array<{ start_ms: number; end_ms: number; label: string }>;
-    text_tracks: Array<{ start_ms: number; end_ms: number; text: string; kind: string; movement: string }>;
-  };
-  artifacts: Record<string, string>;
-  quality: { completeness: "complete" | "partial"; warnings: string[] };
-}
-
-function referenceAnalysisFromOutput(output?: CanvasOutput): ReferenceAnalysisManifest | null {
-  if (output?.kind !== "json" || !output.text) return null;
-  try {
-    const parsed = JSON.parse(output.text) as Partial<ReferenceAnalysisManifest>;
-    return parsed.schema_version === "reference.decomposition.v1" ? parsed as ReferenceAnalysisManifest : null;
-  } catch {
-    return null;
-  }
-}
-
-function analysisTime(milliseconds: number): string {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function ReferenceAnalysisInspector({ analysis }: { analysis: ReferenceAnalysisManifest }) {
-  const lanes = [
-    { label: "Speech", events: analysis.speech.segments.map((event) => ({ ...event, label: event.text })) },
-    { label: "Shots", events: analysis.visual.shots.map((event) => ({ ...event, label: `Shot ${event.index + 1} · ${event.transition_in}` })) },
-    { label: "Actions", events: analysis.visual.actions },
-    { label: "Captions", events: analysis.visual.text_tracks.map((event) => ({ ...event, label: event.text })) },
-    { label: "Music", events: analysis.audio.music_intervals },
-    { label: "SFX", events: analysis.audio.sound_effects },
-  ];
-  const stems = [
-    ["audio_mix", "Original mix"],
-    ["vocals", "Vocals"],
-    ["accompaniment", "Accompaniment"],
-  ] as const;
-  return <div className="reference-analysis-inspector">
-    <div className="reference-analysis-result-head">
-      <span><small>Analysis result</small><strong>{analysis.quality.completeness === "complete" ? "Complete" : "Partial"}</strong></span>
-      <b>{analysisTime(analysis.source.duration_ms)}</b>
-    </div>
-    <div className="reference-analysis-counts">
-      <span><b>{analysis.speech.segments.length}</b><small>Speech</small></span>
-      <span><b>{analysis.visual.shots.length}</b><small>Shots</small></span>
-      <span><b>{analysis.visual.actions.length}</b><small>Actions</small></span>
-      <span><b>{analysis.visual.text_tracks.length}</b><small>Text</small></span>
-      <span><b>{analysis.audio.music_intervals.length}</b><small>Music</small></span>
-      <span><b>{analysis.audio.sound_effects.length}</b><small>SFX</small></span>
-    </div>
-    <div className="reference-analysis-timeline">
-      {lanes.map((lane) => <div className="reference-analysis-lane" key={lane.label}>
-        <strong>{lane.label}</strong>
-        <span>{lane.events.length ? lane.events.slice(0, 4).map((event, index) => <i key={`${event.start_ms}-${index}`} title={event.label}>{analysisTime(event.start_ms)} {event.label}</i>) : <em>None</em>}</span>
-      </div>)}
-    </div>
-    {stems.some(([key]) => analysis.artifacts[key]) && <div className="reference-analysis-stems">
-      <strong>Audio stems</strong>
-      {stems.map(([key, label]) => analysis.artifacts[key] && <label key={key}><span>{label}</span><audio controls preload="none" src={`${API_BASE}/artifacts/${analysis.artifacts[key]}/content`} onPlay={(event) => maximizePlaybackVolume(event.currentTarget)} /></label>)}
-    </div>}
-    {!!analysis.quality.warnings.length && <div className="reference-analysis-warnings">{analysis.quality.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
-  </div>;
 }
 
 function TextOutputEditor({ output, edited, onSave }: { output: CanvasOutput; edited: boolean; onSave: (text: string) => void }) {
@@ -1657,26 +1575,8 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     onCloseNodeDetail();
   }, [onCloseNodeDetail, setInspectorOpen]);
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
-  const compatibleModelOptions = modelOptionsForDefinition(selectedDefinition, models, selectedNode?.data.model);
-  const selectedProviderOptions = providerOptionsForDefinition(selectedDefinition, models, selectedNode?.data.model);
-  const modelProvider = compatibleModelOptions.find((option) => option.value === selectedNode?.data.model)?.provider;
-  const inferredProvider = modelProvider ?? selectedNode?.data.provider ?? providerFromModel(selectedNode?.data.model);
-  const selectedProvider = selectedProviderOptions.some((option) => option.value === inferredProvider) ? inferredProvider : selectedProviderOptions[0]?.value ?? inferredProvider;
-  const selectedModelOptions = compatibleModelOptions.filter((option) => option.provider === selectedProvider);
-  const selectedModelValue = selectedModelOptions.some((option) => option.value === selectedNode?.data.model) ? selectedNode?.data.model ?? "" : selectedModelOptions[0]?.value ?? "";
-  const updateSelectedModel = (provider: ProviderName, model: string | undefined) => {
-    if (!selectedNode || !model) return;
-    const configPatch = selectedDefinition?.config_schema.properties.model_alias
-      ? { config: { ...(selectedNode.data.config ?? {}), model_alias: model } }
-      : {};
-    updateSelectedData({ provider, model, ...configPatch });
-  };
-  const selectedProjectSkill = selectedNode?.data.skillId ? projectSkills.find((skill) => skill.id === selectedNode.data.skillId) : undefined;
-  const selectedCaptionVideo = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Video" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
-  const selectedCaptionSubtitle = selectedNode?.data.key === "timeline.compose" ? nodes.find((node) => node.data.outputType === "Subtitle" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
-  const selectedMotionVideo = selectedNode?.data.key === "motion.extract" ? nodes.find((node) => node.data.outputType === "Video" && edges.some((edge) => edge.source === node.id && edge.target === selectedNode.id)) : undefined;
   const approveCaptionLayout = async () => {
-    if (!activeCanvasRunId || selectedNode?.data.key !== "timeline.compose") return;
+    if (!activeCanvasRunId || !selectedNode) return;
     try {
       const run = await frameflowApi.approveCanvasNode(activeCanvasRunId, selectedNode.id, {
         caption_x: selectedNode.data.captionX ?? 0.5,
@@ -1690,20 +1590,15 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(error instanceof Error ? error.message : "자막 레이아웃 승인에 실패했습니다.", "error");
     }
   };
-  const selectedPromptText = selectedNode ? (() => {
-    const promptIndex = selectedNode.data.inputTypes?.indexOf("Prompt") ?? -1;
-    if (promptIndex < 0) return "";
-    const promptEdge = edges.find((edge) => edge.target === selectedNode.id && edge.targetHandle === inputHandleId("Prompt", promptIndex));
-    return promptOutputText(nodes.find((node) => node.id === promptEdge?.source));
-  })() : "";
+  const showExperimentHistory = Boolean(selectedNode?.data.executable !== false && selectedDefinition?.execution.kind !== "human_gate");
   useEffect(() => {
-    if (!selectedNodeId || selectedNode?.data.executable === false || selectedNode?.data.key === "candidate.select") return;
+    if (!selectedNodeId || !showExperimentHistory) return;
     let active = true;
     frameflowApi.listExperiments(canvasId, selectedNodeId)
       .then((items) => { if (active) { setExperimentHistory(items); setExperimentHistoryNodeId(selectedNodeId); setExperimentHistoryError(null); } })
       .catch((error) => { if (active) { setExperimentHistoryNodeId(selectedNodeId); setExperimentHistoryError(error instanceof Error ? error.message : "Experiment history failed"); } });
     return () => { active = false; };
-  }, [canvasId, selectedNode?.data.executable, selectedNode?.data.key, selectedNodeId]);
+  }, [canvasId, selectedNodeId, showExperimentHistory]);
   const visibleExperimentHistory = experimentHistoryNodeId === selectedNodeId ? experimentHistory : [];
 
   const markExperimentBaseline = async (experimentId: string) => {
@@ -1715,10 +1610,6 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(error instanceof Error ? error.message : "Baseline update failed", "error");
     }
   };
-  const selectedVideoInputCount = selectedNode ? edges.filter((edge) => {
-    const source = nodes.find((node) => node.id === edge.source);
-    return edge.target === selectedNode.id && source?.data.outputType === "Video";
-  }).length : 0;
   const drawingNode = drawingNodeId ? nodes.find((node) => node.id === drawingNodeId && node.data.key === "utility.drawing") : undefined;
   const paletteGroups = useMemo(() => {
     const query = paletteQuery.trim().toLowerCase();
@@ -1850,93 +1741,18 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
               {selectedNode.data.status === "RUNNING" ? <><RefreshCw className="spin" size={15} /> Running step…</> : <><Play size={14} fill="currentColor" /> Run this step</>}
             </Button>}
             <p className={`step-run-help ${selectedInputError ? "has-error" : ""}`}>{selectedNode.data.executable === false ? "입력 또는 Canvas 정리용 노드입니다." : selectedInputError ?? "이 Step만 실행합니다. 연결된 입력을 사용합니다."}</p>
-            {selectedDefinition?.editor.kind === "generic" && <GenericNodeInspector
+            <NodeInspectorEditor
+              node={selectedNode}
               definition={selectedDefinition}
-              value={selectedNode.data.config ?? {}}
-              hiddenFields={selectedDefinition.execution.kind === "provider" ? ["model_alias"] : []}
-              onChange={(config) => updateSelectedData({
-                config,
-                ...(typeof config.model_alias === "string" ? { model: config.model_alias } : {}),
-                status: selectedNode.data.output || selectedNode.data.outputArtifactIds?.length ? "STALE" : selectedNode.data.status,
-              })}
-            />}
-            {selectedNode.data.kind === "generate" && <div className="generator-settings">
-              <div className={`connected-prompt-preview ${selectedPromptText || selectedNode.data.key === "character.generate" ? "connected" : "missing"}`}><span>Connected prompt</span><p>{selectedPromptText || (selectedNode.data.key === "character.generate" ? "Image-only mode · 연결된 기준 이미지를 canonical identity로 사용합니다." : "Prompt 노드를 연결하고 내용을 입력하세요.")}</p></div>
-              {selectedNode.data.key === "skill.execute" && <label className="field-label"><span>Project skill</span><NativeSelect value={selectedNode.data.skillId ?? ""} onChange={(event) => updateSelectedData({ skillId: event.target.value })}>
-                {!projectSkills.length && <option value={selectedNode.data.skillId ?? "nottalggak-prompt-machine"}>{selectedNode.data.skillId ?? "nottalggak-prompt-machine"}</option>}
-                {projectSkills.map((skill) => <option value={skill.id} key={skill.id}>{skill.display_name}</option>)}
-              </NativeSelect><small>{selectedProjectSkill?.description ?? "API에서 프로젝트 Skill 레지스트리를 불러옵니다."}</small></label>}
-              {selectedNode.data.key === "character.generate" && <div className="generator-setting-grid">
-                <label><span>Character name</span><input value={selectedNode.data.characterName ?? "New character"} onChange={(event) => updateSelectedData({ characterName: event.target.value })} /></label>
-                <label><span>Generated views</span><NativeSelect value={String(selectedNode.data.shotCount ?? 6)} onChange={(event) => updateSelectedData({ shotCount: Number(event.target.value) })}><option value="4">4 views</option><option value="6">6 views</option><option value="8">8 views</option></NativeSelect></label>
-              </div>}
-              {selectedNode.data.key === "lora.image.generate" && <div className="lora-generator-settings">
-                <label className="field-label"><span>LoRA weights <em>optional with Character input</em></span><input value={selectedNode.data.loraUrl ?? ""} placeholder="https://…/character_lora.safetensors or HF repo ID" onChange={(event) => updateSelectedData({ loraUrl: event.target.value })} /><small>학습 완료 Character를 연결하면 저장된 weights와 trigger word를 자동 사용합니다.</small></label>
-                <div className="generator-setting-grid">
-                  <label><span>Trigger word</span><input value={selectedNode.data.triggerWord ?? ""} placeholder="mori_catgirl_v1" onChange={(event) => updateSelectedData({ triggerWord: event.target.value })} /></label>
-                  <label><span>LoRA scale</span><input type="number" min="0" max="2" step="0.05" value={selectedNode.data.loraScale ?? 0.9} onChange={(event) => updateSelectedData({ loraScale: Number(event.target.value) })} /></label>
-                </div>
-              </div>}
-              {compatibleModelOptions.length > 0 && <div className="generator-setting-grid provider-model-selectors">
-                <label><span>Provider</span><NativeSelect value={selectedProvider} onChange={(event) => { const provider = event.target.value; updateSelectedModel(provider, compatibleModelOptions.find((option) => option.provider === provider)?.value); }}>{selectedProviderOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</NativeSelect></label>
-                <label><span>Model</span><NativeSelect value={selectedModelValue} onChange={(event) => updateSelectedModel(selectedProvider, event.target.value)}>{selectedModelOptions.map((option) => <option value={option.value} key={option.value}>{option.label}{option.configurationKnown && !option.configured ? " · setup needed" : ""}</option>)}</NativeSelect></label>
-              </div>}
-              {selectedNode.data.resolution && <div className="generator-setting-grid">
-                <label><span>Resolution</span><NativeSelect value={selectedNode.data.resolution ?? "1080p"} onChange={(event) => updateSelectedData({ resolution: event.target.value })}><option>1080p</option><option>2K</option>{selectedNode.data.key !== "lora.image.generate" && <><option>4K</option><option>24kHz</option></>}</NativeSelect></label>
-                <label><span>Aspect ratio</span><AspectRatioSelect value={(selectedNode.data.aspectRatio ?? "9:16") as AspectRatioValue} includeAudio={selectedNode.data.key !== "lora.image.generate"} onValueChange={(aspectRatio) => updateSelectedData({ aspectRatio })} /></label>
-              </div>}
-              {selectedNode.data.key === "video.generate" && <label className="field-label"><span>Shot duration</span><NativeSelect value={String(selectedNode.data.durationSeconds ?? 6)} onChange={(event) => updateSelectedData({ durationSeconds: Number(event.target.value) })}><option value="4">4 seconds</option><option value="6">6 seconds</option><option value="8">8 seconds</option></NativeSelect><small>Character와 Reference Video를 함께 쓰려면 Gemini Omni 모델을 선택하세요.</small></label>}
-              {selectedNode.data.batchSize && <div className="batch-setting single-output-setting"><span><small>Output count</small><strong>Canvas Step은 단일 결과를 출력합니다.</strong></span><b>1</b></div>}
-            </div>}
-            {selectedNode.data.key === "video.edit" && <div className="video-editor-settings">
-              <div className={`editor-input-count ${selectedVideoInputCount ? "connected" : "missing"}`}><span>Connected videos</span><strong>{selectedVideoInputCount}</strong><small>{selectedVideoInputCount ? "여러 입력은 연결 순서대로 편집됩니다." : "Video 출력들을 왼쪽 입력 포트에 연결하세요."}</small></div>
-              <label className="field-label"><span>Transition</span><NativeSelect value={selectedNode.data.transition ?? "hard_cut"} onChange={(event) => updateSelectedData({ transition: event.target.value })}><option value="hard_cut">Hard cut</option><option value="crossfade">Crossfade</option><option value="dip_to_black">Dip to black</option></NativeSelect></label>
-              <div className="generator-setting-grid">
-                <label><span>Output ratio</span><AspectRatioSelect value={(selectedNode.data.aspectRatio ?? "9:16") as AspectRatioValue} ariaLabel="Output ratio" onValueChange={(aspectRatio) => updateSelectedData({ aspectRatio })} /></label>
-                <label><span>Target length</span><NativeSelect value={String(selectedNode.data.targetDurationSeconds ?? 30)} onChange={(event) => updateSelectedData({ targetDurationSeconds: Number(event.target.value) })}><option value="15">15s</option><option value="30">30s</option><option value="45">45s</option><option value="60">60s</option></NativeSelect></label>
-              </div>
-            </div>}
-            {selectedNode.data.key === "timeline.compose" && <div className="caption-layout-settings">
-              <div className={`editor-input-count ${selectedCaptionVideo?.data.output?.url ? "connected" : "missing"}`}><span>Caption canvas</span><strong>{selectedCaptionVideo?.data.output?.url ? "✓" : "—"}</strong><small>{selectedCaptionVideo?.data.output?.url ? "영상 위 자막을 드래그해 위치를 조정하세요." : "Video와 Subtitle 출력을 연결하면 편집할 수 있습니다."}</small></div>
-              <CaptionLayoutEditor
-                videoUrl={selectedCaptionVideo?.data.output?.kind === "video" ? selectedCaptionVideo.data.output.url : undefined}
-                videoMimeType={selectedCaptionVideo?.data.output?.mimeType}
-                subtitleText={selectedCaptionSubtitle?.data.output?.text}
-                value={{
-                  x: selectedNode.data.captionX ?? 0.5,
-                  y: selectedNode.data.captionY ?? 0.82,
-                  align: selectedNode.data.captionAlign ?? "center",
-                  fontSize: selectedNode.data.captionFontSize ?? 54,
-                }}
-                onChange={(layout) => updateSelectedData({ captionX: layout.x, captionY: layout.y, captionAlign: layout.align, captionFontSize: layout.fontSize })}
-              />
-              {selectedNode.data.status === "WAITING_INPUT" && activeCanvasRunId && <Button className="caption-workflow-continue" type="button" onClick={() => void approveCaptionLayout()}><Play size={14} fill="currentColor" /> 위치 확정하고 워크플로우 계속</Button>}
-            </div>}
-            {selectedNode.data.key === "video.translate" && <div className="video-editor-settings">
-              <div className="editor-input-count connected"><span>Live pipeline</span><strong>3</strong><small>Chirp 3 STT → Gemini translation → Gemini TTS</small></div>
-              <div className="generator-setting-grid">
-                <label><span>Source language</span><NativeSelect value={selectedNode.data.sourceLanguage ?? "auto"} onChange={(event) => updateSelectedData({ sourceLanguage: event.target.value })}><option value="auto">Auto detect</option><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
-                <label><span>Target language</span><NativeSelect value={selectedNode.data.targetLanguage ?? "ko-KR"} onChange={(event) => updateSelectedData({ targetLanguage: event.target.value })}><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
-              </div>
-              <label className="field-label"><span>Gemini voice</span><NativeSelect value={selectedNode.data.voiceName ?? "Kore"} onChange={(event) => updateSelectedData({ voiceName: event.target.value })}><option value="Kore">Kore</option><option value="Aoede">Aoede</option><option value="Charon">Charon</option><option value="Puck">Puck</option></NativeSelect><small>Google Cloud ADC와 Speech-to-Text·Vertex AI 권한이 필요합니다.</small></label>
-            </div>}
-            {selectedNode.data.key === "reference.decompose" && <div className="reference-analysis-settings">
-              <div className="editor-input-count connected"><span>Composite analysis</span><strong>6</strong><small>STT · music · shots · actions · on-screen text · SFX</small></div>
-              <div className="generator-setting-grid">
-                <label><span>Speech language</span><NativeSelect value={selectedNode.data.sourceLanguage ?? "auto"} onChange={(event) => updateSelectedData({ sourceLanguage: event.target.value })}><option value="auto">Auto detect</option><option value="ko-KR">Korean</option><option value="en-US">English</option><option value="ja-JP">Japanese</option><option value="zh-CN">Chinese</option><option value="es-ES">Spanish</option></NativeSelect></label>
-                <label><span>Scene sensitivity</span><NativeSelect value={String(selectedNode.data.sceneThreshold ?? 0.28)} onChange={(event) => updateSelectedData({ sceneThreshold: Number(event.target.value) })}><option value="0.18">High</option><option value="0.28">Balanced</option><option value="0.4">Low</option></NativeSelect></label>
-              </div>
-              <label className="reference-analysis-toggle"><input type="checkbox" checked={selectedNode.data.separateMusic ?? true} onChange={(event) => updateSelectedData({ separateMusic: event.target.checked })} /><span><strong>Create music stems</strong><small>Demucs가 있으면 vocals와 accompaniment WAV를 생성합니다.</small></span></label>
-              {referenceAnalysisFromOutput(selectedNode.data.output) && <ReferenceAnalysisInspector analysis={referenceAnalysisFromOutput(selectedNode.data.output)!} />}
-            </div>}
-            {selectedNode.data.key === "motion.extract" && <div className="motion-extractor-settings">
-              <div className="generator-setting-grid">
-                <label><span>Sample rate</span><NativeSelect value={String(selectedNode.data.motionSampleFps ?? 12)} onChange={(event) => updateSelectedData({ motionSampleFps: Number(event.target.value) })}><option value="6">6 fps</option><option value="12">12 fps</option><option value="24">24 fps</option></NativeSelect></label>
-                <label><span>Confidence</span><NativeSelect value={String(selectedNode.data.motionMinConfidence ?? 0.5)} onChange={(event) => updateSelectedData({ motionMinConfidence: Number(event.target.value) })}><option value="0.35">Sensitive</option><option value="0.5">Balanced</option><option value="0.65">Strict</option></NativeSelect></label>
-              </div>
-              <label className="reference-analysis-toggle"><input type="checkbox" checked={selectedNode.data.motionFaceBlendshapes ?? true} onChange={(event) => updateSelectedData({ motionFaceBlendshapes: event.target.checked })} /><span><strong>Face blendshapes</strong><small>눈 깜빡임·입·표정 계수를 MotionTrack에 포함합니다.</small></span></label>
-              <HolisticMotionPreview videoUrl={selectedMotionVideo?.data.output?.url} sampleFps={Math.min(12, selectedNode.data.motionSampleFps ?? 12)} minConfidence={selectedNode.data.motionMinConfidence ?? 0.5} />
-            </div>}
+              nodes={nodes}
+              edges={edges}
+              models={models}
+              projectSkills={projectSkills}
+              activeCanvasRunId={activeCanvasRunId}
+              onChange={updateSelectedData}
+              onApproveCaptionLayout={() => void approveCaptionLayout()}
+              onOpenCandidate={() => { setCandidateNodeId(selectedNode.id); setSelectedCandidate(0); setCandidateOpen(true); }}
+            />
             {workflowDefinitionId && selectedExposableFields.length > 0 && <div className="rounded-lg border border-[#d8dad3] bg-[#f7f7f3] p-2.5">
               <div className="mb-2 flex items-center justify-between"><span><small className="block text-[10px] uppercase tracking-[.08em] text-[#858980]">Workflow contract</small><strong className="text-xs text-[#3e413b]">Expose settings as inputs</strong></span><Button type="button" variant="ghost" size="sm" onClick={() => setInputsPanelOpen(true)}><Braces size={13} /> {draftContract.inputs.length}</Button></div>
               <div className="flex flex-wrap gap-1.5">{selectedExposableFields.map(([configKey, field]) => {
@@ -1960,7 +1776,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             })}
             <div className="inspector-section-title"><span>Runtime</span><CircleGauge size={14} /></div>
             <div className="runtime-grid"><div><small>Last duration</small><strong>{selectedNode.data.duration ?? "—"}</strong></div><div><small>Est. cost</small><strong>{selectedNode.data.cost ?? (selectedDefinition?.execution.kind === "provider" ? "Provider billed" : "$0.00")}</strong></div><div><small>Attempts</small><strong>{selectedNode.data.attemptCount ?? 0}</strong></div><div><small>Output</small><strong>{selectedNode.data.outputType ?? "—"}</strong></div></div>
-            {selectedNode.data.executable !== false && selectedNode.data.key !== "candidate.select" && <div className="experiment-history">
+            {showExperimentHistory && <div className="experiment-history">
               <div className="experiment-history-head"><span><ListRestart size={13} /> Experiment history</span><small>{visibleExperimentHistory.length} runs</small></div>
               {experimentHistoryNodeId === selectedNodeId && experimentHistoryError && <p className="experiment-history-state error">{experimentHistoryError}</p>}
               {experimentHistoryNodeId === selectedNodeId && !experimentHistoryError && !visibleExperimentHistory.length && <p className="experiment-history-state">이 설정으로 저장된 실행이 없습니다.</p>}
@@ -1972,7 +1788,6 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
               </article>)}
             </div>}
             {selectedNode.data.preview && <div className="step-output-preview"><span>Latest output</span><strong>{selectedNode.data.preview}</strong></div>}
-            {selectedNode.data.key === "candidate.select" && <button className="candidate-preview-button" type="button" onClick={() => { setCandidateNodeId(selectedNode.id); setSelectedCandidate(0); setCandidateOpen(true); }}><span className="candidate-stack"><i /><i /><i /></span><span><strong>Open candidate grid</strong><small>Compare connected video outputs</small></span><ChevronRight size={16} /></button>}
           </div>
           <div className="inspector-edit-actions"><Button variant="secondary" type="button" onClick={duplicateSelected}><Copy size={14} /> Duplicate</Button><Button variant="danger" type="button" onClick={deleteSelected}><Trash2 size={14} /> Delete</Button></div>
           {selectedNode.data.executable !== false && <div className="inspector-actions"><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={() => void runStep(selectedNode.id)} disabled={!!selectedInputError}><ListRestart size={13} /> Retry</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" disabled={!!selectedInputError} onClick={() => { updateSelectedData({ status: selectedNode.data.requiredInputTypes?.length || (selectedNode.data.inputTypes?.length && selectedNode.data.inputsRequired !== false) ? "BLOCKED" : "READY" }); window.setTimeout(() => void runStep(selectedNode.id), 0); }}><RefreshCw size={13} /> Regenerate</Button><Button variant="secondary" size="sm" className="min-w-0 px-1 text-[length:var(--text-2xs)]" type="button" onClick={duplicateSelected}><GitFork size={13} /> Fork</Button></div>}
