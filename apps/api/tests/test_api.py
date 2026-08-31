@@ -19,6 +19,7 @@ from app.providers_localization import (
     TranslationResult,
 )
 from app.providers_google import GeneratedBinary
+from app.providers_generation import CharacterGenerationResult, CharacterImageAsset
 
 
 def test_executor_revision_fits_persisted_execution_mode(monkeypatch):
@@ -266,6 +267,58 @@ def test_openai_image_provider_routes_through_registry_capability(client: TestCl
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "image.generated.v1"
     assert artifact["metadata"]["provider"] == "openai"
+
+
+def test_character_generation_routes_bundle_and_views_through_registry(client: TestClient, monkeypatch):
+    class FakeCharacterService:
+        def generate_character(self, **kwargs):
+            assert kwargs["logical_model"] == "google.image.fast"
+            assert kwargs["shot_count"] == 4
+            images = tuple(
+                CharacterImageAsset(
+                    f"view-{index}".encode(),
+                    "image/png",
+                    f"view-{index}.png",
+                    role,
+                    f"prompt-{role}",
+                )
+                for index, role in enumerate(("baseline", "closeup", "daily_life", "work_scene"), start=1)
+            )
+            return CharacterGenerationResult(
+                {"kind": "image", "title": "Mori · 4 views", "mimeType": "image/png"},
+                "google_character_registry",
+                [],
+                "Mori",
+                "Cat athlete",
+                images,
+            )
+
+    monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
+    monkeypatch.setattr(
+        "app.nodes.executors.character_generation.get_google_generation_services",
+        lambda: FakeCharacterService(),
+    )
+    response = client.post("/experiments", json={
+        "canvas_id": "canvas_character_registry",
+        "node_id": "character_registry",
+        "node_key": "character.generate",
+        "prompt": "Cat athlete",
+        "model_alias": "google.image.fast",
+        "parameters": {"character_name": "Mori", "shot_count": 4, "aspect_ratio": "9:16", "resolution": "2K"},
+        "inputs": [],
+    })
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "SUCCEEDED", result.get("error")
+    assert result["provider_request_id"] == "google_character_registry"
+    assert result["cost_usd"] == 0.268
+    assert result["output"]["imageCount"] == 4
+    character = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
+    assert character["type"] == "Character"
+    assert character["schema_id"] == "character.v1"
+    assert character["metadata"]["source"] == "node_executor_registry"
+    assert len(character["metadata"]["image_artifact_ids"]) == 4
+    assert character["input_artifact_ids"] == character["metadata"]["image_artifact_ids"]
 
 
 def test_openai_chat_provider_routes_through_live_service(client: TestClient, monkeypatch):

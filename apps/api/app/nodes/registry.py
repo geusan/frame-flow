@@ -8,6 +8,7 @@ from typing import Any
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
 from .editor_refs import node_editor_ref_registry
 from .executors import (
+    CharacterGenerationCapabilityExecutor,
     FalLoraTrainingExecutor,
     ImageGenerationCapabilityExecutor,
     LegacyCompatibilityExecutor,
@@ -112,7 +113,7 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "fal-lora-training": FalLoraTrainingExecutor(),
-        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor())),
+        "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor())),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),

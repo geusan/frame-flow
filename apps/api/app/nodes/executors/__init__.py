@@ -1,4 +1,5 @@
 from .lora_train import FalLoraTrainingExecutor
+from .character_generation import CharacterGenerationCapabilityExecutor
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
 from .local_subscription_agent import LocalSubscriptionAgentExecutor
@@ -10,6 +11,7 @@ from .xai_text import XAITextCapabilityExecutor
 
 __all__ = [
     "FalLoraTrainingExecutor",
+    "CharacterGenerationCapabilityExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",
     "LocalSubscriptionAgentExecutor",

@@ -132,6 +132,46 @@ class GoogleGenerationServices:
             reference_images=[(item.data, item.content_type) for item in reference_images[:4]],
         )
 
+    def generate_character(
+        self,
+        *,
+        logical_model: str,
+        synopsis: str,
+        name: str,
+        shot_count: int,
+        aspect_ratio: str,
+        seed: int | None,
+        reference_images: list[InputMedia],
+    ) -> CharacterGenerationResult:
+        references = reference_images[:3]
+        shots = character_shot_prompts(synopsis, shot_count)
+        generated_assets: list[CharacterImageAsset] = []
+        canonical_reference: tuple[bytes, str] | None = ((references[0].data, references[0].content_type) if references else None)
+        supporting_references = references[1:] if references else []
+        request_id = ""
+        for index, (role, shot_prompt) in enumerate(shots):
+            current_references = [*([canonical_reference] if canonical_reference else []), *((item.data, item.content_type) for item in supporting_references)][:4]
+            generated = self.image.generate(
+                prompt=shot_prompt,
+                logical_model=logical_model,
+                candidate_count=1,
+                aspect_ratio=aspect_ratio,
+                seed=(seed + index) if seed is not None else None,
+                reference_images=current_references,
+            )[0]
+            request_id = request_id or generated.provider_request_id
+            canonical_reference = canonical_reference or (generated.data, generated.mime_type)
+            extension = ".png" if "png" in generated.mime_type else ".jpg"
+            generated_assets.append(CharacterImageAsset(generated.data, generated.mime_type, f"character-{index + 1:02d}-{role}{extension}", role, shot_prompt))
+        return CharacterGenerationResult(
+            {"kind": "image", "title": f"{name} · {len(generated_assets)} views", "mimeType": generated_assets[0].content_type},
+            request_id,
+            [item.artifact_id for item in reference_images],
+            name,
+            synopsis,
+            tuple(generated_assets),
+        )
+
     def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
         logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
         input_ids = [item.artifact_id for item in inputs]
@@ -141,41 +181,14 @@ class GoogleGenerationServices:
         if payload.node_key == "character.generate":
             reference_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
             name = str(payload.parameters.get("character_name") or "Generated character").strip() or "Generated character"
-            shot_count = int(payload.parameters.get("shot_count") or 6)
-            shots = character_shot_prompts(payload.prompt, shot_count)
-            generated_assets: list[CharacterImageAsset] = []
-            canonical_reference: tuple[bytes, str] | None = (
-                (reference_inputs[0].data, reference_inputs[0].content_type) if reference_inputs else None
-            )
-            supporting_references = reference_inputs[1:] if reference_inputs else []
-            request_id = ""
-            for index, (role, shot_prompt) in enumerate(shots):
-                references = [*([canonical_reference] if canonical_reference else []), *((item.data, item.content_type) for item in supporting_references)][:4]
-                generated = self.image.generate(
-                    prompt=shot_prompt,
-                    logical_model=logical_model,
-                    candidate_count=1,
-                    aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                    seed=(seed_value + index) if seed_value is not None else None,
-                    reference_images=references,
-                )[0]
-                request_id = request_id or generated.provider_request_id
-                canonical_reference = canonical_reference or (generated.data, generated.mime_type)
-                extension = ".png" if "png" in generated.mime_type else ".jpg"
-                generated_assets.append(CharacterImageAsset(
-                    generated.data,
-                    generated.mime_type,
-                    f"character-{index + 1:02d}-{role}{extension}",
-                    role,
-                    shot_prompt,
-                ))
-            return CharacterGenerationResult(
-                {"kind": "image", "title": f"{name} · {len(generated_assets)} views", "mimeType": generated_assets[0].content_type},
-                request_id,
-                input_ids,
-                name,
-                payload.prompt,
-                tuple(generated_assets),
+            return self.generate_character(
+                logical_model=logical_model,
+                synopsis=payload.prompt,
+                name=name,
+                shot_count=int(payload.parameters.get("shot_count") or 6),
+                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
+                seed=seed_value,
+                reference_images=reference_inputs,
             )
 
         if payload.node_key in {"image.generate", "image.edit"}:
