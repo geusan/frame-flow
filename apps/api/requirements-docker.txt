@@ -1,3 +1,2 @@
--r requirements.txt
 demucs==4.1.0
-mediapipe>=1.0.1,<2
+mediapipe==1.0.1

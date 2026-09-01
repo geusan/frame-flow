@@ -6,6 +6,7 @@ dist/
 .local/
 compose.override.yaml
 .venv/
+.security-venv/
 __pycache__/
 .pytest_cache/
 *.pyc

@@ -1,0 +1,9 @@
+fail-on-severity: high
+fail-on-scopes:
+  - runtime
+  - unknown
+
+# License enforcement stays in report mode until the first SBOM inventory has
+# been reviewed. security/license-policy.json is the policy source of truth.
+license-check: false
+comment-summary-in-pr: never

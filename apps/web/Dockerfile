@@ -11,13 +11,18 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json package-lock.json ./
 COPY apps/web ./apps/web
-RUN npm run build --workspace apps/web
+RUN npm run build --workspace apps/web \
+    && npm prune --omit=dev
 
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-COPY --from=builder /app/package.json /app/package-lock.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/web ./apps/web
+RUN apk upgrade --no-cache libcrypto3 libssl3
+COPY --chown=node:node --from=builder /app/package.json /app/package-lock.json ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/apps/web ./apps/web
+RUN rm -rf /usr/local/lib/node_modules/corepack /usr/local/lib/node_modules/npm \
+    /usr/local/bin/corepack /usr/local/bin/npm /usr/local/bin/npx
+USER node
 EXPOSE 3000
-CMD ["npm", "run", "start", "--workspace", "apps/web"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "apps/web"]

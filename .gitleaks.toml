@@ -1,0 +1,11 @@
+title = "Frameflow secret scanning policy"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documented credentials for the loopback-only local Compose profile"
+regexTarget = "secret"
+regexes = [
+  '''frameflow-local-secret''',
+]

@@ -126,7 +126,12 @@ Skill directory는 `<skill-id>/SKILL.md` 구조만 등록합니다. Seed CLI는 
 
 ```bash
 make check
+make security-deps
+make security-secrets
 ```
+
+전체 Git 이력 Secret 검사, 해시가 고정된 Python 의존성, npm/Python 취약점 검사,
+컨테이너 검사와 SBOM 생성 정책은 [`docs/security-automation.md`](./docs/security-automation.md)를 참고하세요.
 
 개별 명령:
 

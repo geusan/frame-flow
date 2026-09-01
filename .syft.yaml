@@ -1,0 +1,13 @@
+exclude:
+  - "./.git/**"
+  - "./.next/**"
+  - "./.local/**"
+  - "./.security-venv/**"
+  - "**/.terraform/**"
+  - "./.venv/**"
+  - "./artifacts/**"
+  - "./imports/**"
+  - "./node_modules/**"
+  - "./output/**"
+  - "./apps/web/.next/**"
+  - "./apps/web/node_modules/**"

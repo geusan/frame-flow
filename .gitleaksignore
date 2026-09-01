@@ -1,0 +1,3 @@
+# Add only Gitleaks finding fingerprints here after confirming an actual false
+# positive. Every entry must also have an owner, reason, and expiry in
+# security/dependency-exceptions.json. Never ignore a path or an entire rule.

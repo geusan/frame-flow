@@ -11,7 +11,9 @@ locals {
 resource "google_project_service" "required" {
   for_each = toset([
     "aiplatform.googleapis.com",
+    "compute.googleapis.com",
     "run.googleapis.com",
+    "servicenetworking.googleapis.com",
     "sqladmin.googleapis.com",
     "storage.googleapis.com",
     "secretmanager.googleapis.com",
@@ -21,6 +23,26 @@ resource "google_project_service" "required" {
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+resource "google_compute_network" "private" {
+  name                    = "${local.name}-private"
+  auto_create_subnetworks = false
+  depends_on              = [google_project_service.required]
+}
+
+resource "google_compute_global_address" "private_service_range" {
+  name          = "${local.name}-private-service-range"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.private.id
+}
+
+resource "google_service_networking_connection" "private_vpc" {
+  network                 = google_compute_network.private.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_service_range.name]
 }
 
 resource "google_storage_bucket" "artifacts" {
@@ -83,8 +105,13 @@ resource "google_sql_database_instance" "postgres" {
       enabled                        = true
       point_in_time_recovery_enabled = true
     }
+    ip_configuration {
+      ipv4_enabled    = false
+      private_network = google_compute_network.private.id
+      ssl_mode        = "ENCRYPTED_ONLY"
+    }
   }
-  depends_on = [google_project_service.required]
+  depends_on = [google_project_service.required, google_service_networking_connection.private_vpc]
 }
 
 resource "google_sql_database" "frameflow" {

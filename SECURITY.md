@@ -14,3 +14,10 @@ Frameflow is currently a trusted single-user, self-hosted application. It does n
 Do not open a public issue containing credentials, exploit details, personal data, or private media. Use GitHub private vulnerability reporting for this repository. Include affected versions, reproduction steps, impact, and a proposed mitigation when possible.
 
 Only the latest tagged release is supported until a broader support policy is announced.
+
+## Automated checks
+
+Pull requests and weekly scans check the complete Git history for secrets,
+audit locked npm and Python dependencies, scan built container images, and
+generate source and image SBOMs. The exception and license review policy is
+documented in `docs/security-automation.md`.

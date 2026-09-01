@@ -59,6 +59,7 @@ services:
       retries: 12
 
   api:
+    image: frame-flow-api:local
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -108,7 +109,7 @@ services:
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
       XAI_API_KEY: ${XAI_API_KEY:-}
-      CODEX_HOME: /root/.codex
+      CODEX_HOME: /home/frameflow/.codex
       CODEX_EXECUTABLE: codex
       CLAUDE_CODE_EXECUTABLE: claude
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
@@ -120,7 +121,7 @@ services:
       R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
       R2_TRAINING_PREFIX: ${R2_TRAINING_PREFIX:-lora-training}
       R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
-      HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
+      HOLISTIC_LANDMARKER_MODEL_PATH: /home/frameflow/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
     ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"]
     healthcheck:
@@ -130,15 +131,13 @@ services:
       retries: 24
       start_period: 10s
     volumes:
-      - demucs_cache:/root/.cache
-      - mediapipe_cache:/root/.cache/mediapipe
-      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/root/.codex
+      - demucs_cache:/home/frameflow/.cache
+      - mediapipe_cache:/home/frameflow/.cache/mediapipe
+      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/home/frameflow/.codex
       - ${FRAMEFLOW_IMPORTS_DIR:-./imports}:/imports:ro
 
   temporal-worker:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+    image: frame-flow-api:local
     command: ["python", "-m", "app.temporal_runtime"]
     restart: unless-stopped
     depends_on:
@@ -189,7 +188,7 @@ services:
       OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
       OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
       XAI_API_KEY: ${XAI_API_KEY:-}
-      CODEX_HOME: /root/.codex
+      CODEX_HOME: /home/frameflow/.codex
       CODEX_EXECUTABLE: codex
       CLAUDE_CODE_EXECUTABLE: claude
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
@@ -201,12 +200,12 @@ services:
       R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
       R2_TRAINING_PREFIX: ${R2_TRAINING_PREFIX:-lora-training}
       R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
-      HOLISTIC_LANDMARKER_MODEL_PATH: /root/.cache/mediapipe/holistic_landmarker.task
+      HOLISTIC_LANDMARKER_MODEL_PATH: /home/frameflow/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
     volumes:
-      - demucs_cache:/root/.cache
-      - mediapipe_cache:/root/.cache/mediapipe
-      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/root/.codex
+      - demucs_cache:/home/frameflow/.cache
+      - mediapipe_cache:/home/frameflow/.cache/mediapipe
+      - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/home/frameflow/.codex
 
   web:
     build:

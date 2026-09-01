@@ -1,6 +1,6 @@
 # Frameflow GCP foundation
 
-This Terraform stack provisions the GCP foundation only: private artifact buckets, separated service accounts, required APIs, and PostgreSQL 17 on Cloud SQL. It does not yet deploy Web, API, Temporal Worker, DNS, or a secret manager payload.
+This Terraform stack provisions the GCP foundation only: private artifact buckets, separated service accounts, a private VPC with Private Service Access, required APIs, and PostgreSQL 17 on Cloud SQL. Cloud SQL has no public IPv4 address and requires encrypted connections. It does not yet deploy Web, API, Temporal Worker, DNS, or a secret manager payload.
 
 ## Prerequisites
 
