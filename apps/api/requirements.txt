@@ -14,3 +14,4 @@ yt-dlp[default,curl-cffi]>=2026.8.19
 openai>=2.54,<3
 temporalio>=1.31,<2
 boto3>=1.40,<2
+numpy>=1.26,<3
