@@ -28,6 +28,7 @@
       "video.generate"
     ],
     "local": [
+      "audio.extract",
       "generation.resolve",
       "media.qc",
       "motion.control_video",
@@ -37,9 +38,11 @@
       "shot.plan",
       "subtitle.align",
       "video.change_voice",
+      "video.clip.select",
       "video.edit",
       "video.retime",
-      "video.render"
+      "video.render",
+      "video.split"
     ],
     "human_gate": [
       "candidate.select",

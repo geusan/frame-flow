@@ -8,6 +8,7 @@ from typing import Any
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
 from .editor_refs import node_editor_ref_registry
 from .executors import (
+    AudioExtractExecutor,
     CharacterGenerationCapabilityExecutor,
     FalLoraImageCapabilityExecutor,
     FFmpegMediaCapabilityExecutor,
@@ -21,6 +22,8 @@ from .executors import (
     TextGenerationCapabilityExecutor,
     VideoRetimeExecutor,
     VideoGenerationCapabilityExecutor,
+    VideoClipSelectExecutor,
+    VideoSplitExecutor,
     XAITextCapabilityExecutor,
 )
 
@@ -116,11 +119,14 @@ class NodeRegistry:
 node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
+        "audio-extract": AudioExtractExecutor(),
         "fal-lora-training": FalLoraTrainingExecutor(),
         "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor(), FFmpegMediaCapabilityExecutor())),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),
+        "video-clip-select": VideoClipSelectExecutor(),
         "video-retime": VideoRetimeExecutor(),
+        "video-split": VideoSplitExecutor(),
     },
 )

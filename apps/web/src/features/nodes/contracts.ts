@@ -1,34 +1,18 @@
-import type { NodeDefinitionRecord } from "@/lib/api";
+import type { NodeDefinitionRecord, NodePortTypeRegistryRecord } from "@/lib/api";
 import type { IconName, NodeTemplate } from "@/lib/canvas-model";
 import type { PortType } from "@/lib/types";
 
-const legacyPortTypes: Record<string, PortType> = {
-  "prompt.text.v1": "Prompt",
-  "media.image.v1": "Image",
-  "media.video.v1": "Video",
-  "media.audio.v1": "Audio",
-  "artifact.character.v1": "Character",
-  "artifact.character_lora.v1": "Character",
-  "data.text.v1": "Text",
-  "data.json.v1": "Any",
-  "data.motion_track.v1": "MotionTrack",
-  "data.reference_analysis.v1": "ReferenceAnalysis",
-  "data.reference_asset.v1": "ReferenceAsset",
-  "data.subtitle.v1": "Subtitle",
-  "data.timeline.v1": "Timeline",
-};
-
-export function legacyPortType(typeId: string): PortType {
-  const type = legacyPortTypes[typeId];
+export function legacyPortType(typeId: string, registry: NodePortTypeRegistryRecord): PortType {
+  const type = registry.types.find((item) => item.id === typeId);
   if (!type) throw new Error(`Unsupported registry port type: ${typeId}`);
-  return type;
+  return type.legacy_type as PortType;
 }
 
-export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord): NodeTemplate {
+export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord, registry: NodePortTypeRegistryRecord): NodeTemplate {
   const config = Object.fromEntries(Object.entries(definition.config_schema.properties).flatMap(([key, field]) => field.default === undefined ? [] : [[key, field.default]]));
-  const inputTypes = definition.ports.inputs.map((port) => legacyPortType(port.type));
-  const requiredInputTypes = definition.ports.inputs.filter((port) => port.required).map((port) => legacyPortType(port.type));
-  const multiInputTypes = definition.ports.inputs.filter((port) => port.multiple).map((port) => legacyPortType(port.type));
+  const inputTypes = definition.ports.inputs.map((port) => legacyPortType(port.type, registry));
+  const requiredInputTypes = definition.ports.inputs.filter((port) => port.required).map((port) => legacyPortType(port.type, registry));
+  const multiInputTypes = definition.ports.inputs.filter((port) => port.multiple).map((port) => legacyPortType(port.type, registry));
   const output = definition.ports.outputs[0];
   const legacyConfig = {
     resolution: config.resolution,
@@ -64,7 +48,7 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord): No
       inputTypes,
       requiredInputTypes,
       multiInputTypes,
-      outputType: output ? legacyPortType(output.type) : undefined,
+      outputType: output ? legacyPortType(output.type, registry) : undefined,
       provider: definition.execution.kind === "provider" ? modelProvider : definition.execution.provider,
       model: definition.execution.model_alias,
       cost: definition.display.cost_label,
@@ -77,11 +61,13 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord): No
   };
 }
 
-export function latestNodeTemplates(definitions: NodeDefinitionRecord[]): NodeTemplate[] {
+export function latestNodeTemplates(definitions: NodeDefinitionRecord[], registry: NodePortTypeRegistryRecord): NodeTemplate[] {
   const latest = new Map<string, NodeDefinitionRecord>();
   for (const definition of definitions) {
     const current = latest.get(definition.type_key);
     if (!current || definition.contract_version > current.contract_version) latest.set(definition.type_key, definition);
   }
-  return [...latest.values()].sort((a, b) => a.display.category.localeCompare(b.display.category) || a.display.label.localeCompare(b.display.label)).map(nodeTemplateFromDefinition);
+  return [...latest.values()]
+    .sort((a, b) => a.display.category.localeCompare(b.display.category) || a.display.label.localeCompare(b.display.label))
+    .map((definition) => nodeTemplateFromDefinition(definition, registry));
 }

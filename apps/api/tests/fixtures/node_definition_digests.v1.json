@@ -1,5 +1,6 @@
 {
   "agent.execute@1": "sha256:d3825abc73997d77bf856c4b522b12bae35f6a8027feff6c4f1d6cfb8232dd62",
+  "audio.extract@1": "sha256:23bb4243c4895272ee5a9d195442e6c1bf0467f7b81ce6c115da974d95eb1238",
   "asset.select@1": "sha256:e7550f81c149bfc86d80c7940ca9c916288fc1ee3eab992fd4e361b9a10a05ca",
   "candidate.select@1": "sha256:06b33887a566219bdf8a12f689cfb96865db10ea7d392f8bff52a731b6696bc5",
   "character.generate@1": "sha256:9ad298386ff8acf6ef51db689cedc253bdd67cb243e2a0edc627e285472c634b",
@@ -28,9 +29,11 @@
   "timeline.compose@1": "sha256:a8412de86aef0ef77a45bd77bd2a25eccd92d5a22d2e68200f6a23912ced8454",
   "tts.generate@1": "sha256:2ff3d527707879dabb7fd93a099ba12fd82ad70ecb5ce0dad778d8327c0c7696",
   "video.change_voice@1": "sha256:4b2b5763e5da3bcb2c3bc121c0d0afeec4105e37a3026bf526e7960302fdd28b",
+  "video.clip.select@1": "sha256:2fa595a6ecf5ecb22bb6fb8f185c325108c01e03db40059183cf361f5f012792",
   "video.edit@1": "sha256:6d55f250a3286e3d6408f6cdb99a9474b553d2c5fc6c4b99fac4b23549ced229",
   "video.generate@1": "sha256:7e70a0b2ab3e8a36b9dc02b3eca1441962baeccabd0317a4d52ccbc5e6349efe",
   "video.render@1": "sha256:c36fdeed2ce243c887234679da4443dac1663cf8579c8505a613864cb9f079c6",
   "video.retime@1": "sha256:5aa3dcae70d2f44838207dcf545de77652665b0a2f8e240a5b2a140196f2fb4f",
+  "video.split@1": "sha256:ac36013813409fe08115bf30d07e9a1d1284d683fe6a681bb0642674cf2d9563",
   "video.translate@1": "sha256:7019ff86daaa4b110317780e31e4b630d0eb3787159f3d28624331a8ff7e35e0"
 }

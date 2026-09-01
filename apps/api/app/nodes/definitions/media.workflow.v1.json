@@ -1,0 +1,162 @@
+[
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "audio.extract",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Audio Extract",
+      "description": "Video의 첫 오디오 스트림을 재인코딩하지 않고 원본 코덱 그대로 추출",
+      "category": "Audio",
+      "icon": "changeVoice",
+      "cost_label": "$0.00",
+      "keywords": ["audio", "extract", "demux", "original soundtrack"]
+    },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "audio", "type": "media.audio.v1", "label": "Original Audio" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": {
+      "kind": "local",
+      "executor": "audio-extract",
+      "revision": "audio-extract.v1",
+      "provider": "local",
+      "model_alias": "local.audio-extract"
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "Audio",
+      "schema_id": "audio.extracted.v1",
+      "input_roles": { "media.video.v1": "source_video" },
+      "output_role": "original_audio"
+    }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.split",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Video Split",
+      "description": "Video를 고정 길이 Clip들로 정확히 분할하고 순서가 고정된 VideoClipList를 생성",
+      "category": "Video",
+      "icon": "timeline",
+      "cost_label": "$0.00",
+      "keywords": ["video", "split", "segment", "clips", "fan out"]
+    },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Video", "required": true }],
+      "outputs": [{ "key": "clips", "type": "media.video_clip_list.v1", "label": "Video Clips" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["segment_duration_seconds", "remainder_policy", "output_fps", "max_segments"],
+      "properties": {
+        "segment_duration_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 30,
+          "default": 8,
+          "title": "Clip duration",
+          "description": "각 Clip의 목표 길이(초)입니다.",
+          "x-workflow-input": { "enabled": true, "type": "number" }
+        },
+        "remainder_policy": {
+          "type": "string",
+          "enum": ["keep", "drop"],
+          "default": "keep",
+          "title": "Last remainder",
+          "description": "마지막 짧은 Clip을 유지하거나 버립니다.",
+          "x-workflow-input": { "enabled": true, "type": "enum" }
+        },
+        "output_fps": {
+          "type": "integer",
+          "enum": [24, 30, 60],
+          "default": 24,
+          "title": "Output FPS",
+          "description": "분할 Clip의 프레임률입니다.",
+          "x-workflow-input": { "enabled": true, "type": "integer" }
+        },
+        "max_segments": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "default": 16,
+          "title": "Maximum clips",
+          "description": "비정상적으로 큰 fan-out을 막는 실행 한도입니다."
+        }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": {
+      "kind": "local",
+      "executor": "video-split",
+      "revision": "video-split.v1",
+      "provider": "local",
+      "model_alias": "local.video-split"
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "VideoClipList",
+      "schema_id": "video.clip_list.v1",
+      "input_roles": { "media.video.v1": "source_video" },
+      "output_role": "video_clips"
+    }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.clip.select",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Video Clip Select",
+      "description": "VideoClipList에서 고정된 순번의 Clip 하나를 선택해 정적 fan-out branch에 전달",
+      "category": "Video",
+      "icon": "video",
+      "cost_label": "$0.00",
+      "keywords": ["video", "clip", "select", "fan out", "index"]
+    },
+    "ports": {
+      "inputs": [{ "key": "clips", "type": "media.video_clip_list.v1", "label": "Video Clips", "required": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Selected Clip" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["clip_index"],
+      "properties": {
+        "clip_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31,
+          "default": 0,
+          "title": "Clip index",
+          "description": "0부터 시작하는 고정 Clip 순번입니다.",
+          "x-workflow-input": { "enabled": true, "type": "integer" }
+        }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": {
+      "kind": "local",
+      "executor": "video-clip-select",
+      "revision": "video-clip-select.v1",
+      "provider": "local",
+      "model_alias": "local.video-clip-select"
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "Video",
+      "schema_id": "video.clip.v1",
+      "input_roles": { "media.video_clip_list.v1": "clip_collection" },
+      "output_role": "selected_video_clip"
+    }
+  }
+]

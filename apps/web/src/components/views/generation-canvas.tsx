@@ -601,7 +601,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.listModels().catch(() => []),
     ]).then(([document, experiments, definitions, availablePortTypes, availableModels]) => {
       if (!active) return;
-      const manifestTemplates = latestNodeTemplates(definitions);
+      const manifestTemplates = latestNodeTemplates(definitions, availablePortTypes);
       const templates = [...canvasElementTemplates, ...manifestTemplates];
       setNodeDefinitions(definitions);
       setPortTypeRegistry(availablePortTypes);

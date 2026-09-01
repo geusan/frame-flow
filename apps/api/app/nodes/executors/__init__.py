@@ -7,6 +7,7 @@ from .image_generation import ImageGenerationCapabilityExecutor
 from .local_subscription_agent import LocalSubscriptionAgentExecutor
 from .motion_control_video import MotionControlVideoExecutor
 from .motion_segment import MotionSegmentExecutor
+from .media_workflow import AudioExtractExecutor, VideoClipSelectExecutor, VideoSplitExecutor
 from .video_retime import VideoRetimeExecutor
 from .video_generation import VideoGenerationCapabilityExecutor
 from .text_generation import TextGenerationCapabilityExecutor
@@ -23,6 +24,9 @@ __all__ = [
     "LocalSubscriptionAgentExecutor",
     "MotionControlVideoExecutor",
     "MotionSegmentExecutor",
+    "AudioExtractExecutor",
+    "VideoClipSelectExecutor",
+    "VideoSplitExecutor",
     "VideoRetimeExecutor",
     "VideoGenerationCapabilityExecutor",
     "TextGenerationCapabilityExecutor",
