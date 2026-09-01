@@ -304,6 +304,7 @@ function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = no
     if (!template) return node;
     return {
       ...node,
+      type: "studio" as const,
       data: {
         ...node.data,
         key: migratedKey,
@@ -354,7 +355,11 @@ function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = no
     const target = nodeLookup.get(edge.target);
     const index = sourceType && target?.data.inputTypes?.indexOf(sourceType);
     const migratedEdge = edge.type === "smoothstep" || !edge.type ? { ...edge, type: EDGE_TYPE } : edge;
-    return sourceType && index !== undefined && index >= 0 ? { ...migratedEdge, targetHandle: inputHandleId(sourceType, index) } : migratedEdge;
+    return sourceType && index !== undefined && index >= 0 ? {
+      ...migratedEdge,
+      sourceHandle: "output",
+      targetHandle: inputHandleId(sourceType, index),
+    } : migratedEdge;
   });
   return { ...graph, nodes: refreshReadyStatuses(migratedNodes, migratedEdges), edges: migratedEdges };
 }

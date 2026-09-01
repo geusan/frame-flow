@@ -45,6 +45,12 @@ const generatedDurationSeconds = clipCount * clipDurationSeconds;
 const fastSpeed = generatedDurationSeconds / sourceDurationSeconds;
 const slowSpeed = 1 / fastSpeed;
 const prompt = String(generatedVideos[0]?.derivation?.prompt ?? "Preserve the reference motion and apply the connected character consistently.");
+const columnGap = 440;
+const branchRowGap = 250;
+const columnX = (index) => index * columnGap;
+const branchY = (index) => index * branchRowGap;
+const mainLaneY = branchY(Math.floor((clipCount - 1) / 2));
+const sourceInputY = branchY(clipCount) + 100;
 
 function graphNode(id, typeKey, config, position, options = {}) {
   const contract = definition(typeKey);
@@ -71,21 +77,21 @@ function graphNode(id, typeKey, config, position, options = {}) {
 
 let order = 0;
 const nodes = [
-  graphNode("source-video", "asset.select", { artifact_id: original.id, artifact_type: "Video" }, { x: 0, y: 420 }, { order: order++, label: "1. 업로드된 원본 영상" }),
-  graphNode("source-character", "asset.select", { artifact_id: characterImage.id, artifact_type: "Image" }, { x: 1060, y: 1040 }, { order: order++, label: "캐릭터 기준 이미지" }),
-  graphNode("source-prompt", "prompt.input", { text: prompt }, { x: 780, y: 1040 }, { order: order++, label: "캐릭터 적용 Prompt" }),
-  graphNode("extract-audio", "audio.extract", {}, { x: 260, y: 160 }, { order: order++, label: "7. 원본 오디오 추출" }),
+  graphNode("source-video", "asset.select", { artifact_id: original.id, artifact_type: "Video" }, { x: columnX(0), y: mainLaneY }, { order: order++, label: "1. 업로드된 원본 영상" }),
+  graphNode("source-character", "asset.select", { artifact_id: characterImage.id, artifact_type: "Image" }, { x: columnX(3), y: sourceInputY }, { order: order++, label: "캐릭터 기준 이미지" }),
+  graphNode("source-prompt", "prompt.input", { text: prompt }, { x: columnX(2), y: sourceInputY }, { order: order++, label: "캐릭터 적용 Prompt" }),
+  graphNode("extract-audio", "audio.extract", {}, { x: columnX(1), y: mainLaneY + branchRowGap * 2 }, { order: order++, label: "7. 원본 오디오 추출" }),
   graphNode("extract-motion", "motion.extract", {
     motion_sample_fps: 24,
     motion_max_width: 720,
     motion_min_confidence: 0.65,
     motion_face_blendshapes: false,
-  }, { x: 260, y: 20 }, { order: order++, label: "2. Holistic 모션 추출" }),
+  }, { x: columnX(1), y: mainLaneY - branchRowGap * 2 }, { order: order++, label: "2. Holistic 모션 추출" }),
   graphNode("slow-video", "video.retime", {
     speed_multiplier: Number(slowSpeed.toFixed(10)),
     output_fps: 24,
     preserve_audio: false,
-  }, { x: 260, y: 420 }, {
+  }, { x: columnX(1), y: mainLaneY }, {
     order: order++,
     label: `3. ${slowSpeed.toFixed(6)}× Slow (${generatedDurationSeconds}s)`,
     description: `${sourceDurationSeconds.toFixed(3)}초 원본을 ${generatedDurationSeconds}초로 늘립니다.`,
@@ -95,12 +101,12 @@ const nodes = [
     remainder_policy: "keep",
     output_fps: 24,
     max_segments: 16,
-  }, { x: 520, y: 420 }, { order: order++, label: `3. ${clipDurationSeconds}초씩 ${clipCount}개 분할` }),
+  }, { x: columnX(2), y: mainLaneY }, { order: order++, label: `3. ${clipDurationSeconds}초씩 ${clipCount}개 분할` }),
 ];
 
 for (let index = 0; index < clipCount; index += 1) {
-  const y = index * 145;
-  nodes.push(graphNode(`clip-${index + 1}`, "video.clip.select", { clip_index: index }, { x: 780, y }, {
+  const y = branchY(index);
+  nodes.push(graphNode(`clip-${index + 1}`, "video.clip.select", { clip_index: index }, { x: columnX(3), y }, {
     order: order++,
     label: `Clip ${index + 1} · ${index * clipDurationSeconds}-${(index + 1) * clipDurationSeconds}s`,
   }));
@@ -109,7 +115,7 @@ for (let index = 0; index < clipCount; index += 1) {
     aspect_ratio: "9:16",
     duration_seconds: clipDurationSeconds,
     output_count: 1,
-  }, { x: 1060, y }, {
+  }, { x: columnX(4), y }, {
     order: order++,
     label: `4. 캐릭터 영상 ${index + 1}/${clipCount}`,
     modelAlias: "google.video.omni",
@@ -123,17 +129,17 @@ nodes.push(
     aspect_ratio: "9:16",
     transition: "hard_cut",
     target_duration_seconds: generatedDurationSeconds,
-  }, { x: 1360, y: 420 }, { order: order++, label: `5. 생성 영상 ${clipCount}개 이어붙이기` }),
+  }, { x: columnX(5), y: mainLaneY }, { order: order++, label: `5. 생성 영상 ${clipCount}개 이어붙이기` }),
   graphNode("fast-video", "video.retime", {
     speed_multiplier: Number(fastSpeed.toFixed(10)),
     output_fps: 24,
     preserve_audio: false,
-  }, { x: 1620, y: 420 }, {
+  }, { x: columnX(6), y: mainLaneY }, {
     order: order++,
     label: `6. ${fastSpeed.toFixed(6)}× Fast (${sourceDurationSeconds.toFixed(3)}s)`,
     description: `${generatedDurationSeconds}초 생성 영상을 원본 ${sourceDurationSeconds.toFixed(3)}초로 복원합니다.`,
   }),
-  graphNode("replace-audio", "video.change_voice", {}, { x: 1880, y: 360 }, { order: order++, label: "7. 원본 오디오 그대로 적용" }),
+  graphNode("replace-audio", "video.change_voice", {}, { x: columnX(7), y: mainLaneY }, { order: order++, label: "7. 원본 오디오 그대로 적용" }),
 );
 
 let edgeIndex = 0;
