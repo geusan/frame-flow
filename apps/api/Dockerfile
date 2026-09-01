@@ -4,7 +4,7 @@ ARG CODEX_CLI_VERSION=0.151.0
 ARG CLAUDE_CODE_VERSION=2.1.251
 RUN npm install -g "@openai/codex@${CODEX_CLI_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ARG PIP_VERSION=26.2.1
 ARG SETUPTOOLS_VERSION=84.0.0
@@ -28,8 +28,8 @@ RUN apt-get update \
     && pip install --no-cache-dir -r requirements-docker.txt \
     && apt-get purge -y --auto-remove build-essential pkg-config libopus-dev \
     && rm -rf /var/lib/apt/lists/* /root/.cache/puccinialin
-RUN rm -rf /usr/local/lib/python3.11/site-packages/pip \
-    /usr/local/lib/python3.11/site-packages/pip-*.dist-info \
+RUN rm -rf /usr/local/lib/python*/site-packages/pip \
+    /usr/local/lib/python*/site-packages/pip-*.dist-info \
     /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.11
 COPY --from=agent-clis /usr/local/bin/node /usr/local/bin/node
 COPY --from=agent-clis /usr/local/lib/node_modules /usr/local/lib/node_modules
