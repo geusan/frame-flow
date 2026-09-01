@@ -4,7 +4,7 @@ ARG CODEX_CLI_VERSION=0.151.0
 ARG CLAUDE_CODE_VERSION=2.1.251
 RUN npm install -g "@openai/codex@${CODEX_CLI_VERSION}" "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ARG PIP_VERSION=26.2.1
 ARG SETUPTOOLS_VERSION=84.0.0
