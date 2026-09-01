@@ -27,7 +27,7 @@ updates:
         update-types: ["minor", "patch"]
 
   - package-ecosystem: docker
-    directory: /
+    directory: /apps/api
     schedule:
       interval: weekly
       day: monday
@@ -36,20 +36,11 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: docker
-    directory: /apps/api
-    schedule:
-      interval: weekly
-      day: monday
-      time: "04:30"
-      timezone: Asia/Seoul
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: docker
     directory: /apps/web
     schedule:
       interval: weekly
       day: monday
-      time: "04:40"
+      time: "04:30"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
 
@@ -58,7 +49,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "04:50"
+      time: "04:40"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
 
@@ -67,6 +58,6 @@ updates:
     schedule:
       interval: weekly
       day: monday
-      time: "05:00"
+      time: "04:50"
       timezone: Asia/Seoul
     open-pull-requests-limit: 5
