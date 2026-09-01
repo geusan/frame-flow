@@ -28,8 +28,8 @@ RUN apt-get update \
     && pip install --no-cache-dir -r requirements-docker.txt \
     && apt-get purge -y --auto-remove build-essential pkg-config libopus-dev \
     && rm -rf /var/lib/apt/lists/* /root/.cache/puccinialin
-RUN rm -rf /usr/local/lib/python3.11/site-packages/pip \
-    /usr/local/lib/python3.11/site-packages/pip-*.dist-info \
+RUN rm -rf /usr/local/lib/python*/site-packages/pip \
+    /usr/local/lib/python*/site-packages/pip-*.dist-info \
     /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.11
 COPY --from=agent-clis /usr/local/bin/node /usr/local/bin/node
 COPY --from=agent-clis /usr/local/lib/node_modules /usr/local/lib/node_modules
