@@ -87,6 +87,7 @@ jobs:
           pip-compile \
             --quiet \
             --generate-hashes \
+            --no-annotate \
             --no-header \
             --strip-extras \
             --resolver=backtracking \

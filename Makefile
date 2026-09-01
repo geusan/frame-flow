@@ -76,7 +76,7 @@ security-tools:
 	@"$(SECURITY_VENV)/bin/pip" install --quiet "pip-audit==$(PIP_AUDIT_VERSION)" "pip-tools==$(PIP_TOOLS_VERSION)"
 
 lock-python: security-tools
-	"$(SECURITY_VENV)/bin/pip-compile" --quiet --generate-hashes --no-header --strip-extras --resolver=backtracking --output-file apps/api/requirements.lock.txt apps/api/requirements.txt
+	"$(SECURITY_VENV)/bin/pip-compile" --quiet --generate-hashes --no-annotate --no-header --strip-extras --resolver=backtracking --output-file apps/api/requirements.lock.txt apps/api/requirements.txt
 
 security-secrets:
 	docker run --rm -v "$(CURDIR):/repo:ro" "$(GITLEAKS_IMAGE)" git --config=/repo/.gitleaks.toml --gitleaks-ignore-path=/repo/.gitleaksignore --redact --no-banner /repo
