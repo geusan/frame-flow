@@ -29,14 +29,11 @@ class GoogleProviderConfig:
 
     @classmethod
     def from_env(cls) -> "GoogleProviderConfig":
-        api_key = (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()
         project = google_project_from_env()
         credentials = google_credentials_from_env()
-        if api_key:
-            return cls(api_key=api_key, credentials=credentials, location="global", api_version="v1beta")
-        if project:
-            return cls(project=project, credentials=credentials, location=os.getenv("GOOGLE_CLOUD_LOCATION", "global"), api_version="v1")
-        raise GoogleProviderError("GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT is required for live Google providers")
+        if not project or credentials is None:
+            raise GoogleProviderError("Google Service Account JSON is required for live Google providers")
+        return cls(project=project, credentials=credentials, location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), api_version="v1")
 
 
 @dataclass(frozen=True)

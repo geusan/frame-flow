@@ -32,6 +32,7 @@
   "video.clip.select@1": "sha256:2fa595a6ecf5ecb22bb6fb8f185c325108c01e03db40059183cf361f5f012792",
   "video.edit@1": "sha256:6d55f250a3286e3d6408f6cdb99a9474b553d2c5fc6c4b99fac4b23549ced229",
   "video.generate@1": "sha256:7e70a0b2ab3e8a36b9dc02b3eca1441962baeccabd0317a4d52ccbc5e6349efe",
+  "video.image_story@1": "sha256:6aa018e8dcdade256ffc71658252417fbdbd016d919e99b24954193266cbccb6",
   "video.render@1": "sha256:c36fdeed2ce243c887234679da4443dac1663cf8579c8505a613864cb9f079c6",
   "video.retime@1": "sha256:5aa3dcae70d2f44838207dcf545de77652665b0a2f8e240a5b2a140196f2fb4f",
   "video.split@1": "sha256:ac36013813409fe08115bf30d07e9a1d1284d683fe6a681bb0642674cf2d9563",

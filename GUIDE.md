@@ -210,6 +210,7 @@ Images의 각 Asset은 `편집하기`로 전용 이미지 편집기를 연다. M
 | Video Generator | `Prompt`, 선택 `Image × N`, 선택 `ReferenceAsset` | `Video` | 단일 영상 생성 |
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
 | Video Retime | `Video` | `Video` | 0.25~4배속으로 영상과 선택적인 오디오 속도를 변환 |
+| Image Story Video | `Image × N`, `Subtitle`, 선택 `Audio` | `Video` | 이미지를 클립 영역 안에서 팬·줌하고 바깥 자막 패널과 함께 렌더 |
 | Caption layout | `Video`, `Subtitle` | `Timeline` | 영상 위 자막을 드래그하고 가로 정렬·세로 위치·크기를 저장 |
 | Render captions | `Timeline` | `Video` | 저장한 위치의 자막을 FFmpeg로 영상에 렌더 |
 
@@ -275,6 +276,16 @@ Video Generator A → Video ─┐
 Video Generator B → Video ─┼→ Video Editor → Video → Translate
 Video Generator C → Video ─┘                  └→ Change Voice
 ```
+
+### 여러 이미지와 외부 자막 패널로 이야기 영상 만들기
+
+```text
+Scene Prompt × N → Image Generator × N → Image × N ─┐
+Narration Prompt → Voiceover → Audio ────────────────┼→ Image Story Video → FinalVideo
+                              └→ Speech subtitles ───┘
+```
+
+`Image Story Video`는 이미지를 상단의 고정된 클립 영역으로 자른 뒤 장면별 팬·줌을 적용한다. 자막은 이미지 위가 아니라 남은 하단 Canvas 영역에 렌더한다. 첫 샘플인 ‘은혜 갚은 까치’의 내레이션과 일곱 장면 Prompt는 [`docs/image-story-video-example.md`](docs/image-story-video-example.md)에 있다.
 
 ### MotionTrack으로 캐릭터 모션 가이드 생성
 
@@ -423,7 +434,7 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 
 Workflow는 논리적 모델 별칭을 사용하고 Run에서 정확한 모델 ID를 Snapshot한다.
 
-Google Service Account는 Settings → Provider connections → Google AI에서 JSON 키 파일로 등록할 수 있다. JSON은 DB의 write-only secret에 저장되며 API 응답과 화면에서 개인 키를 다시 노출하지 않는다. 저장 시 `service_account` 형식, 프로젝트 ID와 PEM 개인 키를 검증하고 `GOOGLE_CLOUD_PROJECT`를 JSON의 `project_id`로 자동 설정한다. API와 Temporal Worker는 실행 직전 DB 설정을 동기화하고 Chirp 3 Speech-to-Text, Vertex Gemini와 GCS Client에 메모리 자격증명으로 직접 전달한다. 기존 `GOOGLE_APPLICATION_CREDENTIALS` 파일 경로 방식도 대체 인증으로 유지한다.
+Google AI는 Settings → Provider connections → Google AI에 등록한 Service Account JSON만 사용한다. JSON은 DB의 write-only secret에 저장되며 API 응답과 화면에서 개인 키를 다시 노출하지 않는다. 저장 시 `service_account` 형식, 프로젝트 ID와 PEM 개인 키를 검증하고 프로젝트를 JSON의 `project_id`에서 자동으로 가져온다. API와 Temporal Worker는 실행 직전 DB 설정을 동기화하고 Vertex Gemini·Veo, Chirp 3 Speech-to-Text와 GCS Client에 메모리 자격증명으로 직접 전달한다. Gemini API key와 사용자 `GOOGLE_APPLICATION_CREDENTIALS` 파일은 Google Provider 인증에 사용하지 않는다.
 
 ### Media Worker
 

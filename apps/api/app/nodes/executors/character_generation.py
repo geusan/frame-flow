@@ -64,10 +64,7 @@ class CharacterGenerationCapabilityExecutor:
             )
             provider = "openai"
             revision = OPENAI_LIVE_REVISION
-        exact_model_id = model_id_for_alias(
-            model_alias,
-            gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
-        ) or model_alias
+        exact_model_id = model_id_for_alias(model_alias) or model_alias
         image_artifacts = [
             create_artifact(
                 context.db,

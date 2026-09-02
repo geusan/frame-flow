@@ -89,10 +89,13 @@ class GoogleChirp3Recognizer:
             from google.cloud.speech_v2 import SpeechClient
         except ImportError as exc:
             raise RuntimeError("google-cloud-speech is required for Chirp 3 speech recognition") from exc
+        credentials = google_credentials_from_env()
+        if credentials is None:
+            raise RuntimeError("Google Service Account JSON is required for Chirp 3 speech recognition")
         options = None if location == "global" else ClientOptions(api_endpoint=f"{location}-speech.googleapis.com")
         self.client = SpeechClient(
             client_options=options,
-            credentials=google_credentials_from_env(),
+            credentials=credentials,
         )
 
     def transcribe(self, audio: bytes, *, language_code: str, duration_ms: int) -> TranscriptResult:

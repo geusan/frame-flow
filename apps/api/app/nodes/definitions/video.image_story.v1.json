@@ -1,0 +1,179 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.image_story",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Image Story Video",
+    "description": "여러 이미지를 클립 영역 안에서 팬·줌하고 이미지 바깥의 전용 패널에 자막을 배치해 이야기 영상을 렌더",
+    "category": "Video",
+    "icon": "timeline",
+    "cost_label": "$0.00",
+    "keywords": ["image story", "slideshow", "ken burns", "caption panel", "folktale"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "images", "type": "media.image.v1", "label": "Story Images", "required": true, "multiple": true },
+      { "key": "subtitle", "type": "data.subtitle.v1", "label": "Timed Subtitles", "required": true },
+      { "key": "audio", "type": "media.audio.v1", "label": "Narration Audio" }
+    ],
+    "outputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Image Story Video" }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "aspect_ratio",
+      "resolution",
+      "fps",
+      "scene_timing",
+      "motion_preset",
+      "motion_amount",
+      "image_region_height_ratio",
+      "image_margin_ratio",
+      "background_color",
+      "caption_font_family",
+      "caption_font_size",
+      "caption_color",
+      "caption_outline_color",
+      "caption_align"
+    ],
+    "properties": {
+      "aspect_ratio": {
+        "type": "string",
+        "enum": ["9:16", "16:9", "1:1"],
+        "default": "9:16",
+        "title": "Canvas aspect ratio",
+        "description": "완성 영상의 화면비입니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "resolution": {
+        "type": "string",
+        "enum": ["720p", "1080p"],
+        "default": "1080p",
+        "title": "Output resolution",
+        "description": "긴 변이 아니라 화면비 기준의 720/1080 규격을 사용합니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "fps": {
+        "type": "integer",
+        "enum": [24, 30],
+        "default": 24,
+        "title": "Output FPS",
+        "description": "팬·줌과 최종 MP4의 프레임률입니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "scene_timing": {
+        "type": "string",
+        "enum": ["subtitle_cues", "equal"],
+        "default": "subtitle_cues",
+        "title": "Scene timing",
+        "description": "subtitle_cues는 이미지와 자막 cue 수를 같게 요구하고 cue 시작점에서 장면을 바꿉니다. equal은 전체 길이를 이미지 수로 균등 분할합니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "motion_preset": {
+        "type": "string",
+        "enum": ["alternate", "zoom_in", "zoom_out", "pan_left", "pan_right", "still"],
+        "default": "alternate",
+        "title": "Image motion",
+        "description": "alternate는 장면마다 줌인, 오른쪽 팬, 줌아웃, 왼쪽 팬을 반복합니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "motion_amount": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 0.3,
+        "default": 0.12,
+        "title": "Motion amount",
+        "description": "클립 내부 줌·팬의 최대 이동 비율입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "image_region_height_ratio": {
+        "type": "number",
+        "minimum": 0.3,
+        "maximum": 0.78,
+        "default": 0.62,
+        "title": "Image region height",
+        "description": "전체 Canvas 높이 중 상단 이미지 클립 영역이 차지하는 비율입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "image_margin_ratio": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 0.15,
+        "default": 0.04,
+        "title": "Image region margin",
+        "description": "Canvas 너비를 기준으로 이미지 클립 영역 주위에 둘 여백 비율입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "background_color": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "default": "#11100E",
+        "title": "Canvas background",
+        "description": "이미지 바깥과 자막 패널의 배경색입니다.",
+        "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_font_family": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120,
+        "default": "Noto Sans CJK KR",
+        "title": "Caption font",
+        "description": "렌더 Worker에 설치된 Fontconfig 글꼴 이름입니다.",
+        "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_font_size": {
+        "type": "integer",
+        "minimum": 20,
+        "maximum": 120,
+        "default": 58,
+        "title": "Caption font size",
+        "description": "1080px 짧은 변 기준 글자 크기이며 다른 해상도에서는 비례 조정됩니다.",
+        "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "caption_color": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "default": "#F7F3E8",
+        "title": "Caption color",
+        "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_outline_color": {
+        "type": "string",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "default": "#000000",
+        "title": "Caption outline",
+        "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_align": {
+        "type": "string",
+        "enum": ["left", "center", "right"],
+        "default": "center",
+        "title": "Caption alignment",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "local",
+    "executor": "image-story-video",
+    "revision": "image-story-video.v1",
+    "provider": "local",
+    "model_alias": "local.image-story-video"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "FinalVideo",
+    "schema_id": "video.image_story.v1",
+    "input_roles": {
+      "media.image.v1": "story_image",
+      "data.subtitle.v1": "timed_caption",
+      "media.audio.v1": "narration_audio"
+    },
+    "output_role": "final_video"
+  }
+}

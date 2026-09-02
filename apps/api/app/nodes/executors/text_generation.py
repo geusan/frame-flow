@@ -44,10 +44,7 @@ class TextGenerationCapabilityExecutor:
             raise ValueError("text generation requires a connected Prompt")
         instructions = text_instructions(context, resolved_node_config)
         model_alias = context.payload.model_alias
-        exact_model_id = model_id_for_alias(
-            model_alias,
-            gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
-        )
+        exact_model_id = model_id_for_alias(model_alias)
         if not exact_model_id:
             raise ValueError(f"text model alias is not registered: {model_alias}")
         if model_alias.startswith("google.text."):

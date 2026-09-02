@@ -2087,27 +2087,25 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
     google_configuration = dict(google_settings.configuration or {}) if google_settings else {}
     configured = bool(google_settings and provider_is_configured(google_settings))
     google_project = google_configuration.get("project_id") or None
-    google_auth_method = str(google_configuration.get("_auth_method") or "vertex")
-    using_gemini_api = google_auth_method == "api_key"
-    location = "Gemini API" if using_gemini_api else str(google_configuration.get("location") or "global")
+    location = str(google_configuration.get("location") or "us-central1")
     speech_location = str(google_configuration.get("speech_location") or "us")
     rows = [{
         "logical_alias": alias,
-        "exact_model_id": model_id_for_alias(alias, gemini_api=using_gemini_api) or model_id,
+        "exact_model_id": model_id_for_alias(alias) or model_id,
         "provider": "Google",
         "modality": alias.split(".")[1],
         "region": (
             speech_location
             if ".stt." in alias
             else "global"
-            if alias == "google.tts.latest" and not using_gemini_api
+            if alias == "google.tts.latest"
             else location
         ),
         "status": "active" if configured else "disabled",
         "configured": configured,
-        "configuration": "Gemini API key configured" if using_gemini_api and configured else google_project or "Google credentials are not configured",
+        "configuration": google_project or "Google Service Account is not configured",
         **usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
-    } for alias, model_id in MODEL_REGISTRY.items()]
+    } for alias, model_id in MODEL_REGISTRY.items() if alias != "google.video.omni"]
     rows.append({
         "logical_alias": "google.localization.pipeline",
         "exact_model_id": "chirp_3 + gemini-3.1-pro-preview + gemini-2.5-flash-tts",
@@ -2116,7 +2114,7 @@ def list_models(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
         "region": f"{speech_location} / {location}",
         "status": "active" if configured else "disabled",
         "configured": configured,
-        "configuration": "Gemini API key configured" if using_gemini_api and configured else google_project or "Google credentials are not configured",
+        "configuration": google_project or "Google Service Account is not configured",
         **usage.get("google.localization.pipeline", {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None}),
     })
     openai_settings = get_provider_record(db, "openai")

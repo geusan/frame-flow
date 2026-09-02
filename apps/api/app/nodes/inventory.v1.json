@@ -37,6 +37,7 @@
       "script.fit_duration",
       "shot.plan",
       "subtitle.align",
+      "video.image_story",
       "video.change_voice",
       "video.clip.select",
       "video.edit",

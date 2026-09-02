@@ -11,6 +11,18 @@ from app.provider_settings import ensure_provider_settings, provider_settings_pa
 from app.providers_localization import GoogleChirp3Recognizer
 
 
+def _service_account(project_id: str = "service-project") -> dict[str, str]:
+    return {
+        "type": "service_account",
+        "project_id": project_id,
+        "private_key_id": "key-id",
+        "private_key": "-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n",
+        "client_email": f"frameflow@{project_id}.iam.gserviceaccount.com",
+        "client_id": "123456",
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+
+
 def test_provider_settings_are_created_and_secrets_are_write_only(client: TestClient, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
@@ -32,7 +44,11 @@ def test_provider_settings_are_created_and_secrets_are_write_only(client: TestCl
     assert initial_openai["auth_method"] == "api_key"
     assert {method["key"] for method in initial_openai["auth_methods"]} == {"api_key", "chatgpt_oauth"}
     google = next(record for record in initial.json() if record["provider"] == "google")
-    assert {method["label"] for method in google["auth_methods"]} == {"Gemini API", "Vertex AI"}
+    assert google["auth_method"] == "service_account"
+    assert [method["label"] for method in google["auth_methods"]] == ["Service Account"]
+    assert {field["key"] for field in google["fields"]} == {
+        "service_account_json", "location", "speech_location", "video_output_gcs_uri",
+    }
     assert client.put("/settings/providers/veo3", json={"enabled": True, "values": {}}).status_code == 404
 
     saved = client.put("/settings/providers/openai", json={
@@ -144,54 +160,37 @@ def test_provider_auth_method_controls_required_secret_and_environment(client: T
     assert "unknown authentication method" in unknown.json()["detail"]
 
 
-def test_google_api_key_mode_can_apply_cloud_speech_adc_settings(client: TestClient, monkeypatch):
-    for key in ("GEMINI_API_KEY", "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS"):
-        monkeypatch.delenv(key, raising=False)
-
-    saved = client.put("/settings/providers/google", json={
+def test_google_rejects_legacy_api_key_and_adc_registration(client: TestClient):
+    rejected_method = client.put("/settings/providers/google", json={
         "enabled": True,
         "auth_method": "api_key",
-        "values": {
-            "api_key": "gemini-test-key",
-            "project_id": "speech-project",
-            "credentials_path": "/run/secrets/google-adc.json",
-            "speech_location": "us",
-        },
+        "values": {},
     })
+    assert rejected_method.status_code == 422
+    assert "unknown authentication method" in rejected_method.json()["detail"]
 
-    assert saved.status_code == 200
-    payload = saved.json()
-    visible_with_api_key = {
-        field["key"] for field in payload["fields"]
-        if not field["auth_methods"] or "api_key" in field["auth_methods"]
-    }
-    assert {"api_key", "project_id", "credentials_path", "speech_location"} <= visible_with_api_key
-    assert payload["auth_method"] == "api_key"
-    assert payload["configured"] is True
-    assert os.environ["GEMINI_API_KEY"] == "gemini-test-key"
-    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "speech-project"
-    assert os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/run/secrets/google-adc.json"
+    rejected_fields = client.put("/settings/providers/google", json={
+        "enabled": True,
+        "auth_method": "service_account",
+        "values": {"api_key": "gemini-test-key", "credentials_path": "/run/secrets/google-adc.json"},
+    })
+    assert rejected_fields.status_code == 422
+    assert "api_key" in rejected_fields.json()["detail"]
+    assert "credentials_path" in rejected_fields.json()["detail"]
 
 
 def test_google_service_account_json_is_validated_write_only_and_applied(client: TestClient, monkeypatch):
-    for key in ("GEMINI_API_KEY", "GOOGLE_CLOUD_PROJECT", GOOGLE_SERVICE_ACCOUNT_ENV):
+    for key in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", GOOGLE_SERVICE_ACCOUNT_ENV):
         monkeypatch.delenv(key, raising=False)
-    service_account = {
-        "type": "service_account",
-        "project_id": "service-project",
-        "private_key_id": "key-id",
-        "private_key": "-----BEGIN PRIVATE KEY-----\nTEST\n-----END PRIVATE KEY-----\n",
-        "client_email": "frameflow@service-project.iam.gserviceaccount.com",
-        "client_id": "123456",
-        "token_uri": "https://oauth2.googleapis.com/token",
-    }
+    monkeypatch.setenv("GEMINI_API_KEY", "legacy-gemini-key")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/run/secrets/legacy-adc.json")
+    service_account = _service_account()
     monkeypatch.setattr(provider_settings_module, "validate_service_account_json", lambda raw: json.loads(raw))
 
     saved = client.put("/settings/providers/google", json={
         "enabled": True,
-        "auth_method": "api_key",
+        "auth_method": "service_account",
         "values": {
-            "api_key": "gemini-test-key",
             "service_account_json": json.dumps(service_account),
             "speech_location": "us",
         },
@@ -199,35 +198,54 @@ def test_google_service_account_json_is_validated_write_only_and_applied(client:
 
     assert saved.status_code == 200
     payload = saved.json()
-    project = next(field for field in payload["fields"] if field["key"] == "project_id")
     secret = next(field for field in payload["fields"] if field["key"] == "service_account_json")
-    assert project["value"] == "service-project"
+    assert payload["auth_method"] == "service_account"
+    assert payload["configured"] is True
     assert secret["value"] == ""
     assert secret["has_value"] is True
     assert secret["input_kind"] == "service_account_json"
-    assert os.environ["GOOGLE_CLOUD_PROJECT"] == "service-project"
     assert json.loads(os.environ[GOOGLE_SERVICE_ACCOUNT_ENV])["client_email"] == service_account["client_email"]
-
-    mismatch = client.put("/settings/providers/google", json={
-        "enabled": True,
-        "auth_method": "api_key",
-        "values": {
-            "project_id": "different-project",
-            "service_account_json": json.dumps(service_account),
-        },
-    })
-    assert mismatch.status_code == 422
-    assert "does not match" in mismatch.json()["detail"]
+    assert "GEMINI_API_KEY" not in os.environ
+    assert "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ
+    with SessionLocal() as db:
+        google = db.get(ProviderSettingRecord, "provider_google")
+        assert google.configuration["project_id"] == "service-project"
 
     cleared = client.put("/settings/providers/google", json={
         "enabled": True,
-        "auth_method": "api_key",
+        "auth_method": "service_account",
         "values": {},
         "clear_fields": ["service_account_json"],
     })
     assert cleared.status_code == 200
     assert next(field for field in cleared.json()["fields"] if field["key"] == "service_account_json")["has_value"] is False
     assert GOOGLE_SERVICE_ACCOUNT_ENV not in os.environ
+
+
+def test_existing_google_record_migrates_to_service_account_only(client: TestClient):
+    service_account = _service_account("migrated-project")
+    with SessionLocal() as db:
+        record = db.get(ProviderSettingRecord, "provider_google")
+        record.enabled = True
+        record.source = "database"
+        record.configuration = {
+            "_auth_method": "api_key",
+            "project_id": "legacy-project",
+            "credentials_path": "/run/secrets/google-adc.json",
+            "location": "us-central1",
+        }
+        record.secrets = {
+            "api_key": "legacy-api-key",
+            "service_account_json": json.dumps(service_account),
+        }
+        db.commit()
+        migrated = next(item for item in ensure_provider_settings(db) if item.provider == "google")
+
+    assert migrated.configuration["_auth_method"] == "service_account"
+    assert migrated.configuration["project_id"] == "migrated-project"
+    assert "credentials_path" not in migrated.configuration
+    assert "api_key" not in migrated.secrets
+    assert "service_account_json" in migrated.secrets
 
 
 def test_chirp3_uses_registered_service_account_credentials(monkeypatch):
@@ -295,7 +313,7 @@ def test_r2_provider_applies_bucket_scoped_s3_credentials(client: TestClient, mo
 
 def test_environment_values_seed_a_missing_provider_record(client: TestClient, monkeypatch):
     del client
-    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "project-from-env")
+    monkeypatch.setenv(GOOGLE_SERVICE_ACCOUNT_ENV, json.dumps(_service_account("project-from-env")))
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "asia-northeast3")
 
     with SessionLocal() as db:

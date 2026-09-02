@@ -4,6 +4,7 @@ from .ffmpeg_media import FFmpegMediaCapabilityExecutor
 from .character_generation import CharacterGenerationCapabilityExecutor
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
+from .image_story_video import ImageStoryVideoExecutor
 from .local_subscription_agent import LocalSubscriptionAgentExecutor
 from .motion_control_video import MotionControlVideoExecutor
 from .motion_segment import MotionSegmentExecutor
@@ -21,6 +22,7 @@ __all__ = [
     "CharacterGenerationCapabilityExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",
+    "ImageStoryVideoExecutor",
     "LocalSubscriptionAgentExecutor",
     "MotionControlVideoExecutor",
     "MotionSegmentExecutor",

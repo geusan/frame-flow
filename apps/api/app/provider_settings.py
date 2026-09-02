@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .database import ProviderSettingRecord, SessionLocal
 from .domain import utc_now
-from .google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV, validate_service_account_json
+from .google_service_account import GOOGLE_SERVICE_ACCOUNT_ENV, parse_service_account_json, validate_service_account_json
 from .local_subscription_agents import LocalAuthStatus, check_local_provider_auth
 
 
@@ -120,21 +120,23 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
     "google": ProviderDefinition(
         key="google",
         label="Google AI",
-        description="Gemini, Veo, and Google Cloud media services",
+        description="Vertex AI, Veo, and Google Cloud media services through one Service Account",
         fields=(
-            _field("api_key", "Gemini API key", "GEMINI_API_KEY", secret=True, placeholder="AIza…", auth_methods=("api_key",)),
-            _field("project_id", "Google Cloud project", "GOOGLE_CLOUD_PROJECT", placeholder="my-gcp-project", help_text="Optional with Gemini API; required for Chirp 3 Speech-to-Text.", auth_methods=("api_key", "vertex")),
-            _field("location", "Google Cloud location", "GOOGLE_CLOUD_LOCATION", default="us-central1", placeholder="us-central1", auth_methods=("api_key", "vertex")),
-            _field("credentials_path", "Application credentials path", "GOOGLE_APPLICATION_CREDENTIALS", placeholder="/run/secrets/google-application-default-credentials.json", help_text="Required for Chirp 3 and must be readable by the API and Temporal worker.", auth_methods=("api_key", "vertex")),
-            _field("service_account_json", "Service Account JSON", GOOGLE_SERVICE_ACCOUNT_ENV, secret=True, placeholder="Select the downloaded Service Account JSON file", help_text="Stored as a write-only DB secret and loaded directly by API and Temporal workers.", auth_methods=("api_key", "vertex"), input_kind="service_account_json"),
-            _field("speech_location", "Speech location", "GOOGLE_SPEECH_LOCATION", default="us", placeholder="us", auth_methods=("api_key", "vertex")),
-            _field("video_output_gcs_uri", "Video output GCS URI", "GOOGLE_VIDEO_OUTPUT_GCS_URI", placeholder="gs://bucket/path", auth_methods=("vertex",)),
+            _field("service_account_json", "Service Account JSON", GOOGLE_SERVICE_ACCOUNT_ENV, secret=True, placeholder="Select the downloaded Service Account JSON file", help_text="Required. The project ID is read from the JSON and the credential is loaded directly by API and Temporal workers.", auth_methods=("service_account",), input_kind="service_account_json"),
+            _field("location", "Vertex AI location", "GOOGLE_CLOUD_LOCATION", default="us-central1", placeholder="us-central1", auth_methods=("service_account",)),
+            _field("speech_location", "Speech-to-Text location", "GOOGLE_SPEECH_LOCATION", default="us", placeholder="us", auth_methods=("service_account",)),
+            _field("video_output_gcs_uri", "Veo output GCS URI", "GOOGLE_VIDEO_OUTPUT_GCS_URI", placeholder="gs://bucket/path", auth_methods=("service_account",)),
         ),
         auth_methods=(
-            ProviderAuthMethod("api_key", "Gemini API", "Connect with a Gemini API key from Google AI Studio.", required_fields=("api_key",)),
-            ProviderAuthMethod("vertex", "Vertex AI", "Use a Google Cloud project and Application Default Credentials.", kind="cloud", required_fields=("project_id",)),
+            ProviderAuthMethod(
+                "service_account",
+                "Service Account",
+                "Use one Service Account for Vertex AI and Google Cloud Speech-to-Text.",
+                kind="cloud",
+                required_fields=("service_account_json",),
+            ),
         ),
-        default_auth_method="api_key",
+        default_auth_method="service_account",
         order=2,
     ),
     "claude": ProviderDefinition(
@@ -242,6 +244,9 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
 
 
 AUTH_METHOD_CONFIG_KEY = "_auth_method"
+GOOGLE_LEGACY_CONFIGURATION_KEYS = frozenset({"credentials_path"})
+GOOGLE_LEGACY_SECRET_KEYS = frozenset({"api_key"})
+GOOGLE_LEGACY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS")
 
 
 def _record_values(record: ProviderSettingRecord) -> dict[str, str]:
@@ -290,10 +295,33 @@ def provider_is_configured(record: ProviderSettingRecord) -> bool:
     )
 
 
+def _normalize_google_service_account_record(record: ProviderSettingRecord) -> bool:
+    configuration = dict(record.configuration or {})
+    secrets = dict(record.secrets or {})
+    before = (dict(configuration), dict(secrets))
+    configuration[AUTH_METHOD_CONFIG_KEY] = "service_account"
+    for key in GOOGLE_LEGACY_CONFIGURATION_KEYS:
+        configuration.pop(key, None)
+    for key in GOOGLE_LEGACY_SECRET_KEYS:
+        secrets.pop(key, None)
+    service_account_raw = str(secrets.get("service_account_json") or "").strip()
+    if service_account_raw:
+        configuration["project_id"] = str(parse_service_account_json(service_account_raw)["project_id"])
+    if before == (configuration, secrets):
+        return False
+    record.configuration = configuration
+    record.secrets = secrets
+    record.updated_at = utc_now()
+    return True
+
+
 def ensure_provider_settings(db: Session) -> list[ProviderSettingRecord]:
     """Create each provider once, copying available environment values into the DB."""
     existing = {row.provider: row for row in db.scalars(select(ProviderSettingRecord)).all()}
-    created = False
+    changed = False
+    google_record = existing.get("google")
+    if google_record and _normalize_google_service_account_record(google_record):
+        changed = True
     for provider, definition in PROVIDER_DEFINITIONS.items():
         if provider in existing:
             continue
@@ -333,8 +361,10 @@ def ensure_provider_settings(db: Session) -> list[ProviderSettingRecord]:
         )
         db.add(record)
         existing[provider] = record
-        created = True
-    if created:
+        if provider == "google":
+            _normalize_google_service_account_record(record)
+        changed = True
+    if changed:
         try:
             db.commit()
         except IntegrityError:
@@ -350,6 +380,9 @@ def apply_provider_settings_to_environment(records: list[ProviderSettingRecord])
         definition = PROVIDER_DEFINITIONS.get(record.provider)
         if not definition:
             continue
+        if record.provider == "google":
+            for env_var in GOOGLE_LEGACY_ENV_VARS:
+                os.environ.pop(env_var, None)
         auth_method = _auth_method_for(record, definition).key
         values = _record_values(record)
         for field in definition.fields:
@@ -453,9 +486,6 @@ def update_provider_settings(
         if record.provider == "google" and key == "service_account_json" and value:
             service_account = validate_service_account_json(value)
             service_project = str(service_account["project_id"])
-            configured_project = str(values.get("project_id") or "").strip()
-            if configured_project and configured_project != service_project:
-                raise ValueError("Google Cloud project does not match the Service Account project_id")
             configuration["project_id"] = service_project
             value = json.dumps(service_account, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         if value:

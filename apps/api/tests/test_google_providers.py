@@ -177,67 +177,51 @@ def test_image_generation_sends_reference_image_with_prompt():
     assert client.models.last["contents"][1].inline_data.data == b"source-image"
 
 
-def test_gemini_api_key_selects_developer_api_and_preview_veo_model(monkeypatch):
+def test_service_account_selects_vertex_ai_even_if_legacy_api_key_exists(monkeypatch):
     captured = {}
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
-    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    credential = object()
+    monkeypatch.setenv("GEMINI_API_KEY", "ignored-legacy-key")
+    monkeypatch.setattr("app.providers_google.google_project_from_env", lambda: "service-project")
+    monkeypatch.setattr("app.providers_google.google_credentials_from_env", lambda: credential)
     monkeypatch.setattr("app.providers_google.genai.Client", lambda **kwargs: captured.update(kwargs) or FakeClient())
     config = GoogleProviderConfig.from_env()
     provider = GoogleVideoProvider(config)
-    assert config.api_key == "gemini-test-key"
-    assert config.project is None
-    assert captured == {"api_key": "gemini-test-key"}
-    assert provider.exact_model("google.video.fast") == "veo-3.1-fast-generate-preview"
-    assert resolve_model("video.fast", "video.generate") == ("google.video.fast", "veo-3.1-fast-generate-preview")
+    assert config.api_key is None
+    assert config.project == "service-project"
+    assert captured["vertexai"] is True
+    assert captured["project"] == "service-project"
+    assert captured["credentials"] is credential
+    assert provider.exact_model("google.video.fast") == "veo-3.1-fast-generate-001"
+    assert resolve_model("video.fast", "video.generate") == ("google.video.fast", "veo-3.1-fast-generate-001")
     provider.submit(prompt="Animate this image", duration_seconds=4)
     config = provider.client.models.last["config"]
-    assert config.generate_audio is None
-    assert config.enhance_prompt is None
-    assert config.output_gcs_uri is None
-    provider.submit(prompt="Animate this image", duration_seconds=6, resolution="1080p", image_data=b"source", image_mime_type="image/png")
-    config = provider.client.models.last["config"]
-    assert config.duration_seconds == 8
-    assert config.resolution == "1080p"
-    provider.submit(
-        prompt="Use both people as visual references",
-        duration_seconds=6,
-        resolution="720p",
-        reference_images=[(b"image-one", "image/png"), (b"image-two", "image/jpeg")],
-    )
-    config = provider.client.models.last["config"]
-    assert config.duration_seconds == 8
-    assert len(config.reference_images) == 2
-    assert config.reference_images[0].reference_type.value == "ASSET"
-    assert provider.client.models.last["source"].image is None
+    assert config.generate_audio is True
+    assert config.enhance_prompt is True
 
 
-@pytest.mark.parametrize(("model_alias", "vertex_model", "gemini_api_model"), [
-    ("google.tts.latest", "gemini-3.1-flash-tts-preview", "gemini-3.1-flash-tts-preview"),
-    ("google.tts.fast", "gemini-2.5-flash-tts", "gemini-2.5-flash-preview-tts"),
-    ("google.tts.quality", "gemini-2.5-pro-tts", "gemini-2.5-pro-preview-tts"),
+@pytest.mark.parametrize(("model_alias", "vertex_model"), [
+    ("google.tts.latest", "gemini-3.1-flash-tts-preview"),
+    ("google.tts.fast", "gemini-2.5-flash-tts"),
+    ("google.tts.quality", "gemini-2.5-pro-tts"),
 ])
-def test_tts_model_ids_follow_google_auth_mode(
+def test_tts_model_ids_use_vertex_contract(
     model_alias: str,
     vertex_model: str,
-    gemini_api_model: str,
 ):
     client = FakeClient()
     vertex_provider = GoogleTtsProvider(GoogleProviderConfig(project="demo"), client=client)
-    gemini_api_provider = GoogleTtsProvider(GoogleProviderConfig(api_key="test-key"), client=client)
     assert vertex_provider.exact_model(model_alias) == vertex_model
-    assert gemini_api_provider.exact_model(model_alias) == gemini_api_model
 
 
-def test_tts_model_resolution_prefers_gemini_api_key_when_both_auth_inputs_exist(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
-    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "vertex-project")
+def test_tts_model_resolution_ignores_legacy_gemini_api_key(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "ignored-legacy-key")
     assert resolve_model("tts.fast", "tts.generate") == (
         "google.tts.fast",
-        "gemini-2.5-flash-preview-tts",
+        "gemini-2.5-flash-tts",
     )
     assert resolve_model("tts.quality", "tts.generate") == (
         "google.tts.quality",
-        "gemini-2.5-pro-preview-tts",
+        "gemini-2.5-pro-tts",
     )
 
 
@@ -304,21 +288,28 @@ def test_gemini_api_video_download_uses_files_api():
     assert client.files.file is video
 
 
-def test_localization_requires_live_google_project_without_mock_fallback(monkeypatch):
+def test_localization_requires_service_account_without_mock_fallback(monkeypatch):
     monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
-    with pytest.raises(RuntimeError, match="GOOGLE_CLOUD_PROJECT"):
+    monkeypatch.delenv("GOOGLE_SERVICE_ACCOUNT_JSON", raising=False)
+    with pytest.raises(RuntimeError, match="Service Account JSON"):
         get_localization_services()
 
 
-def test_localization_uses_speech_adc_with_gemini_api_generation(monkeypatch):
+def test_localization_uses_one_service_account_for_speech_and_vertex_generation(monkeypatch):
     captured: dict[str, object] = {}
+    credential = object()
     recognizer = object()
     text_provider = object()
     tts_provider = object()
 
-    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "speech-project")
     monkeypatch.setenv("GOOGLE_SPEECH_LOCATION", "us")
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-test-key")
+    monkeypatch.setattr(providers_localization, "google_project_from_env", lambda: "service-project")
+    monkeypatch.setattr(providers_localization, "google_credentials_from_env", lambda: credential)
+    monkeypatch.setattr(
+        providers_localization.GoogleProviderConfig,
+        "from_env",
+        classmethod(lambda cls: providers_localization.GoogleProviderConfig(project="service-project", credentials=credential)),
+    )
     monkeypatch.setattr(providers_localization, "GoogleChirp3Recognizer", lambda project, location: captured.update(project=project, location=location) or recognizer)
     monkeypatch.setattr(providers_localization, "GoogleTextProvider", lambda config: captured.update(text_config=config) or text_provider)
     monkeypatch.setattr(providers_localization, "GoogleTtsProvider", lambda config: captured.update(tts_config=config) or tts_provider)
@@ -326,11 +317,11 @@ def test_localization_uses_speech_adc_with_gemini_api_generation(monkeypatch):
     services = get_localization_services()
 
     assert services.recognizer is recognizer
-    assert captured["project"] == "speech-project"
+    assert captured["project"] == "service-project"
     assert captured["location"] == "us"
-    assert captured["text_config"].api_key == "gemini-test-key"
-    assert captured["text_config"].project is None
-    assert captured["tts_config"].api_key == "gemini-test-key"
+    assert captured["text_config"].project == "service-project"
+    assert captured["text_config"].credentials is credential
+    assert captured["tts_config"].project == "service-project"
 
 
 def test_chirp3_rejects_unsupported_global_location():

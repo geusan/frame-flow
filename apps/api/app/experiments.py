@@ -155,10 +155,7 @@ def resolve_model(model_alias: str, node_key: str, contract_version: int = 1) ->
     if is_local_operation(node_key):
         return resolve_local_model(node_key)
     normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "chatgpt.", "claude.", "xai.")) else f"google.{model_alias}"
-    exact = model_id_for_alias(
-        normalized,
-        gemini_api=bool((os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "").strip()),
-    )
+    exact = model_id_for_alias(normalized)
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")
     return normalized, exact

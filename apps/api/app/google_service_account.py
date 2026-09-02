@@ -72,8 +72,10 @@ def google_credentials_from_env(*, scopes: list[str] | None = None) -> Any | Non
 
 
 def google_project_from_env() -> str:
+    payload = service_account_info_from_env()
+    if payload:
+        return str(payload["project_id"]).strip()
     configured = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
     if configured:
         return configured
-    payload = service_account_info_from_env()
-    return str((payload or {}).get("project_id") or "").strip()
+    return ""
