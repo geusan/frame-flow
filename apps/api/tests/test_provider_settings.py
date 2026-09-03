@@ -210,6 +210,9 @@ def test_google_service_account_json_is_validated_write_only_and_applied(client:
     with SessionLocal() as db:
         google = db.get(ProviderSettingRecord, "provider_google")
         assert google.configuration["project_id"] == "service-project"
+    google_models = [model for model in client.get("/models").json() if model["provider"] == "Google"]
+    assert "google.video.omni" not in {model["logical_alias"] for model in google_models}
+    assert next(model for model in google_models if model["logical_alias"] == "google.tts.fast")["exact_model_id"] == "gemini-2.5-flash-tts"
 
     cleared = client.put("/settings/providers/google", json={
         "enabled": True,

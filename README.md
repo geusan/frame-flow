@@ -175,6 +175,10 @@ PostgreSQL이 사용자에게 보이는 상태의 기준입니다. 일반 Genera
 
 Image, Voiceover, LLM과 Script는 Google 또는 OpenAI Provider를 선택할 수 있고, Video·Format extraction·Speech Subtitle·Translate Video는 실제 Google Cloud API를 사용합니다. Google AI 연결은 Settings에 등록한 Service Account JSON만 사용합니다. 프로젝트 ID는 JSON에서 가져오며 Gemini·Veo는 Vertex AI, Chirp 3 자막은 Speech-to-Text V2에서 같은 Service Account로 인증합니다. API key와 사용자 ADC 파일 경로는 Google Provider 인증에 사용하지 않습니다. Translate Video는 현재 60초 이하를 지원하며 Transcript, 번역문, WAV, SRT와 최종 MP4를 각각 불변 Artifact로 저장합니다.
 
+Service Account에는 사용하는 API를 활성화한 뒤 최소한 Vertex AI User(`roles/aiplatform.user`)와 Cloud Speech Client(`roles/speech.client`)를 부여합니다. Veo 결과를 GCS에 저장하면 대상 버킷에 필요한 Object 권한도 별도로 제한해 부여합니다.
+
+Provider별 인증 방식과 최소 권한은 [`docs/provider-auth-roles.md`](docs/provider-auth-roles.md)를 참고하세요.
+
 Canvas의 Image, Voiceover, LLM Assistant와 Script 노드는 모델 선택에서 OpenAI를 선택할 수 있습니다. Voiceover는 Vertex AI의 Gemini 2.5 Flash TTS, Gemini 3.1 Flash TTS Preview, Gemini 2.5 Pro TTS와 OpenAI GPT-4o Mini TTS, TTS-1, TTS-1 HD를 지원합니다. `OPENAI_API_KEY`를 설정하면 Responses API의 GPT-5.6/ChatGPT Latest, GPT Image 2와 OpenAI TTS 모델이 활성화됩니다. Video Generator는 Vertex AI의 Veo를 사용합니다.
 
 ChatGPT 또는 Claude 구독은 API Provider와 분리된 `Local Subscription Agent` Node에서 사용합니다. 이 Node는 빈 임시 작업 디렉터리에서 도구를 비활성화하거나 read-only로 제한한 로컬 Codex/Claude Code CLI를 실행하고 Text Artifact를 반환합니다.

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.canvas_operations import executor_revision
+from app.canvas_operations import GOOGLE_SPEECH_EXECUTOR_REVISION, executor_revision
 from app.database import ExperimentRunRecord
 from app.experiments import FIXTURE_EXECUTOR_REVISION
 from app.media_preview import render_audio_wav, render_video_mp4
@@ -32,6 +32,8 @@ def test_executor_revision_fits_persisted_execution_mode(monkeypatch):
         monkeypatch.setenv("REFERENCE_ANALYSIS_MODE", analysis_mode)
         monkeypatch.setenv("REFERENCE_AUDIO_SEPARATOR", audio_separator)
         assert len(executor_revision("reference.decompose")) <= max_length
+    monkeypatch.setenv("SUBTITLE_ALIGNMENT_MODE", "live")
+    assert executor_revision("subtitle.align") == GOOGLE_SPEECH_EXECUTOR_REVISION
 
 
 def test_project_skill_registry_and_executor_snapshot_are_available(client: TestClient):

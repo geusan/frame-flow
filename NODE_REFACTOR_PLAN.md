@@ -18,6 +18,7 @@ Status: Proposed
 - Phase 7 진행 중: Canvas의 직접 Legacy JSON literal write, Raw graph Draft Run, Generation Canvas Inspector의 Node key별 UI 분기, Legacy Port 비교, 중앙 수동 parameter 평탄화, `experiments.py`의 xAI 직접 dispatch와 `canvas_operations.py`의 FFmpeg Node key 분기 재도입을 막는 Architecture/contract test가 추가됐다. Legacy/Unknown Edge는 Load 중 삭제하지 않고 검증 오류와 read-only 호환 경로를 유지한다. Generation Canvas의 Legacy write/run payload는 제거됐고 로컬 스토리지 1회성 Import 및 외부 구버전 API 요청만 호환 계약을 사용한다. `nodeTemplates` Legacy read 목록과 나머지 중앙 실행 dispatch 제거는 남았다.
 - 2026-09-01 신규 Node vertical slice: `audio.extract@1`, `video.split@1`, `video.clip.select@1`을 추가해 production contract는 34개가 됐다. Audio stream-copy, ordered `VideoClipList`, 고정 index fan-out을 공통 `NodeExecutionResult`와 Local/Temporal 공통 dispatch로 실행하며, Web Library의 Legacy 표시 type도 서버 Port Registry에서 해석한다. 이 계약들을 사용한 7-way 캐릭터 모션 리타게팅 Canvas와 길이 계산 설계를 함께 검증했다.
 - 2026-09-02 이미지 스토리 vertical slice: `video.image_story@1`을 추가해 production contract는 35개가 됐다. ordered Image 입력, timed Subtitle와 선택 Narration Audio를 받아 클립된 이미지 영역의 팬·줌과 외부 자막 패널을 H.264/AAC FinalVideo로 렌더하며, Generic Inspector·Workflow input·Artifact lineage와 Local/Temporal 공통 dispatch를 사용한다.
+- 2026-09-02 미디어 프레임 vertical slice: `video.media_story@1`을 추가해 production contract는 36개가 됐다. ordered Image/Video 입력의 정규화된 frame·caption frame, cover/contain, crop focus와 preset/custom motion을 Node Config로 고정하며 원본 종횡비와 사각 clip 경계를 보존한다.
 
 ## 1. 목적
 

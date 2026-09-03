@@ -89,3 +89,4 @@ Image 연결 순서가 장면 순서다. `Speech subtitles`처럼 cue 개수가 
 - 출력은 H.264/yuv420p MP4이며 Audio 입력이 있으면 AAC로 정규화한다.
 - 결과 Artifact는 `FinalVideo` / `video.image_story.v1`이고, 각 입력은 `story_image`, `timed_caption`, `narration_audio` lineage role로 기록된다.
 - 이미지가 움직이는 범위는 계산된 클립 영역으로 제한되며 자막 좌표는 항상 그 영역 아래의 패널 안에서 계산된다.
+- 9:16 Canvas에서도 입력 이미지는 늘이거나 눌러 맞추지 않는다. 원본 종횡비를 유지한 채 클립 영역을 가득 채우도록 중앙 기준 `cover` crop 후 팬·줌한다.

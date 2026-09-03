@@ -27,6 +27,7 @@ from .storage import get_storage, storage_location
 
 LOCAL_EXECUTOR_REVISION = "local-media.v1"
 LOCALIZATION_EXECUTOR_REVISION = "google-localization.v1"
+GOOGLE_SPEECH_EXECUTOR_REVISION = "google-speech.v4"
 LOCAL_MODELS: dict[str, tuple[str, str]] = {
     "generation.resolve": ("local.policy", "generation-policy.v1"),
     "script.fit_duration": ("local.script-fit", "script-fit.v1"),
@@ -79,7 +80,7 @@ def executor_revision(node_key: str) -> str:
     if node_key == "video.translate":
         return LOCALIZATION_EXECUTOR_REVISION
     if node_key == "subtitle.align" and os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").lower() == "live":
-        return "google-speech.v1"
+        return GOOGLE_SPEECH_EXECUTOR_REVISION
     return LOCAL_EXECUTOR_REVISION
 
 

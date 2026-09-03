@@ -329,6 +329,95 @@ def test_chirp3_rejects_unsupported_global_location():
         providers_localization.GoogleChirp3Recognizer("speech-project", "global")
 
 
+def test_chirp3_chunks_long_audio_and_rebases_word_timestamps(monkeypatch):
+    def duration(seconds: int, nanos: int = 0):
+        return SimpleNamespace(seconds=seconds, nanos=nanos)
+
+    responses = [
+        SimpleNamespace(results=[SimpleNamespace(
+            alternatives=[SimpleNamespace(
+                transcript="첫 번째 구간",
+                words=[
+                    SimpleNamespace(word="첫 번째 구간", start_offset=duration(1), end_offset=duration(2)),
+                ],
+            )],
+            language_code="ko-KR",
+        )]),
+        SimpleNamespace(results=[SimpleNamespace(
+            alternatives=[SimpleNamespace(
+                transcript="두 번째 구간",
+                words=[
+                    SimpleNamespace(word="두 번째 구간", start_offset=duration(0, 500_000_000), end_offset=duration(3)),
+                ],
+            )],
+            language_code="ko-KR",
+        )]),
+    ]
+
+    class FakeSpeechClient:
+        def __init__(self):
+            self.requests = []
+
+        def recognize(self, *, request):
+            self.requests.append(request)
+            return responses[len(self.requests) - 1]
+
+    monkeypatch.setattr(providers_localization, "_split_audio_for_sync_recognition", lambda *_: [
+        providers_localization.AudioRecognitionChunk(b"chunk-1", 0, 50_000),
+        providers_localization.AudioRecognitionChunk(b"chunk-2", 50_000, 20_000),
+    ])
+    client = FakeSpeechClient()
+    transcript = providers_localization.GoogleChirp3Recognizer("speech-project", "us", client=client).transcribe(
+        b"long-audio",
+        language_code="ko-KR",
+        duration_ms=70_000,
+    )
+
+    assert [request.content for request in client.requests] == [b"chunk-1", b"chunk-2"]
+    assert [(segment.index, segment.start_ms, segment.end_ms, segment.text) for segment in transcript.segments] == [
+        (0, 1_000, 2_000, "첫 번째 구간"),
+        (1, 50_500, 53_000, "두 번째 구간"),
+    ]
+    assert transcript.language_code == "ko-KR"
+
+
+def test_chirp3_groups_word_timestamps_into_display_sized_caption_cues():
+    def word(text: str, start: int, end: int):
+        return SimpleNamespace(
+            word=text,
+            start_offset=SimpleNamespace(seconds=start, nanos=0),
+            end_offset=SimpleNamespace(seconds=end, nanos=0),
+        )
+
+    segments = providers_localization._caption_segments_from_words([
+        word("옛날", 0, 1),
+        word("한", 1, 2),
+        word("선비가", 2, 3),
+        word("산길을", 3, 4),
+        word("걸었습니다.", 4, 5),
+        word("그리고", 5, 6),
+        word("까치를", 6, 7),
+        word("만났습니다.", 7, 8),
+    ], "", 8_000)
+
+    assert segments == [
+        (0, 5_000, "옛날 한 선비가 산길을 걸었습니다."),
+        (5_000, 8_000, "그리고 까치를 만났습니다."),
+    ]
+
+    short_transition = providers_localization._caption_segments_from_words([
+        word("했습니다.", 0, 1),
+        word("바로", 1, 2),
+        word("그때", 2, 3),
+        word("종이", 3, 4),
+        word("울렸습니다.", 4, 5),
+    ], "", 5_000)
+    assert short_transition == [
+        (0, 1_000, "했습니다."),
+        (1_000, 5_000, "바로 그때 종이 울렸습니다."),
+    ]
+
+
 def test_openai_provider_requires_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):

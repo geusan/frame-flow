@@ -6,6 +6,7 @@ from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
 from .image_story_video import ImageStoryVideoExecutor
 from .local_subscription_agent import LocalSubscriptionAgentExecutor
+from .media_story_video import MediaStoryVideoExecutor
 from .motion_control_video import MotionControlVideoExecutor
 from .motion_segment import MotionSegmentExecutor
 from .media_workflow import AudioExtractExecutor, VideoClipSelectExecutor, VideoSplitExecutor
@@ -24,6 +25,7 @@ __all__ = [
     "ImageGenerationCapabilityExecutor",
     "ImageStoryVideoExecutor",
     "LocalSubscriptionAgentExecutor",
+    "MediaStoryVideoExecutor",
     "MotionControlVideoExecutor",
     "MotionSegmentExecutor",
     "AudioExtractExecutor",

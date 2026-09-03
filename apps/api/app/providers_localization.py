@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from .google_service_account import google_credentials_from_env, google_project_from_env
@@ -63,6 +68,47 @@ class LocalizationServices:
     synthesizer: SpeechSynthesizer
 
 
+SPEECH_SYNC_CHUNK_MS = 50_000
+SUBTITLE_MAX_CHARS = 28
+SUBTITLE_MAX_DURATION_MS = 6_000
+
+
+@dataclass(frozen=True)
+class AudioRecognitionChunk:
+    data: bytes
+    offset_ms: int
+    duration_ms: int
+
+
+def _split_audio_for_sync_recognition(audio: bytes, duration_ms: int) -> list[AudioRecognitionChunk]:
+    if duration_ms <= SPEECH_SYNC_CHUNK_MS:
+        return [AudioRecognitionChunk(audio, 0, duration_ms)]
+    with tempfile.TemporaryDirectory(prefix="frameflow-speech-chunks-") as temp_dir:
+        directory = Path(temp_dir)
+        source = directory / "source.audio"
+        source.write_bytes(audio)
+        chunks: list[AudioRecognitionChunk] = []
+        for index in range(math.ceil(duration_ms / SPEECH_SYNC_CHUNK_MS)):
+            offset_ms = index * SPEECH_SYNC_CHUNK_MS
+            chunk_duration_ms = min(SPEECH_SYNC_CHUNK_MS, duration_ms - offset_ms)
+            output = directory / f"chunk-{index:03d}.flac"
+            command = [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", str(source), "-ss", f"{offset_ms / 1000:.3f}",
+                "-t", f"{chunk_duration_ms / 1000:.3f}", "-vn", "-ac", "1", "-ar", "16000",
+                "-c:a", "flac", str(output),
+            ]
+            try:
+                subprocess.run(command, check=True, capture_output=True, text=True, timeout=180)
+            except FileNotFoundError as exc:
+                raise RuntimeError("ffmpeg is required to chunk long Speech-to-Text audio") from exc
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+                detail = (getattr(exc, "stderr", "") or str(exc))[-1600:]
+                raise RuntimeError(f"Speech-to-Text audio chunking failed: {detail}") from exc
+            chunks.append(AudioRecognitionChunk(output.read_bytes(), offset_ms, chunk_duration_ms))
+        return chunks
+
+
 def _duration_ms(value: Any) -> int:
     if value is None:
         return 0
@@ -71,6 +117,59 @@ def _duration_ms(value: Any) -> int:
     seconds = int(getattr(value, "seconds", 0) or 0)
     nanos = int(getattr(value, "nanos", 0) or 0)
     return seconds * 1000 + round(nanos / 1_000_000)
+
+
+def _caption_segments_from_words(
+    words: list[Any],
+    fallback_text: str,
+    duration_ms: int,
+    *,
+    fallback_start_ms: int = 0,
+) -> list[tuple[int, int, str]]:
+    timed_words = [
+        (
+            _duration_ms(getattr(word, "start_offset", None)),
+            _duration_ms(getattr(word, "end_offset", None)),
+            str(getattr(word, "word", "") or "").strip(),
+        )
+        for word in words
+        if str(getattr(word, "word", "") or "").strip()
+    ]
+    if not timed_words:
+        tokens = [token for token in fallback_text.split() if token]
+        if not tokens:
+            return []
+        token_duration = max(1, duration_ms // len(tokens))
+        timed_words = [
+            (
+                fallback_start_ms + index * token_duration,
+                fallback_start_ms + (duration_ms if index == len(tokens) - 1 else (index + 1) * token_duration),
+                token,
+            )
+            for index, token in enumerate(tokens)
+        ]
+
+    segments: list[tuple[int, int, str]] = []
+    current: list[str] = []
+    start_ms = timed_words[0][0]
+    end_ms = start_ms
+    for index, (word_start, word_end, word_text) in enumerate(timed_words):
+        if not current:
+            start_ms = word_start
+        current.append(word_text)
+        end_ms = max(word_end, word_start + 1)
+        text = " ".join(current)
+        compact_length = len(re.sub(r"\s+", "", text))
+        terminal = bool(re.search(r"[.!?。！？][\"'’”)]?$", word_text))
+        should_break = (
+            compact_length >= SUBTITLE_MAX_CHARS
+            or end_ms - start_ms >= SUBTITLE_MAX_DURATION_MS
+            or terminal
+        )
+        if should_break or index == len(timed_words) - 1:
+            segments.append((start_ms, end_ms, text))
+            current = []
+    return segments
 
 
 class GoogleChirp3Recognizer:
@@ -103,40 +202,49 @@ class GoogleChirp3Recognizer:
             from google.cloud.speech_v2.types import cloud_speech
         except ImportError as exc:
             raise RuntimeError("google-cloud-speech is required for Chirp 3 speech recognition") from exc
-        config = cloud_speech.RecognitionConfig(
-            auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
-            language_codes=[language_code or "auto"],
-            model="chirp_3",
-            features=cloud_speech.RecognitionFeatures(enable_word_time_offsets=True),
-        )
-        request = cloud_speech.RecognizeRequest(
-            recognizer=f"projects/{self.project}/locations/{self.location}/recognizers/_",
-            config=config,
-            content=audio,
-        )
-        response = self.client.recognize(request=request)
-        raw_results = [result for result in response.results if result.alternatives]
-        if not raw_results:
-            raise RuntimeError("Chirp 3 returned no transcript")
         segments: list[SpeechSegment] = []
-        cursor = 0
-        fallback_duration = max(1, duration_ms // len(raw_results))
         detected_language = language_code if language_code != "auto" else "und"
-        for index, result in enumerate(raw_results):
-            alternative = result.alternatives[0]
-            text = alternative.transcript.strip()
-            if not text:
-                continue
-            words = list(alternative.words or [])
-            start_ms = _duration_ms(words[0].start_offset) if words else cursor
-            end_ms = _duration_ms(words[-1].end_offset) if words else min(duration_ms, start_ms + fallback_duration)
-            if end_ms <= start_ms:
-                end_ms = min(duration_ms, start_ms + fallback_duration)
-            segments.append(SpeechSegment(index=len(segments), start_ms=start_ms, end_ms=end_ms, text=text))
-            cursor = end_ms
-            result_language = str(getattr(result, "language_code", "") or "")
-            if result_language:
-                detected_language = result_language
+        for chunk in _split_audio_for_sync_recognition(audio, duration_ms):
+            config = cloud_speech.RecognitionConfig(
+                auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
+                language_codes=[language_code or "auto"],
+                model="chirp_3",
+                features=cloud_speech.RecognitionFeatures(enable_word_time_offsets=True),
+            )
+            request = cloud_speech.RecognizeRequest(
+                recognizer=f"projects/{self.project}/locations/{self.location}/recognizers/_",
+                config=config,
+                content=chunk.data,
+            )
+            response = self.client.recognize(request=request)
+            raw_results = [result for result in response.results if result.alternatives]
+            cursor = 0
+            fallback_duration = max(1, chunk.duration_ms // max(1, len(raw_results)))
+            for result in raw_results:
+                alternative = result.alternatives[0]
+                text = alternative.transcript.strip()
+                if not text:
+                    continue
+                words = list(alternative.words or [])
+                caption_segments = _caption_segments_from_words(
+                    words,
+                    text,
+                    fallback_duration,
+                    fallback_start_ms=cursor,
+                )
+                for start_in_chunk, end_in_chunk, caption_text in caption_segments:
+                    if end_in_chunk <= start_in_chunk:
+                        end_in_chunk = min(chunk.duration_ms, start_in_chunk + fallback_duration)
+                    segments.append(SpeechSegment(
+                        index=len(segments),
+                        start_ms=chunk.offset_ms + start_in_chunk,
+                        end_ms=chunk.offset_ms + end_in_chunk,
+                        text=caption_text,
+                    ))
+                    cursor = end_in_chunk
+                result_language = str(getattr(result, "language_code", "") or "")
+                if result_language:
+                    detected_language = result_language
         if not segments:
             raise RuntimeError("Chirp 3 returned an empty transcript")
         return TranscriptResult(detected_language, segments)

@@ -211,6 +211,7 @@ Images의 각 Asset은 `편집하기`로 전용 이미지 편집기를 연다. M
 | Video Editor | `Video × N` | `Video` | 여러 영상을 하나로 편집 |
 | Video Retime | `Video` | `Video` | 0.25~4배속으로 영상과 선택적인 오디오 속도를 변환 |
 | Image Story Video | `Image × N`, `Subtitle`, 선택 `Audio` | `Video` | 이미지를 클립 영역 안에서 팬·줌하고 바깥 자막 패널과 함께 렌더 |
+| Media Story Video | `Image × N`, 선택 `Video × N`, `Subtitle`, 선택 `Audio` | `Video` | 미디어·자막 프레임과 Crop 초점, contain/cover, preset/custom Motion을 Config로 관리 |
 | Caption layout | `Video`, `Subtitle` | `Timeline` | 영상 위 자막을 드래그하고 가로 정렬·세로 위치·크기를 저장 |
 | Render captions | `Timeline` | `Video` | 저장한 위치의 자막을 FFmpeg로 영상에 렌더 |
 
@@ -286,6 +287,8 @@ Narration Prompt → Voiceover → Audio ─────────────
 ```
 
 `Image Story Video`는 이미지를 상단의 고정된 클립 영역으로 자른 뒤 장면별 팬·줌을 적용한다. 자막은 이미지 위가 아니라 남은 하단 Canvas 영역에 렌더한다. 첫 샘플인 ‘은혜 갚은 까치’의 내레이션과 일곱 장면 Prompt는 [`docs/image-story-video-example.md`](docs/image-story-video-example.md)에 있다.
+
+위치·크기·Crop·Motion을 명시적으로 저장하거나 Image와 Video를 섞을 때는 `video.media_story@1`을 사용한다. 정규화 좌표와 각 Config의 정확한 의미는 [`docs/media-story-layout-contract.md`](docs/media-story-layout-contract.md)에 있다.
 
 ### MotionTrack으로 캐릭터 모션 가이드 생성
 
@@ -435,6 +438,10 @@ Worker가 중지된 동안 시작된 Run과 Candidate Signal이 보존되고 재
 Workflow는 논리적 모델 별칭을 사용하고 Run에서 정확한 모델 ID를 Snapshot한다.
 
 Google AI는 Settings → Provider connections → Google AI에 등록한 Service Account JSON만 사용한다. JSON은 DB의 write-only secret에 저장되며 API 응답과 화면에서 개인 키를 다시 노출하지 않는다. 저장 시 `service_account` 형식, 프로젝트 ID와 PEM 개인 키를 검증하고 프로젝트를 JSON의 `project_id`에서 자동으로 가져온다. API와 Temporal Worker는 실행 직전 DB 설정을 동기화하고 Vertex Gemini·Veo, Chirp 3 Speech-to-Text와 GCS Client에 메모리 자격증명으로 직접 전달한다. Gemini API key와 사용자 `GOOGLE_APPLICATION_CREDENTIALS` 파일은 Google Provider 인증에 사용하지 않는다.
+
+실행용 Service Account에는 Vertex AI User(`roles/aiplatform.user`)와 Cloud Speech Client(`roles/speech.client`)가 필요하다. Veo 출력용 GCS URI를 설정한 경우에는 해당 버킷 범위의 Object 권한도 추가한다. API 활성화나 IAM 역할 부여 권한을 실행용 Service Account 자체에 포함하지 않는다.
+
+Google 서비스별 정확한 Role과 나머지 Provider의 인증 범위는 [`docs/provider-auth-roles.md`](docs/provider-auth-roles.md)에 정리되어 있다.
 
 ### Media Worker
 

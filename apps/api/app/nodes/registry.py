@@ -17,6 +17,7 @@ from .executors import (
     ImageStoryVideoExecutor,
     LegacyCompatibilityExecutor,
     LocalSubscriptionAgentExecutor,
+    MediaStoryVideoExecutor,
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
     SpeechGenerationCapabilityExecutor,
@@ -72,6 +73,11 @@ class NodeRegistry:
         supports = getattr(executor, "supports", None)
         return bool(supports(context)) if callable(supports) else True
 
+    def runtime_revision(self, definition: NodeDefinition, resolved_config: dict[str, Any]) -> str:
+        executor = self._executors[definition.execution.executor]
+        revision = getattr(executor, "runtime_revision", None)
+        return str(revision(definition, resolved_config)) if callable(revision) else definition.execution.revision
+
     @staticmethod
     def resolve_config(definition: NodeDefinition, parameters: dict[str, Any]) -> dict[str, Any]:
         schema = definition.config_schema
@@ -125,6 +131,7 @@ node_registry = NodeRegistry(
         "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor(), FFmpegMediaCapabilityExecutor())),
         "image-story-video": ImageStoryVideoExecutor(),
         "local-subscription-agent": LocalSubscriptionAgentExecutor(),
+        "media-story-video": MediaStoryVideoExecutor(),
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),
         "video-clip-select": VideoClipSelectExecutor(),

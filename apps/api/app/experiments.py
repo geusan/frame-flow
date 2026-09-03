@@ -186,13 +186,19 @@ def validate_model_for_node(node_key: str, model_alias: str, contract_version: i
         raise ValueError(f"{node_key} requires one of these model families: {', '.join(allowed_families)}")
 
 
-def resolved_executor_revision(node_key: str, model_alias: str, contract_version: int = 1) -> str:
+def resolved_executor_revision(
+    node_key: str,
+    model_alias: str,
+    contract_version: int = 1,
+    parameters: dict[str, Any] | None = None,
+) -> str:
     definition = node_registry.get(node_key, contract_version)
     if definition and (
         not node_registry.uses_legacy_runtime(definition)
         or (definition.execution.provider == "local" and definition.execution.model_alias == "local.ffmpeg")
     ):
-        return definition.execution.revision
+        config = node_registry.resolve_config(definition, parameters or {})
+        return node_registry.runtime_revision(definition, config)
     return executor_revision(node_key) if is_local_operation(node_key) else generation_executor_revision(model_alias)
 
 
@@ -200,7 +206,12 @@ def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_m
     definition = node_registry.get(payload.node_key, payload.node_contract_version)
     normalized_parameters = node_registry.resolve_config(definition, payload.parameters) if definition else payload.parameters
     snapshot = {
-        "executor_revision": resolved_executor_revision(payload.node_key, model_alias, payload.node_contract_version),
+        "executor_revision": resolved_executor_revision(
+            payload.node_key,
+            model_alias,
+            payload.node_contract_version,
+            normalized_parameters,
+        ),
         "node_contract_version": definition.contract_version if definition else payload.node_contract_version,
         "node_definition_digest": definition.definition_digest if definition else None,
         "node_key": payload.node_key,
@@ -384,7 +395,12 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     record = ExperimentRunRecord(
         id=new_id("exp"), canvas_id=payload.canvas_id, node_id=payload.node_id, node_key=payload.node_key,
         status=NodeStatus.RUNNING,
-        execution_mode=resolved_executor_revision(payload.node_key, model_alias, payload.node_contract_version),
+        execution_mode=resolved_executor_revision(
+            payload.node_key,
+            model_alias,
+            payload.node_contract_version,
+            normalized_parameters,
+        ),
         prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=normalized_parameters,
         input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},

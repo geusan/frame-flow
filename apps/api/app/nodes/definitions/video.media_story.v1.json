@@ -1,0 +1,173 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.media_story",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Media Story Video",
+    "description": "이미지·영상의 프레임 위치, cover/contain Crop, 초점, Clip과 시작·종료 Motion을 명시해 외부 자막 패널과 함께 렌더",
+    "category": "Video",
+    "icon": "timeline",
+    "cost_label": "$0.00",
+    "keywords": ["media story", "frame", "crop", "clip", "pan", "zoom", "caption panel"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "images", "type": "media.image.v1", "label": "Story Images", "multiple": true },
+      { "key": "videos", "type": "media.video.v1", "label": "Story Videos", "multiple": true },
+      { "key": "subtitle", "type": "data.subtitle.v1", "label": "Timed Subtitles", "required": true },
+      { "key": "audio", "type": "media.audio.v1", "label": "Narration Audio" }
+    ],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Media Story Video" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "aspect_ratio", "resolution", "fps", "scene_timing",
+      "frame_x", "frame_y", "frame_width", "frame_height", "media_fit",
+      "crop_focus_x", "crop_focus_y", "motion_preset", "motion_amount",
+      "motion_start_scale", "motion_end_scale", "motion_start_x", "motion_start_y", "motion_end_x", "motion_end_y",
+      "background_color", "caption_frame_x", "caption_frame_y", "caption_frame_width", "caption_frame_height",
+      "caption_font_family", "caption_font_size", "caption_color", "caption_outline_color", "caption_align"
+    ],
+    "properties": {
+      "aspect_ratio": {
+        "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16",
+        "title": "Canvas aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "resolution": {
+        "type": "string", "enum": ["720p", "1080p"], "default": "1080p",
+        "title": "Output resolution", "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "fps": {
+        "type": "integer", "enum": [24, 30], "default": 24,
+        "title": "Output FPS", "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "scene_timing": {
+        "type": "string", "enum": ["subtitle_cues", "equal"], "default": "equal",
+        "title": "Scene timing", "description": "subtitle_cues는 미디어 수와 cue 수를 같게 요구합니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "frame_x": {
+        "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.04,
+        "title": "Media frame X", "description": "Canvas 너비에 대한 왼쪽 위치입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "frame_y": {
+        "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.02,
+        "title": "Media frame Y", "description": "Canvas 높이에 대한 위쪽 위치입니다.",
+        "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "frame_width": {
+        "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.92,
+        "title": "Media frame width", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "frame_height": {
+        "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.62,
+        "title": "Media frame height", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "media_fit": {
+        "type": "string", "enum": ["cover", "contain"], "default": "cover",
+        "title": "Media fit", "description": "두 모드 모두 원본 종횡비를 유지합니다. cover는 중앙 Crop, contain은 전체 미디어를 표시합니다.",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "crop_focus_x": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Crop focus X", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "crop_focus_y": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Crop focus Y", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_preset": {
+        "type": "string",
+        "enum": ["alternate", "zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down", "custom", "still"],
+        "default": "alternate", "title": "Motion preset",
+        "x-workflow-input": { "enabled": true, "type": "enum" }
+      },
+      "motion_amount": {
+        "type": "number", "minimum": 0, "maximum": 0.3, "default": 0.12,
+        "title": "Preset motion amount", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_start_scale": {
+        "type": "number", "minimum": 1, "maximum": 2, "default": 1,
+        "title": "Custom start scale", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_end_scale": {
+        "type": "number", "minimum": 1, "maximum": 2, "default": 1.12,
+        "title": "Custom end scale", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_start_x": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Custom start focus X", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_start_y": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Custom start focus Y", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_end_x": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Custom end focus X", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "motion_end_y": {
+        "type": "number", "minimum": 0, "maximum": 1, "default": 0.5,
+        "title": "Custom end focus Y", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "background_color": {
+        "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#11100E",
+        "title": "Canvas background", "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_frame_x": {
+        "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.06,
+        "title": "Caption frame X", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "caption_frame_y": {
+        "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.68,
+        "title": "Caption frame Y", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "caption_frame_width": {
+        "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.88,
+        "title": "Caption frame width", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "caption_frame_height": {
+        "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.28,
+        "title": "Caption frame height", "x-workflow-input": { "enabled": true, "type": "number" }
+      },
+      "caption_font_family": {
+        "type": "string", "minLength": 1, "maxLength": 120, "default": "Noto Sans CJK KR",
+        "title": "Caption font", "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_font_size": {
+        "type": "integer", "minimum": 20, "maximum": 120, "default": 58,
+        "title": "Caption font size", "x-workflow-input": { "enabled": true, "type": "integer" }
+      },
+      "caption_color": {
+        "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#F7F3E8",
+        "title": "Caption color", "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_outline_color": {
+        "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#000000",
+        "title": "Caption outline", "x-workflow-input": { "enabled": true, "type": "string" }
+      },
+      "caption_align": {
+        "type": "string", "enum": ["left", "center", "right"], "default": "center",
+        "title": "Caption alignment", "x-workflow-input": { "enabled": true, "type": "enum" }
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "local", "executor": "media-story-video", "revision": "media-story-video.v1",
+    "provider": "local", "model_alias": "local.media-story-video"
+  },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "FinalVideo", "schema_id": "video.media_story.v1",
+    "input_roles": {
+      "media.image.v1": "story_image", "media.video.v1": "story_video",
+      "data.subtitle.v1": "timed_caption", "media.audio.v1": "narration_audio"
+    },
+    "output_role": "final_video"
+  }
+}
