@@ -570,9 +570,10 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       void setViewport({ ...viewport, x: viewport.x + x, y: viewport.y + y });
     };
     const handleTrackpadScroll = (event: WheelEvent) => {
-      // macOS reports a real trackpad pinch as ctrl+wheel. Leave that event to
-      // React Flow's pinch zoom and consume every ordinary two-finger scroll as pan.
-      if (event.ctrlKey) return;
+      // macOS reports a real trackpad pinch as ctrl+wheel, while Command+wheel
+      // uses React Flow's Meta zoom activation key. Leave both zoom gestures to
+      // React Flow and consume every ordinary two-finger scroll as pan.
+      if (event.ctrlKey || event.metaKey) return;
       event.preventDefault();
       event.stopPropagation();
       const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 20 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? stage.clientHeight : 1;
