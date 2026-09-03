@@ -1,0 +1,37 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.frame_apply",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Apply frame",
+    "description": "하나의 Image Motion을 지정한 Canvas 프레임 안에 Clip하여 무음 Video Clip으로 렌더",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["frame", "clip", "crop", "cover", "contain", "layout"]
+  },
+  "ports": {
+    "inputs": [{ "key": "motion", "type": "data.media_motion.v1", "label": "Image Motion", "required": true }],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Framed Clip" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["aspect_ratio", "resolution", "frame_x", "frame_y", "frame_width", "frame_height", "media_fit", "background_color"],
+    "properties": {
+      "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Canvas aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "resolution": { "type": "string", "enum": ["720p", "1080p"], "default": "1080p", "title": "Output resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "frame_x": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.04, "title": "Frame X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_y": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.02, "title": "Frame Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_width": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.92, "title": "Frame width", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_height": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.62, "title": "Frame height", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "media_fit": { "type": "string", "enum": ["cover", "contain"], "default": "cover", "title": "Media fit", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#11100E", "title": "Canvas background", "x-workflow-input": { "enabled": true, "type": "string" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "video-frame-apply", "revision": "video-frame-apply.v1", "provider": "local", "model_alias": "local.video-frame-apply" },
+  "editor": { "kind": "custom", "ref": "frame-layout" },
+  "artifact_contract": { "primary_type": "Video", "schema_id": "video.frame_applied.v1", "input_roles": { "data.media_motion.v1": "motion_plan" }, "output_role": "framed_clip" }
+}

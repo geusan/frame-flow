@@ -14,6 +14,14 @@ from .video_retime import VideoRetimeExecutor
 from .video_generation import VideoGenerationCapabilityExecutor
 from .text_generation import TextGenerationCapabilityExecutor
 from .speech_generation import SpeechGenerationCapabilityExecutor
+from .sro_video import (
+    ImageMotionExecutor,
+    MediaFrameLayoutExecutor,
+    SubtitleLayoutExecutor,
+    VideoComposeExecutor,
+    VideoConcatenateExecutor,
+    VideoFrameApplyExecutor,
+)
 from .xai_text import XAITextCapabilityExecutor
 
 __all__ = [
@@ -35,5 +43,11 @@ __all__ = [
     "VideoGenerationCapabilityExecutor",
     "TextGenerationCapabilityExecutor",
     "SpeechGenerationCapabilityExecutor",
+    "ImageMotionExecutor",
+    "MediaFrameLayoutExecutor",
+    "SubtitleLayoutExecutor",
+    "VideoComposeExecutor",
+    "VideoConcatenateExecutor",
+    "VideoFrameApplyExecutor",
     "XAITextCapabilityExecutor",
 ]

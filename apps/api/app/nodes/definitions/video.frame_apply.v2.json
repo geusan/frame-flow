@@ -1,0 +1,31 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.frame_apply",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Apply shared frame",
+    "description": "Image Motion을 연결된 공유 Media Frame에 Clip하여 무음 Video Clip으로 렌더",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["frame", "shared", "clip", "crop", "render"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "motion", "type": "data.media_motion.v1", "label": "Image Motion", "required": true },
+      { "key": "frame", "type": "data.media_frame.v1", "label": "Shared Media Frame", "required": true }
+    ],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Framed Clip" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [],
+    "properties": {}
+  },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "video-frame-apply", "revision": "video-frame-apply.v2", "provider": "local", "model_alias": "local.video-frame-apply" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": { "primary_type": "Video", "schema_id": "video.frame_applied.v2", "input_roles": { "data.media_motion.v1": "motion_plan", "data.media_frame.v1": "media_frame" }, "output_role": "framed_clip" }
+}

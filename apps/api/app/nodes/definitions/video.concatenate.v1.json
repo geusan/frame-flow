@@ -1,0 +1,23 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.concatenate",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Connect videos",
+    "description": "연결 순서대로 호환되는 Video Clip을 Hard Cut으로 이어 하나의 무음 Video Asset을 생성",
+    "category": "Video",
+    "icon": "timeline",
+    "cost_label": "$0.00",
+    "keywords": ["connect", "concatenate", "join", "clips", "hard cut"]
+  },
+  "ports": {
+    "inputs": [{ "key": "videos", "type": "media.video.v1", "label": "Video Clips", "required": true, "multiple": true }],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Connected Video" }]
+  },
+  "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "video-concatenate", "revision": "video-concatenate.v1", "provider": "local", "model_alias": "local.video-concatenate" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": { "primary_type": "Video", "schema_id": "video.concatenated.v1", "input_roles": { "media.video.v1": "ordered_clip" }, "output_role": "connected_video" }
+}

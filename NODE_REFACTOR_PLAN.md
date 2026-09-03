@@ -19,6 +19,8 @@ Status: Proposed
 - 2026-09-01 신규 Node vertical slice: `audio.extract@1`, `video.split@1`, `video.clip.select@1`을 추가해 production contract는 34개가 됐다. Audio stream-copy, ordered `VideoClipList`, 고정 index fan-out을 공통 `NodeExecutionResult`와 Local/Temporal 공통 dispatch로 실행하며, Web Library의 Legacy 표시 type도 서버 Port Registry에서 해석한다. 이 계약들을 사용한 7-way 캐릭터 모션 리타게팅 Canvas와 길이 계산 설계를 함께 검증했다.
 - 2026-09-02 이미지 스토리 vertical slice: `video.image_story@1`을 추가해 production contract는 35개가 됐다. ordered Image 입력, timed Subtitle와 선택 Narration Audio를 받아 클립된 이미지 영역의 팬·줌과 외부 자막 패널을 H.264/AAC FinalVideo로 렌더하며, Generic Inspector·Workflow input·Artifact lineage와 Local/Temporal 공통 dispatch를 사용한다.
 - 2026-09-02 미디어 프레임 vertical slice: `video.media_story@1`을 추가해 production contract는 36개가 됐다. ordered Image/Video 입력의 정규화된 frame·caption frame, cover/contain, crop focus와 preset/custom motion을 Node Config로 고정하며 원본 종횡비와 사각 clip 경계를 보존한다.
+- 2026-09-03 Single-responsibility 이미지 영상 vertical slice: 신규 이미지 스토리 경로를 `image.motion@1`, `video.frame_apply@1`, `video.concatenate@1`, `subtitle.layout@1`, `video.compose@1`로 분리했다. 기존 `video.media_story@1`은 과거 Version 실행용으로 유지하고 새 Draft는 Motion, Frame, 장면 연결, 자막 영역과 최종 합성을 독립 계약으로 구성한다.
+- 2026-09-03 공유 미디어 프레임 vertical slice: `layout.media_frame@1`이 마우스로 편집한 Canvas Frame을 `MediaFrame` Artifact로 고정하고, `video.frame_apply@2` 여러 개가 같은 Artifact를 fan-out 입력으로 사용한다. 기존 `video.frame_apply@1`은 과거 Version 실행용으로 유지한다.
 
 ## 1. 목적
 

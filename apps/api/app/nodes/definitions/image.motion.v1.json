@@ -1,0 +1,38 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.motion",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Image motion",
+    "description": "한 이미지의 시작·종료 위치와 확대율을 편집해 재현 가능한 Motion Plan을 생성",
+    "category": "Image",
+    "icon": "motion",
+    "cost_label": "$0.00",
+    "keywords": ["image motion", "ken burns", "start", "end", "pan", "zoom"]
+  },
+  "ports": {
+    "inputs": [{ "key": "image", "type": "media.image.v1", "label": "Image", "required": true }],
+    "outputs": [{ "key": "motion", "type": "data.media_motion.v1", "label": "Image Motion" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["duration_seconds", "fps", "easing", "start_scale", "start_x", "start_y", "end_scale", "end_x", "end_y"],
+    "properties": {
+      "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 30, "default": 10, "title": "Scene duration", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "fps": { "type": "integer", "enum": [24, 30], "default": 24, "title": "FPS", "x-workflow-input": { "enabled": true, "type": "integer" } },
+      "easing": { "type": "string", "enum": ["linear"], "default": "linear", "title": "Interpolation" },
+      "start_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1, "title": "Start scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start focus X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start focus Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1.12, "title": "End scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "End focus X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "End focus Y", "x-workflow-input": { "enabled": true, "type": "number" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "image-motion", "revision": "image-motion.v1", "provider": "local", "model_alias": "local.image-motion" },
+  "editor": { "kind": "custom", "ref": "image-motion" },
+  "artifact_contract": { "primary_type": "MediaMotion", "schema_id": "image.motion.v1", "input_roles": { "media.image.v1": "source_image" }, "output_role": "motion_plan" }
+}

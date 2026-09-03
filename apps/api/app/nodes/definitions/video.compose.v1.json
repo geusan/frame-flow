@@ -1,0 +1,32 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.compose",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Compose video",
+    "description": "완성된 Video Asset, Caption Layout, Narration Audio를 결합해 최종 MP4만 생성",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["compose", "final", "caption", "audio", "mux"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+      { "key": "captions", "type": "data.caption_layout.v1", "label": "Caption Layout", "required": true },
+      { "key": "audio", "type": "media.audio.v1", "label": "Narration Audio", "required": true }
+    ],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Final Video" }]
+  },
+  "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "video-compose", "revision": "video-compose.v1", "provider": "local", "model_alias": "local.video-compose" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "FinalVideo",
+    "schema_id": "video.composed.v1",
+    "input_roles": { "media.video.v1": "video", "data.caption_layout.v1": "caption_layout", "media.audio.v1": "narration_audio" },
+    "output_role": "final_video"
+  }
+}

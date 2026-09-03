@@ -10,6 +10,7 @@ import { inputHandleId, type CanvasOutput, type StudioFlowNode } from "@/lib/can
 import { API_BASE, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord } from "@/lib/api";
 import { maximizePlaybackVolume } from "@/lib/media";
 import { modelOptionsForDefinition, providerForModelAlias, providerOptionsForDefinition } from "@/features/nodes/model-options";
+import { FrameLayoutEditor, ImageMotionEditor, SubtitleRegionEditor } from "@/features/nodes/custom-editors/sro-video-editors";
 
 export interface NodeCustomEditorProps {
   node: StudioFlowNode;
@@ -262,6 +263,9 @@ const customEditorRegistry: Record<string, (props: NodeCustomEditorProps) => Rea
   "reference-analysis": (props) => <ReferenceAnalysisEditor {...props} />,
   "motion-extractor": (props) => <MotionExtractorEditor {...props} />,
   "candidate-selection": (props) => <CandidateEditor {...props} />,
+  "frame-layout": (props) => <FrameLayoutEditor {...props} />,
+  "image-motion": (props) => <ImageMotionEditor {...props} />,
+  "subtitle-layout": (props) => <SubtitleRegionEditor {...props} />,
 };
 
 // Existing immutable contracts declare editor.kind=legacy. This exact-version

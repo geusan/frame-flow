@@ -290,6 +290,8 @@ Narration Prompt → Voiceover → Audio ─────────────
 
 위치·크기·Crop·Motion을 명시적으로 저장하거나 Image와 Video를 섞을 때는 `video.media_story@1`을 사용한다. 정규화 좌표와 각 Config의 정확한 의미는 [`docs/media-story-layout-contract.md`](docs/media-story-layout-contract.md)에 있다.
 
+신규 이미지 스토리는 한 Node가 Motion·Frame·연결·자막·음성 합성을 모두 처리하지 않도록 [`docs/sro-video-pipeline-contract.md`](docs/sro-video-pipeline-contract.md)의 Single-responsibility Pipeline을 사용한다. `video.media_story@1`은 기존 Canvas와 WorkflowVersion 호환을 위해 유지한다.
+
 ### MotionTrack으로 캐릭터 모션 가이드 생성
 
 ```text

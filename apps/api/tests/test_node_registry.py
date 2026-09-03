@@ -38,8 +38,12 @@ def test_node_inventory_characterizes_every_canvas_key_and_registry_definition()
     canvas_model = Path(__file__).parents[2] / "web/src/lib/canvas-model.ts"
     template_keys = re.findall(r'key: "([a-z][a-z0-9_.-]+)"', canvas_model.read_text())
     counts = Counter(template_keys)
-    registry_only = {definition.type_key for definition in node_registry.list() if definition.editor.kind == "generic"}
-    assert set(template_keys) == (production - registry_only) | canvas_only
+    legacy_adapter_keys = {
+        definition.type_key
+        for definition in node_registry.list()
+        if definition.contract_version == 1 and definition.editor.kind == "legacy"
+    }
+    assert set(template_keys) == legacy_adapter_keys | canvas_only
     assert inventory["library_duplicates"] == {
         key: count for key, count in sorted(counts.items()) if count > 1
     }
@@ -262,11 +266,14 @@ def test_node_definition_api_exposes_active_contracts_only(client):
 
 
 def test_port_type_registry_covers_legacy_canvas_contracts():
-    assert len(port_type_registry.ids) == 26
+    assert len(port_type_registry.ids) == 29
     assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
     assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
     assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"
     assert port_type_registry.get("data.timeline.v1").legacy_type == "Timeline"
+    assert port_type_registry.get("data.caption_layout.v1").legacy_type == "CaptionLayout"
+    assert port_type_registry.get("data.media_motion.v1").legacy_type == "MediaMotion"
+    assert port_type_registry.get("data.media_frame.v1").legacy_type == "MediaFrame"
     assert port_type_registry.get("data.reference_asset.v1").legacy_type == "ReferenceAsset"
 
 

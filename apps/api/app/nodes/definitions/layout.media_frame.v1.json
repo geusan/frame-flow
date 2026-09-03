@@ -1,0 +1,37 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "layout.media_frame",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Media frame",
+    "description": "여러 이미지 장면이 공유할 출력 Canvas의 미디어 영역을 정의하고 재사용 가능한 Frame Artifact로 저장",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["frame", "layout", "shared", "clip", "crop", "cover", "contain"]
+  },
+  "ports": {
+    "inputs": [],
+    "outputs": [{ "key": "frame", "type": "data.media_frame.v1", "label": "Media Frame" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["aspect_ratio", "resolution", "frame_x", "frame_y", "frame_width", "frame_height", "media_fit", "background_color"],
+    "properties": {
+      "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Canvas aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "resolution": { "type": "string", "enum": ["720p", "1080p"], "default": "1080p", "title": "Output resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "frame_x": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.04, "title": "Frame X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_y": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.02, "title": "Frame Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_width": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.92, "title": "Frame width", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_height": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.62, "title": "Frame height", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "media_fit": { "type": "string", "enum": ["cover", "contain"], "default": "cover", "title": "Media fit", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#11100E", "title": "Canvas background", "x-workflow-input": { "enabled": true, "type": "string" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "media-frame-layout", "revision": "media-frame-layout.v1", "provider": "local", "model_alias": "local.media-frame-layout" },
+  "editor": { "kind": "custom", "ref": "frame-layout" },
+  "artifact_contract": { "primary_type": "MediaFrame", "schema_id": "layout.media_frame.v1", "input_roles": {}, "output_role": "media_frame_layout" }
+}

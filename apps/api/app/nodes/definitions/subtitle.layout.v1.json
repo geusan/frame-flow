@@ -1,0 +1,39 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "subtitle.layout",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Subtitle region",
+    "description": "Timed Subtitle에 정규화된 표시 영역과 기본 Style만 적용해 Caption Layout을 생성",
+    "category": "Video",
+    "icon": "subtitle",
+    "cost_label": "$0.00",
+    "keywords": ["subtitle", "caption", "region", "safe area", "layout"]
+  },
+  "ports": {
+    "inputs": [{ "key": "subtitle", "type": "data.subtitle.v1", "label": "Subtitle", "required": true }],
+    "outputs": [{ "key": "layout", "type": "data.caption_layout.v1", "label": "Caption Layout" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["aspect_ratio", "frame_x", "frame_y", "frame_width", "frame_height", "align", "font_family", "font_size", "color", "outline_color"],
+    "properties": {
+      "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Canvas aspect ratio", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "frame_x": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.06, "title": "Region X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_y": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.68, "title": "Region Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_width": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.88, "title": "Region width", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_height": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.28, "title": "Region height", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "align": { "type": "string", "enum": ["left", "center", "right"], "default": "center", "title": "Alignment", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "font_family": { "type": "string", "minLength": 1, "maxLength": 120, "default": "Noto Sans CJK KR", "title": "Font family", "x-workflow-input": { "enabled": true, "type": "string" } },
+      "font_size": { "type": "integer", "minimum": 20, "maximum": 120, "default": 58, "title": "Font size", "x-workflow-input": { "enabled": true, "type": "integer" } },
+      "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#F7F3E8", "title": "Text color", "x-workflow-input": { "enabled": true, "type": "string" } },
+      "outline_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#000000", "title": "Outline color", "x-workflow-input": { "enabled": true, "type": "string" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "subtitle-layout", "revision": "subtitle-layout.v1", "provider": "local", "model_alias": "local.subtitle-layout" },
+  "editor": { "kind": "custom", "ref": "subtitle-layout" },
+  "artifact_contract": { "primary_type": "CaptionLayout", "schema_id": "subtitle.layout.v1", "input_roles": { "data.subtitle.v1": "subtitle" }, "output_role": "caption_layout" }
+}

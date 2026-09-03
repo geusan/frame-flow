@@ -3,9 +3,12 @@
   "refs": [
     "candidate-selection",
     "caption-layout",
+    "frame-layout",
+    "image-motion",
     "motion-extractor",
     "provider-generation",
     "reference-analysis",
+    "subtitle-layout",
     "video-edit",
     "video-translate"
   ]
