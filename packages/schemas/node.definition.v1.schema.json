@@ -65,7 +65,8 @@
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
           "default": []
-        }
+        },
+        "approval_schema": { "type": "object" }
       }
     },
     "editor": {

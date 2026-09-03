@@ -9,6 +9,7 @@ from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult
 from .editor_refs import node_editor_ref_registry
 from .executors import (
     AudioExtractExecutor,
+    CaptionTimelineExecutor,
     CharacterGenerationCapabilityExecutor,
     FalLoraImageCapabilityExecutor,
     FFmpegMediaCapabilityExecutor,
@@ -23,11 +24,14 @@ from .executors import (
     MotionControlVideoExecutor,
     MotionSegmentExecutor,
     SpeechGenerationCapabilityExecutor,
+    RichSubtitleLayoutExecutor,
+    SubtitleDesignExecutor,
     SubtitleLayoutExecutor,
     TextGenerationCapabilityExecutor,
     VideoRetimeExecutor,
     VideoGenerationCapabilityExecutor,
     VideoClipSelectExecutor,
+    VideoCaptionBurnExecutor,
     VideoComposeExecutor,
     VideoConcatenateExecutor,
     VideoFrameApplyExecutor,
@@ -85,6 +89,40 @@ class NodeRegistry:
         return str(revision(definition, resolved_config)) if callable(revision) else definition.execution.revision
 
     @staticmethod
+    def validate_object(schema: dict[str, Any], payload: dict[str, Any], *, label: str = "config") -> None:
+        properties = dict(schema.get("properties") or {})
+        if schema.get("additionalProperties") is False:
+            unknown = sorted(key for key in payload if key not in properties)
+            if unknown:
+                raise ValueError(f"unknown {label} fields: {', '.join(unknown)}")
+        missing = sorted(key for key in schema.get("required", []) if key not in payload or payload[key] is None)
+        if missing:
+            raise ValueError(f"missing required {label} fields: {', '.join(missing)}")
+        for key, value in payload.items():
+            field = properties.get(key)
+            if not isinstance(field, dict) or value is None:
+                continue
+            field_type = field.get("type")
+            valid = (
+                field_type == "string" and isinstance(value, str)
+                or field_type == "integer" and isinstance(value, int) and not isinstance(value, bool)
+                or field_type == "number" and isinstance(value, (int, float)) and not isinstance(value, bool)
+                or field_type == "boolean" and isinstance(value, bool)
+                or field_type == "object" and isinstance(value, dict)
+                or field_type == "array" and isinstance(value, list)
+                or field_type is None
+            )
+            if not valid:
+                raise ValueError(f"{label} field {key} must be {field_type}")
+            if "enum" in field and value not in field["enum"]:
+                raise ValueError(f"{label} field {key} must be one of {field['enum']}")
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if "minimum" in field and value < field["minimum"]:
+                    raise ValueError(f"{label} field {key} must be at least {field['minimum']}")
+                if "maximum" in field and value > field["maximum"]:
+                    raise ValueError(f"{label} field {key} must be at most {field['maximum']}")
+
+    @staticmethod
     def resolve_config(definition: NodeDefinition, parameters: dict[str, Any]) -> dict[str, Any]:
         schema = definition.config_schema
         properties = dict(schema.get("properties") or {})
@@ -126,6 +164,7 @@ class NodeRegistry:
                 if "maximum" in field and value > field["maximum"]:
                     raise ValueError(f"{key} must be at most {field['maximum']}")
             resolved[key] = value
+        NodeRegistry.validate_object(schema, resolved)
         return resolved
 
 
@@ -133,7 +172,9 @@ node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
         "audio-extract": AudioExtractExecutor(),
+        "caption-timeline": CaptionTimelineExecutor(),
         "fal-lora-training": FalLoraTrainingExecutor(),
+        "ffmpeg-media": FFmpegMediaCapabilityExecutor(),
         "legacy-compatibility": LegacyCompatibilityExecutor((XAITextCapabilityExecutor(), TextGenerationCapabilityExecutor(), ImageGenerationCapabilityExecutor(), CharacterGenerationCapabilityExecutor(), FalLoraImageCapabilityExecutor(), VideoGenerationCapabilityExecutor(), SpeechGenerationCapabilityExecutor(), FFmpegMediaCapabilityExecutor())),
         "image-story-video": ImageStoryVideoExecutor(),
         "image-motion": ImageMotionExecutor(),
@@ -143,7 +184,10 @@ node_registry = NodeRegistry(
         "motion-control-video": MotionControlVideoExecutor(),
         "motion-segment": MotionSegmentExecutor(),
         "subtitle-layout": SubtitleLayoutExecutor(),
+        "subtitle-layout-rich": RichSubtitleLayoutExecutor(),
+        "subtitle-design": SubtitleDesignExecutor(),
         "video-clip-select": VideoClipSelectExecutor(),
+        "video-caption-burn": VideoCaptionBurnExecutor(),
         "video-compose": VideoComposeExecutor(),
         "video-concatenate": VideoConcatenateExecutor(),
         "video-frame-apply": VideoFrameApplyExecutor(),

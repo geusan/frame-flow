@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/subtitle.layout.v3.schema.json",
+  "title": "FrameAwareCaptionLayoutV3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "canvas", "media_frame", "caption_frame", "align"],
+  "properties": {
+    "schema_version": { "const": "subtitle.layout.v3" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "sha256", "schema_id"],
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "schema_id": { "const": "caption.document.v1" }
+      }
+    },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["media_frame_artifact_id", "media_frame_sha256", "aspect_ratio", "resolution", "background_color", "width", "height"],
+      "properties": {
+        "media_frame_artifact_id": { "type": "string", "minLength": 1 },
+        "media_frame_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "aspect_ratio": { "enum": ["9:16", "16:9", "1:1"] },
+        "resolution": { "enum": ["720p", "1080p"] },
+        "background_color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "media_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height", "media_fit"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "media_fit": { "enum": ["cover", "contain"] }
+      }
+    },
+    "caption_frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "align": { "enum": ["left", "center", "right"] }
+  }
+}

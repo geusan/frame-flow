@@ -21,6 +21,9 @@ Status: Proposed
 - 2026-09-02 미디어 프레임 vertical slice: `video.media_story@1`을 추가해 production contract는 36개가 됐다. ordered Image/Video 입력의 정규화된 frame·caption frame, cover/contain, crop focus와 preset/custom motion을 Node Config로 고정하며 원본 종횡비와 사각 clip 경계를 보존한다.
 - 2026-09-03 Single-responsibility 이미지 영상 vertical slice: 신규 이미지 스토리 경로를 `image.motion@1`, `video.frame_apply@1`, `video.concatenate@1`, `subtitle.layout@1`, `video.compose@1`로 분리했다. 기존 `video.media_story@1`은 과거 Version 실행용으로 유지하고 새 Draft는 Motion, Frame, 장면 연결, 자막 영역과 최종 합성을 독립 계약으로 구성한다.
 - 2026-09-03 공유 미디어 프레임 vertical slice: `layout.media_frame@1`이 마우스로 편집한 Canvas Frame을 `MediaFrame` Artifact로 고정하고, `video.frame_apply@2` 여러 개가 같은 Artifact를 fan-out 입력으로 사용한다. 기존 `video.frame_apply@1`은 과거 Version 실행용으로 유지한다.
+- 2026-09-03 Rich Caption vertical slice: Font 파일은 `Font` Artifact와 버전이 있는 시각 크기 profile로 등록하고, `timeline.compose@2`가 TipTap 기반 `caption.document.v1`의 cue/run·색상·bold·italic·Font profile ID를 `timeline.v2`에 Snapshot한다. `video.render@2`는 Snapshot에 고정된 Font Artifact hash와 FFmpeg/libass inline style을 사용하며 기존 `timeline.compose@1`/`video.render@1` 계약은 유지한다.
+- 2026-09-03 Rich Caption SRO vertical slice: `subtitle.design@1`은 TipTap CaptionDocument만, `subtitle.layout@2`는 CaptionDocument의 영상 내 배치만, `video.caption_burn@1`은 자막 픽셀 렌더만 담당한다. 내레이션 Audio 결합은 기존 `video.change_voice@1`을 사용하며 복합 `video.compose@1`과 transitional Timeline 경로는 호환을 위해 유지한다.
+- 2026-09-03 Frame-aware Caption vertical slice: `subtitle.layout@3`은 CaptionDocument와 `layout.media_frame@1`의 MediaFrame을 받아 두 영역을 같은 Canvas 좌표계로 Snapshot하고, Custom Editor에서 공유 미디어 영역을 보면서 Caption Frame만 편집한다. `video.caption_burn@2`가 이 Layout을 렌더하며 기존 `subtitle.layout@2`/`video.caption_burn@1`은 변경하지 않는다.
 
 ## 1. 목적
 

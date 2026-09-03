@@ -1,0 +1,42 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "subtitle.layout",
+  "contract_version": 3,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Caption placement",
+    "description": "공유 Media Frame과 Caption Frame을 한 Canvas에서 비교하며 자막 위치와 크기를 정의",
+    "category": "Video",
+    "icon": "subtitle",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "media frame", "placement", "region", "safe area"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "document", "type": "data.caption_document.v1", "label": "Caption Document", "required": true },
+      { "key": "media_frame", "type": "data.media_frame.v1", "label": "Media Frame", "required": true }
+    ],
+    "outputs": [{ "key": "layout", "type": "data.caption_layout.v3", "label": "Frame-aware Caption Layout" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["frame_x", "frame_y", "frame_width", "frame_height", "align"],
+    "properties": {
+      "frame_x": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.06, "title": "Caption X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_y": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.78, "title": "Caption Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_width": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.88, "title": "Caption width", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_height": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.18, "title": "Caption height", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "align": { "type": "string", "enum": ["left", "center", "right"], "default": "center", "title": "Alignment", "x-workflow-input": { "enabled": true, "type": "enum" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "subtitle-layout-rich", "revision": "subtitle-layout.v3", "provider": "local", "model_alias": "local.subtitle-layout" },
+  "editor": { "kind": "custom", "ref": "subtitle-layout" },
+  "artifact_contract": {
+    "primary_type": "CaptionLayout",
+    "schema_id": "subtitle.layout.v3",
+    "input_roles": { "data.caption_document.v1": "caption_document", "data.media_frame.v1": "media_frame" },
+    "output_role": "caption_layout"
+  }
+}

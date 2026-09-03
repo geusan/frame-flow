@@ -5,6 +5,7 @@ import { ChevronRight, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
+import type { RichCaptionDocument } from "@/features/workflows/rich-caption";
 import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
 import { inputHandleId, type CanvasOutput, type StudioFlowNode } from "@/lib/canvas-model";
 import { API_BASE, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord } from "@/lib/api";
@@ -111,8 +112,8 @@ function ProviderGenerationEditor(props: NodeCustomEditorProps) {
     </div>}
     <ProviderModelFields {...props} />
     {resolutionField && aspectRatioField && <div className="generator-setting-grid">
-      <label><span>Resolution</span><NativeSelect value={configValue(node, "resolution", node.data.resolution, String(resolutionField.default ?? "1080p"))} onChange={(event) => updateConfig(props, "resolution", event.target.value, { resolution: event.target.value })}>{(resolutionField.enum ?? [resolutionField.default ?? "1080p"]).map((value) => <option value={String(value)} key={String(value)}>{value}</option>)}</NativeSelect></label>
-      <label><span>Aspect ratio</span><NativeSelect value={configValue(node, "aspect_ratio", node.data.aspectRatio, String(aspectRatioField.default ?? "9:16"))} onChange={(event) => updateConfig(props, "aspect_ratio", event.target.value, { aspectRatio: event.target.value })}>{(aspectRatioField.enum ?? [aspectRatioField.default ?? "9:16"]).map((value) => <option value={String(value)} key={String(value)}>{value}</option>)}</NativeSelect></label>
+      <label><span>Resolution</span><NativeSelect value={configValue(node, "resolution", node.data.resolution, String(resolutionField.default ?? "1080p"))} onChange={(event) => updateConfig(props, "resolution", event.target.value, { resolution: event.target.value })}>{(resolutionField.enum ?? [String(resolutionField.default ?? "1080p")]).map((value) => <option value={String(value)} key={String(value)}>{String(value)}</option>)}</NativeSelect></label>
+      <label><span>Aspect ratio</span><NativeSelect value={configValue(node, "aspect_ratio", node.data.aspectRatio, String(aspectRatioField.default ?? "9:16"))} onChange={(event) => updateConfig(props, "aspect_ratio", event.target.value, { aspectRatio: event.target.value })}>{(aspectRatioField.enum ?? [String(aspectRatioField.default ?? "9:16")]).map((value) => <option value={String(value)} key={String(value)}>{String(value)}</option>)}</NativeSelect></label>
     </div>}
     {durationField && <label className="field-label"><span>Shot duration</span><NativeSelect value={String(configValue(node, "duration_seconds", node.data.durationSeconds, Number(durationField.default ?? 6)))} onChange={(event) => updateConfig(props, "duration_seconds", Number(event.target.value), { durationSeconds: Number(event.target.value) })}>{(durationField.enum ?? [4, 6, 8]).map((value) => <option value={String(value)} key={String(value)}>{value} seconds</option>)}</NativeSelect><small>Manifest가 허용한 영상 길이만 선택할 수 있습니다.</small></label>}
     {properties.output_count && <div className="batch-setting single-output-setting"><span><small>Output count</small><strong>Canvas Step은 단일 결과를 출력합니다.</strong></span><b>1</b></div>}
@@ -144,6 +145,8 @@ function CaptionLayoutCustomEditor(props: NodeCustomEditorProps) {
       videoUrl={video?.data.output?.kind === "video" ? video.data.output.url : undefined}
       videoMimeType={video?.data.output?.mimeType}
       subtitleText={subtitle?.data.output?.text}
+      richText={props.definition.contract_version >= 2}
+      captionDocument={configValue<RichCaptionDocument | undefined>(node, "caption_document", undefined, undefined)}
       value={{
         x: configValue(node, "caption_x", node.data.captionX, 0.5),
         y: configValue(node, "caption_y", node.data.captionY, 0.82),
@@ -157,8 +160,35 @@ function CaptionLayoutCustomEditor(props: NodeCustomEditorProps) {
         captionFontSize: layout.fontSize,
         config: { ...(node.data.config ?? {}), caption_x: layout.x, caption_y: layout.y, caption_align: layout.align, caption_font_size: layout.fontSize },
       })}
+      onCaptionDocumentChange={(captionDocument) => props.onChange({
+        config: { ...(node.data.config ?? {}), caption_document: captionDocument },
+      })}
     />
     {node.data.status === "WAITING_INPUT" && activeCanvasRunId && <Button className="caption-workflow-continue" type="button" onClick={props.onApproveCaptionLayout}><Play size={14} fill="currentColor" /> 위치 확정하고 워크플로우 계속</Button>}
+  </div>;
+}
+
+function SubtitleDesignCustomEditor(props: NodeCustomEditorProps) {
+  const { node, nodes, edges, activeCanvasRunId } = props;
+  const subtitle = nodes.find((candidate) => edges.some((edge) => edge.source === candidate.id && edge.target === node.id) && candidate.data.outputType === "Subtitle");
+  const captionDocument = configValue<RichCaptionDocument | undefined>(node, "caption_document", undefined, undefined);
+  return <div className="caption-layout-settings subtitle-design-settings">
+    <div className={`editor-input-count ${subtitle?.data.output?.text ? "connected" : "missing"}`}>
+      <span>Single responsibility</span><strong>Rich text</strong>
+      <small>{subtitle?.data.output?.text ? "타임코드는 유지하고 자막 내용과 글자별 Style만 편집합니다." : "Timed Subtitle 출력을 연결하면 TipTap 문서를 만들 수 있습니다."}</small>
+    </div>
+    <CaptionLayoutEditor
+      subtitleText={subtitle?.data.output?.text}
+      richText
+      layoutControls={false}
+      captionDocument={captionDocument}
+      value={{ x: 0.5, y: 0.82, align: "center", fontSize: Number(captionDocument?.default_style.font_size ?? 54) }}
+      onChange={() => undefined}
+      onCaptionDocumentChange={(document) => props.onChange({
+        config: { ...(node.data.config ?? {}), caption_document: document },
+      })}
+    />
+    {node.data.status === "WAITING_INPUT" && activeCanvasRunId && <Button className="caption-workflow-continue" type="button" onClick={props.onApproveCaptionLayout}><Play size={14} fill="currentColor" /> 자막 문서 확정하고 계속</Button>}
   </div>;
 }
 
@@ -256,6 +286,7 @@ function CandidateEditor({ onOpenCandidate }: NodeCustomEditorProps) {
 }
 
 const customEditorRegistry: Record<string, (props: NodeCustomEditorProps) => ReactNode> = {
+  "caption-document": (props) => <CaptionLayoutCustomEditor {...props} />,
   "provider-generation": (props) => <ProviderGenerationEditor {...props} />,
   "video-edit": (props) => <VideoEditor {...props} />,
   "caption-layout": (props) => <CaptionLayoutCustomEditor {...props} />,
@@ -266,6 +297,7 @@ const customEditorRegistry: Record<string, (props: NodeCustomEditorProps) => Rea
   "frame-layout": (props) => <FrameLayoutEditor {...props} />,
   "image-motion": (props) => <ImageMotionEditor {...props} />,
   "subtitle-layout": (props) => <SubtitleRegionEditor {...props} />,
+  "subtitle-design": (props) => <SubtitleDesignCustomEditor {...props} />,
 };
 
 // Existing immutable contracts declare editor.kind=legacy. This exact-version

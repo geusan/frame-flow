@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
+from .caption_documents import caption_document_to_ass, materialize_caption_fonts
 from .domain import ExperimentRunRequest
 from .motion_extraction import MOTION_EXTRACTOR_REVISION, MOTION_TRACK_VERSION, extract_holistic_motion
 from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services, get_speech_recognizer
@@ -507,8 +508,9 @@ def _timeline(artifacts: list[ArtifactData], parameters: dict[str, Any]) -> dict
     target_seconds = parameters.get("target_duration_seconds")
     if target_seconds:
         duration_ms = min(duration_ms, round(float(target_seconds) * 1000))
+    caption_document = parameters.get("caption_document")
     return {
-        "version": "timeline.v1",
+        "version": "timeline.v2" if isinstance(caption_document, dict) and caption_document.get("schema_version") == "caption.document.v1" else "timeline.v1",
         "width": int(stream.get("width") or 360),
         "height": int(stream.get("height") or 640),
         "fps": round(_fps(stream), 3),
@@ -519,6 +521,7 @@ def _timeline(artifacts: list[ArtifactData], parameters: dict[str, Any]) -> dict
             "id": "captions",
             "style": _caption_style(parameters),
             "clips": [{"artifact_id": subtitle.record.id, "start_ms": 0, "duration_ms": duration_ms}],
+            **({"document": caption_document} if isinstance(caption_document, dict) else {}),
         }],
         "effects": [],
     }
@@ -549,17 +552,28 @@ def _render_timeline(db: Session, timeline_artifact: ArtifactData) -> bytes:
     caption_style = dict(caption_tracks[0].get("style") or _caption_style({}))
     width = int(timeline.get("width") or 1080)
     height = int(timeline.get("height") or 1920)
-    ass_content = _srt_to_ass(subtitle.data, width=width, height=height, style=caption_style)
+    caption_document = caption_tracks[0].get("document")
+    ass_content = (
+        caption_document_to_ass(caption_document, width=width, height=height, track_style=caption_style)
+        if isinstance(caption_document, dict)
+        else _srt_to_ass(subtitle.data, width=width, height=height, style=caption_style)
+    )
     # Burn the positioned caption into the image so social players render it consistently.
     with tempfile.TemporaryDirectory(prefix="frameflow-caption-mux-") as temp_dir:
         directory = Path(temp_dir)
         video_path = _write_artifact(directory, rendered_artifact, 0)
         subtitle_path = directory / "captions.ass"
         subtitle_path.write_text(ass_content, encoding="utf-8")
+        fonts_directory = directory / "fonts"
+        if isinstance(caption_document, dict) and caption_document.get("fonts"):
+            materialize_caption_fonts(db, caption_document, fonts_directory)
         output = directory / "final.mp4"
+        ass_filter = f"ass={subtitle_path}"
+        if fonts_directory.is_dir():
+            ass_filter += f":fontsdir={fonts_directory}"
         _run([
             "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video_path),
-            "-vf", f"ass={subtitle_path}", "-map", "0:v:0", "-map", "0:a:0?",
+            "-vf", ass_filter, "-map", "0:v:0", "-map", "0:a:0?",
             "-c:v", "libx264", "-profile:v", "high", "-level", "4.1", "-preset", "veryfast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(output),
         ])

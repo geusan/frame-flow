@@ -1,0 +1,31 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.caption_burn",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Burn captions",
+    "description": "Rich Caption Layout을 Video 픽셀에 렌더하고 기존 오디오 스트림은 그대로 유지",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "burn", "render", "ffmpeg", "libass"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+      { "key": "layout", "type": "data.caption_layout.v2", "label": "Caption Layout", "required": true }
+    ],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Captioned Video" }]
+  },
+  "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "video-caption-burn", "revision": "video-caption-burn.v1", "provider": "local", "model_alias": "local.video-caption-burn" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Video",
+    "schema_id": "video.captioned.v1",
+    "input_roles": { "media.video.v1": "source_video", "data.caption_layout.v2": "caption_layout" },
+    "output_role": "captioned_video"
+  }
+}

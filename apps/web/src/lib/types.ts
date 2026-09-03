@@ -35,6 +35,7 @@ export type PortType =
   | "VideoClipList"
   | "Audio"
   | "Subtitle"
+  | "CaptionDocument"
   | "CaptionLayout"
   | "Timeline"
   | "Video"

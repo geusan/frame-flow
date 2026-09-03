@@ -18,6 +18,7 @@ class FFmpegMediaCapabilityExecutor:
             and context.definition.artifact_contract.primary_type in {"Video", "FinalVideo"}
             and (
                 "data.timeline.v1" in input_types
+                or "data.timeline.v2" in input_types
                 or {"media.video.v1", "media.audio.v1"} <= input_types
                 or any(port.type == "media.video.v1" and port.multiple for port in context.definition.ports.inputs)
             )
@@ -34,7 +35,7 @@ class FFmpegMediaCapabilityExecutor:
         artifacts = _read_artifacts(context.db, typed_inputs)
         input_artifact_ids, input_roles = input_lineage(context, typed_inputs)
         input_types = {port.type for port in context.definition.ports.inputs}
-        if "data.timeline.v1" in input_types:
+        if input_types & {"data.timeline.v1", "data.timeline.v2"}:
             timeline = _require(artifacts, "Timeline", "Timeline")
             content = _render_timeline(context.db, timeline)
             title = "Rendered final MP4"

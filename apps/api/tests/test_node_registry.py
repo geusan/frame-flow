@@ -266,12 +266,16 @@ def test_node_definition_api_exposes_active_contracts_only(client):
 
 
 def test_port_type_registry_covers_legacy_canvas_contracts():
-    assert len(port_type_registry.ids) == 29
+    assert len(port_type_registry.ids) == 33
     assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
     assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
     assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"
     assert port_type_registry.get("data.timeline.v1").legacy_type == "Timeline"
+    assert port_type_registry.get("data.timeline.v2").legacy_type == "Timeline"
     assert port_type_registry.get("data.caption_layout.v1").legacy_type == "CaptionLayout"
+    assert port_type_registry.get("data.caption_layout.v2").legacy_type == "CaptionLayout"
+    assert port_type_registry.get("data.caption_layout.v3").legacy_type == "CaptionLayout"
+    assert port_type_registry.get("data.caption_document.v1").legacy_type == "CaptionDocument"
     assert port_type_registry.get("data.media_motion.v1").legacy_type == "MediaMotion"
     assert port_type_registry.get("data.media_frame.v1").legacy_type == "MediaFrame"
     assert port_type_registry.get("data.reference_asset.v1").legacy_type == "ReferenceAsset"

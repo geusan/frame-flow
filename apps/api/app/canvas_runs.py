@@ -202,15 +202,22 @@ def record_canvas_approval(run_id: str, canvas_node_id: str, parameters: dict[st
         data = dict(graph_node.get("data") or {})
         if data.get("waitForInput") is not True:
             raise ValueError("Canvas node does not accept workflow input approval")
-        allowed = {
-            "caption_x": "captionX",
-            "caption_y": "captionY",
-            "caption_align": "captionAlign",
-            "caption_font_size": "captionFontSize",
-        }
-        for source_key, target_key in allowed.items():
-            if source_key in parameters:
-                data[target_key] = parameters[source_key]
+        definition = node_registry.get(str(data.get("key") or ""), int(data.get("contractVersion") or 1))
+        approval_schema = definition.execution.approval_schema if definition else None
+        if approval_schema:
+            node_registry.validate_object(approval_schema, parameters, label="approval")
+            data["config"] = {**dict(data.get("config") or {}), **parameters}
+        else:
+            # Immutable legacy human-gate contracts predate approval_schema.
+            allowed = {
+                "caption_x": "captionX",
+                "caption_y": "captionY",
+                "caption_align": "captionAlign",
+                "caption_font_size": "captionFontSize",
+            }
+            for source_key, target_key in allowed.items():
+                if source_key in parameters:
+                    data[target_key] = parameters[source_key]
         data["inputApproved"] = True
         graph_node["data"] = data
         run.graph_snapshot = graph

@@ -263,6 +263,26 @@ class ProviderSettingRecord(Timestamped, Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
 
+class FontRecord(Timestamped, Base):
+    __tablename__ = "fonts"
+    __table_args__ = (UniqueConstraint("artifact_id", "profile_version", name="uq_font_artifact_profile_version"),)
+    artifact_id: Mapped[str] = mapped_column(ForeignKey("artifacts.id", ondelete="RESTRICT"), index=True)
+    profile_version: Mapped[int] = mapped_column(Integer, default=1)
+    supersedes_id: Mapped[str | None] = mapped_column(ForeignKey("fonts.id", ondelete="RESTRICT"), nullable=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(160), index=True)
+    family_name: Mapped[str] = mapped_column(String(160), index=True)
+    subfamily_name: Mapped[str] = mapped_column(String(96), default="Regular")
+    postscript_name: Mapped[str] = mapped_column(String(160))
+    weight: Mapped[int] = mapped_column(Integer, default=400)
+    style: Mapped[str] = mapped_column(String(32), default="normal")
+    size_adjust: Mapped[float] = mapped_column(Float, default=1.0)
+    baseline_shift: Mapped[float] = mapped_column(Float, default=0.0)
+    lifecycle: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+    license_name: Mapped[str] = mapped_column(String(160), default="User provided")
+    metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+
+
 class SkillDefinitionRecord(Timestamped, Base):
     __tablename__ = "skill_definitions"
     skill_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)

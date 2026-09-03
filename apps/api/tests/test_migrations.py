@@ -24,6 +24,5 @@ def test_alembic_upgrade_head_supports_the_default_sqlite_installation(tmp_path)
     with sqlite3.connect(database_path) as connection:
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         version = connection.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-    assert {"skill_definitions", "skill_versions", "skill_installations", "workflow_versions"} <= tables
-    assert version == "0009"
-
+    assert {"skill_definitions", "skill_versions", "skill_installations", "workflow_versions", "fonts"} <= tables
+    assert version == "0010"

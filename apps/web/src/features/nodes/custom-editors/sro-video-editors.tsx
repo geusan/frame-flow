@@ -429,39 +429,239 @@ export function FrameLayoutEditor(props: NodeCustomEditorProps) {
 
 function subtitlePreview(node: StudioFlowNode | undefined): string {
   const text = node?.data.output?.text ?? "";
+  if (node?.data.outputType === "CaptionDocument") {
+    try {
+      const document = JSON.parse(text) as { cues?: Array<{ runs?: Array<{ text?: string }> }> };
+      const richText = document.cues?.[0]?.runs?.map((run) => run.text ?? "").join("").trim();
+      if (richText) return richText;
+    } catch {
+      // The source can still be a human-gate draft without a materialized Artifact.
+    }
+  }
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const timing = lines.findIndex((line) => line.includes("-->"));
   return lines.slice(timing >= 0 ? timing + 1 : 0).filter((line) => !/^\d+$/.test(line))[0] ?? "자막 표시 영역";
 }
 
+interface MediaFramePreview {
+  ratio: string;
+  resolution: string;
+  background: string;
+  rect: FrameRect;
+}
+
+function mediaFramePreview(node: StudioFlowNode | undefined): MediaFramePreview | null {
+  if (!node) return null;
+  const text = node.data.output?.text;
+  let snapshot: Partial<MediaFramePreview> | null = null;
+  try {
+    const payload = JSON.parse(text ?? "") as {
+      schema_version?: string;
+      canvas?: { aspect_ratio?: string; resolution?: string; background_color?: string };
+      frame?: { x?: number; y?: number; width?: number; height?: number };
+    };
+    if (payload.schema_version === "layout.media_frame.v1") snapshot = {
+      ratio: payload.canvas?.aspect_ratio,
+      resolution: payload.canvas?.resolution,
+      background: payload.canvas?.background_color,
+      rect: {
+        x: Number(payload.frame?.x ?? 0.04),
+        y: Number(payload.frame?.y ?? 0.02),
+        width: Number(payload.frame?.width ?? 0.92),
+        height: Number(payload.frame?.height ?? 0.62),
+      },
+    };
+  } catch {
+    // A draft Media Frame can still be previewed directly from its config.
+  }
+  return {
+    ratio: stringConfig(node, "aspect_ratio", snapshot?.ratio ?? "9:16"),
+    resolution: stringConfig(node, "resolution", snapshot?.resolution ?? "1080p"),
+    background: stringConfig(node, "background_color", snapshot?.background ?? "#11100E"),
+    rect: {
+      x: numberConfig(node, "frame_x", snapshot?.rect?.x ?? 0.04),
+      y: numberConfig(node, "frame_y", snapshot?.rect?.y ?? 0.02),
+      width: numberConfig(node, "frame_width", snapshot?.rect?.width ?? 0.92),
+      height: numberConfig(node, "frame_height", snapshot?.rect?.height ?? 0.62),
+    },
+  };
+}
+
+function CaptionFrameStage({ captionRect, mediaFrame, align, preview, onCommit }: {
+  captionRect: FrameRect;
+  mediaFrame: MediaFramePreview;
+  align: "left" | "center" | "right";
+  preview: string;
+  onCommit: (rect: FrameRect) => void;
+}) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<FramePointerGesture | null>(null);
+  const valueRef = useRef(captionRect);
+  const commitRef = useRef(onCommit);
+  const [draft, setDraft] = useState(captionRect);
+  const [dragging, setDragging] = useState(false);
+  const { x, y, width, height } = captionRect;
+
+  useEffect(() => {
+    commitRef.current = onCommit;
+  }, [onCommit]);
+
+  useEffect(() => {
+    if (gestureRef.current) return;
+    const next = { x, y, width, height };
+    valueRef.current = next;
+    setDraft(next);
+  }, [x, y, width, height]);
+
+  const beginGesture = (event: ReactPointerEvent<HTMLElement>, mode: FramePointerGesture["mode"]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      mode,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      initial: valueRef.current,
+    };
+    stageRef.current?.setPointerCapture(event.pointerId);
+    setDragging(true);
+  };
+
+  const updateGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    const stage = stageRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || !stage) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = stage.getBoundingClientRect();
+    const deltaX = (event.clientX - gesture.clientX) / Math.max(1, bounds.width);
+    const deltaY = (event.clientY - gesture.clientY) / Math.max(1, bounds.height);
+    const next = gesture.mode === "move"
+      ? {
+          ...gesture.initial,
+          x: roundedFrameValue(clamp(gesture.initial.x + deltaX, 0, 1 - gesture.initial.width)),
+          y: roundedFrameValue(clamp(gesture.initial.y + deltaY, 0, 1 - gesture.initial.height)),
+        }
+      : resizeFrame(gesture.initial, gesture.mode, deltaX, deltaY);
+    valueRef.current = next;
+    setDraft(next);
+  };
+
+  const finishGesture = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    gestureRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setDragging(false);
+    commitRef.current(valueRef.current);
+  };
+
+  const handles: Array<{ mode: FrameResizeHandle; label: string }> = [
+    { mode: "north-west", label: "왼쪽 위 모서리로 자막 영역 크기 조절" },
+    { mode: "north-east", label: "오른쪽 위 모서리로 자막 영역 크기 조절" },
+    { mode: "south-west", label: "왼쪽 아래 모서리로 자막 영역 크기 조절" },
+    { mode: "south-east", label: "오른쪽 아래 모서리로 자막 영역 크기 조절" },
+  ];
+
+  return <div
+    ref={stageRef}
+    className={`subtitle-region-stage caption-frame-stage ${dragging ? "dragging" : ""}`}
+    data-testid="caption-frame-stage"
+    style={{ aspectRatio: ratioStyle(mediaFrame.ratio), backgroundColor: mediaFrame.background }}
+    onPointerMove={updateGesture}
+    onPointerUp={finishGesture}
+    onPointerCancel={finishGesture}
+  >
+    <div
+      className="caption-media-reference"
+      data-testid="caption-media-reference"
+      style={{
+        left: `${mediaFrame.rect.x * 100}%`,
+        top: `${mediaFrame.rect.y * 100}%`,
+        width: `${mediaFrame.rect.width * 100}%`,
+        height: `${mediaFrame.rect.height * 100}%`,
+      }}
+    >
+      <b>MEDIA FRAME</b>
+      <span>연결된 공유 프레임</span>
+    </div>
+    <div
+      className="subtitle-region-box editable"
+      data-testid="caption-frame-window"
+      aria-label="자막 프레임을 드래그해서 이동"
+      style={{ left: `${draft.x * 100}%`, top: `${draft.y * 100}%`, width: `${draft.width * 100}%`, height: `${draft.height * 100}%`, textAlign: align }}
+      onPointerDown={(event) => beginGesture(event, "move")}
+    >
+      <span>{preview}</span>
+      <b>CAPTION</b>
+      {handles.map((handle) => <button
+        type="button"
+        key={handle.mode}
+        className={`frame-resize-handle ${handle.mode}`}
+        aria-label={handle.label}
+        onPointerDown={(event) => beginGesture(event, handle.mode)}
+      />)}
+    </div>
+    <em className="frame-layout-hint"><Move size={11} /> caption drag · corners resize</em>
+  </div>;
+}
+
 export function SubtitleRegionEditor(props: NodeCustomEditorProps) {
-  const subtitle = incomingNodes(props.node, props.nodes, props.edges).find((candidate) => candidate.data.outputType === "Subtitle");
+  const incoming = incomingNodes(props.node, props.nodes, props.edges);
+  const subtitle = incoming.find((candidate) => ["Subtitle", "CaptionDocument"].includes(String(candidate.data.outputType)));
+  const video = incoming.find((candidate) => candidate.data.outputType === "Video");
+  const mediaFrameNode = incoming.find((candidate) => candidate.data.outputType === "MediaFrame");
+  const mediaFrame = mediaFramePreview(mediaFrameNode);
+  const videoUrl = video?.data.output?.kind === "video" ? video.data.output.url : undefined;
+  const richLayout = props.definition.contract_version >= 2;
+  const frameAwareLayout = props.definition.contract_version >= 3;
   const x = numberConfig(props.node, "frame_x", 0.06);
   const y = numberConfig(props.node, "frame_y", 0.68);
   const width = numberConfig(props.node, "frame_width", 0.88);
   const height = numberConfig(props.node, "frame_height", 0.28);
-  const ratio = stringConfig(props.node, "aspect_ratio", "9:16");
+  const ratio = mediaFrame?.ratio ?? stringConfig(props.node, "aspect_ratio", "9:16");
   const align = stringConfig(props.node, "align", "center") as "left" | "center" | "right";
   const fontSize = numberConfig(props.node, "font_size", 58);
 
+  const commitFrame = (next: FrameRect) => updateConfig(props, {
+    frame_x: next.x,
+    frame_y: next.y,
+    frame_width: next.width,
+    frame_height: next.height,
+  });
+
   return <div className="sro-subtitle-editor">
-    <div className="subtitle-region-stage" style={{ aspectRatio: ratioStyle(ratio) }}>
+    {frameAwareLayout && <div className={`editor-input-count ${mediaFrame ? "connected" : "missing"}`}>
+      <span>Shared Media Frame</span><strong>{mediaFrame ? `${mediaFrame.ratio} · ${mediaFrame.resolution}` : "연결 필요"}</strong>
+      <small>미디어 프레임은 기준선으로 표시되고, 이 노드에서는 자막 프레임만 수정합니다.</small>
+    </div>}
+    {frameAwareLayout && mediaFrame ? <CaptionFrameStage
+      captionRect={{ x, y, width, height }}
+      mediaFrame={mediaFrame}
+      align={align}
+      preview={subtitlePreview(subtitle)}
+      onCommit={commitFrame}
+    /> : <div className="subtitle-region-stage" style={{ aspectRatio: ratioStyle(ratio) }}>
+      {videoUrl && <video className="subtitle-region-video" src={videoUrl} muted playsInline preload="metadata" />}
       <div className="subtitle-region-box" style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%`, textAlign: align }}>
         <span style={{ fontSize: `${Math.max(12, fontSize * 0.28)}px` }}>{subtitlePreview(subtitle)}</span>
         <b>CAPTION REGION</b>
       </div>
     </div>
+    }
     <div className="sro-editor-controls">
-      <header><span><ZoomIn size={14} /> 자막 영역</span><small>영상과 무관하게 자막의 안전 영역만 정의합니다.</small></header>
+      <header><span><ZoomIn size={14} /> 자막 영역</span><small>{frameAwareLayout ? "공유 Media Frame과 비교하면서 Caption 영역만 정의합니다." : richLayout ? "연결된 Video 위에서 Caption Document의 표시 영역만 정의합니다." : "영상과 무관하게 자막의 안전 영역만 정의합니다."}</small></header>
       <div className="generator-setting-grid">
-        <label><span>Canvas</span><NativeSelect value={ratio} onChange={(event) => updateConfig(props, { aspect_ratio: event.target.value })}><option>9:16</option><option>16:9</option><option>1:1</option></NativeSelect></label>
+        {frameAwareLayout ? <label><span>Canvas</span><input value={`${ratio} · ${mediaFrame?.resolution ?? "Media Frame"}`} readOnly /></label> : <label><span>Canvas</span><NativeSelect value={ratio} onChange={(event) => updateConfig(props, { aspect_ratio: event.target.value })}><option>9:16</option><option>16:9</option><option>1:1</option></NativeSelect></label>}
         <label><span>정렬</span><NativeSelect value={align} onChange={(event) => updateConfig(props, { align: event.target.value })}><option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option></NativeSelect></label>
       </div>
       <RangeField label="X" value={x} min={0} max={Math.max(0, 1 - width)} step={0.01} onChange={(value) => updateConfig(props, { frame_x: value })} />
       <RangeField label="Y" value={y} min={0} max={Math.max(0, 1 - height)} step={0.01} onChange={(value) => updateConfig(props, { frame_y: value })} />
       <RangeField label="Width" value={width} min={0.05} max={Math.max(0.05, 1 - x)} step={0.01} onChange={(value) => updateConfig(props, { frame_width: value })} />
       <RangeField label="Height" value={height} min={0.05} max={Math.max(0.05, 1 - y)} step={0.01} onChange={(value) => updateConfig(props, { frame_height: value })} />
-      <RangeField label="Font size" value={fontSize} min={20} max={120} step={1} suffix="px" onChange={(value) => updateConfig(props, { font_size: value })} />
+      {!richLayout && <RangeField label="Font size" value={fontSize} min={20} max={120} step={1} suffix="px" onChange={(value) => updateConfig(props, { font_size: value })} />}
     </div>
   </div>;
 }

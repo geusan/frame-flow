@@ -12,6 +12,7 @@ import {
   PanelsTopLeft,
   Play,
   Settings,
+  Type,
   Sparkles,
   ContactRound,
   WandSparkles,
@@ -54,6 +55,7 @@ const workspaceNavigation: NavigationItem[] = [
 const settingsNavigation: NavigationItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/settings/models", label: "Models", icon: Boxes },
+  { href: "/settings/fonts", label: "Fonts", icon: Type },
   { href: "/settings/skills", label: "Skills", icon: WandSparkles },
 ];
 

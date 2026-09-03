@@ -1,0 +1,55 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "subtitle.design",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Caption document",
+    "description": "Timed Subtitle를 TipTap에서 자막별·문자별 글꼴, 크기, 색상, Bold와 Italic이 있는 문서로 편집",
+    "category": "Video",
+    "icon": "subtitle",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "tiptap", "font", "rich text", "style"]
+  },
+  "ports": {
+    "inputs": [{ "key": "subtitle", "type": "data.subtitle.v1", "label": "Timed Subtitle", "required": true }],
+    "outputs": [{ "key": "document", "type": "data.caption_document.v1", "label": "Caption Document" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caption_document"],
+    "properties": {
+      "caption_document": {
+        "type": "object",
+        "default": {
+          "schema_version": "caption.document.v1",
+          "content": { "type": "doc", "content": [] },
+          "default_style": { "font_size": 54, "color": "#FFFFFF" }
+        },
+        "title": "Caption document"
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": {
+    "kind": "human_gate",
+    "executor": "subtitle-design",
+    "revision": "subtitle-design.v1",
+    "provider": "local",
+    "model_alias": "local.subtitle-design",
+    "approval_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caption_document"],
+      "properties": { "caption_document": { "type": "object" } }
+    }
+  },
+  "editor": { "kind": "custom", "ref": "subtitle-design" },
+  "artifact_contract": {
+    "primary_type": "CaptionDocument",
+    "schema_id": "caption.document.v1",
+    "input_roles": { "data.subtitle.v1": "timed_subtitle" },
+    "output_role": "caption_document"
+  }
+}

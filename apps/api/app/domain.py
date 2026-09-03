@@ -351,6 +351,14 @@ class ProviderSettingsUpdateRequest(BaseModel):
     clear_fields: list[str] = Field(default_factory=list)
 
 
+class FontProfileUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=160)
+    size_adjust: float | None = Field(default=None, ge=0.5, le=2)
+    baseline_shift: float | None = Field(default=None, ge=-0.5, le=0.5)
+    lifecycle: Literal["ACTIVE", "RETIRED"] | None = None
+    license_name: str | None = Field(default=None, max_length=160)
+
+
 class CharacterLoraTrainRequest(BaseModel):
     trigger_word: str = Field(min_length=2, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
     steps: int = Field(default=1000, ge=500, le=3000)

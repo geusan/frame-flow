@@ -1,0 +1,31 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.caption_burn",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Burn captions",
+    "description": "Media Frame과 함께 고정된 Caption Layout을 Video 픽셀에 렌더하고 오디오는 유지",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "media frame", "burn", "render", "libass"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+      { "key": "layout", "type": "data.caption_layout.v3", "label": "Caption Layout", "required": true }
+    ],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Captioned Video" }]
+  },
+  "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "video-caption-burn", "revision": "video-caption-burn.v2", "provider": "local", "model_alias": "local.video-caption-burn" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": {
+    "primary_type": "Video",
+    "schema_id": "video.captioned.v2",
+    "input_roles": { "media.video.v1": "source_video", "data.caption_layout.v3": "caption_layout" },
+    "output_role": "captioned_video"
+  }
+}

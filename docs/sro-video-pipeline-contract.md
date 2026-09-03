@@ -56,6 +56,23 @@ Motion 렌더 결과는 Frame 사각형 밖으로 Clip된다. 출력은 오디�
 
 `subtitle.layout@1`은 Video를 입력받지 않는다. SRT Artifact hash, 정규화된 Caption Frame과 정렬·글꼴·색상을 `subtitle.layout.v1`로 저장한다. Preview의 화면비는 편집 보조 정보이며 최종 합성 시 실제 Video 크기에 정규화 좌표를 적용한다.
 
+Rich Caption 신규 Draft는 다음의 더 작은 책임 경계를 사용한다.
+
+```text
+Subtitle ──> subtitle.design@1 ──> CaptionDocument ──┐
+                                                    ├─> subtitle.layout@3 ──> CaptionLayout
+layout.media_frame@1 ──> MediaFrame ────────────────┘              │
+                                                                   │
+Video ─────────────────────────────────────────────────────────────┴─> video.caption_burn@2 ──> Captioned Video
+Audio ────────────────────────────────────────────────────────────────────────────────────────> video.change_voice@1
+```
+
+- `subtitle.design@1`은 TipTap cue/run, 색상, Bold, Italic, Font profile과 크기만 `caption.document.v1`에 저장한다.
+- `subtitle.layout@3`은 CaptionDocument와 공유 MediaFrame을 받아 Media Frame과 Caption Frame을 같은 Canvas 좌표계로 `subtitle.layout.v3`에 Snapshot한다. Custom Editor에서는 Media Frame을 읽기 전용 기준선으로 보고 Caption Frame만 드래그·리사이즈한다. 글꼴이나 색상은 소유하지 않는다.
+- `video.caption_burn@2`는 Video와 Frame-aware CaptionLayout을 받아 등록 Font Artifact를 materialize하고 자막만 픽셀에 렌더한다. 오디오는 교체하지 않으며, 입력 Video 크기가 MediaFrame에서 고정한 Canvas 크기와 같은지 검증한다.
+- 내레이션 오디오 결합은 기존 `video.change_voice@1`이 담당한다.
+- `subtitle.layout@2`와 `video.caption_burn@1`의 Video snapshot 경로, `subtitle.layout@1`, `video.compose@1`, `timeline.compose@2`, `video.render@2`는 과거 Draft/Version 실행을 위해 유지한다.
+
 ## Final Compose
 
 `video.compose@1`은 이미 연결된 Video를 변경하거나 장면을 재배치하지 않는다. CaptionLayout에 고정된 Subtitle를 지정 영역 안에 렌더하고, Narration Audio를 Video 길이에 맞춰 결합하는 일만 수행한다.

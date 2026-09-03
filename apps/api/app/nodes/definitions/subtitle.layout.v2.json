@@ -1,0 +1,43 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "subtitle.layout",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Caption placement",
+    "description": "Caption Document가 표시될 영상 영역, 정렬과 줄 배치만 정의",
+    "category": "Video",
+    "icon": "subtitle",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "placement", "region", "safe area", "layout"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "document", "type": "data.caption_document.v1", "label": "Caption Document", "required": true },
+      { "key": "video", "type": "media.video.v1", "label": "Preview Video", "required": true }
+    ],
+    "outputs": [{ "key": "layout", "type": "data.caption_layout.v2", "label": "Caption Layout" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["aspect_ratio", "frame_x", "frame_y", "frame_width", "frame_height", "align"],
+    "properties": {
+      "aspect_ratio": { "type": "string", "enum": ["9:16", "16:9", "1:1"], "default": "9:16", "title": "Preview aspect ratio" },
+      "frame_x": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.06, "title": "Region X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_y": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.68, "title": "Region Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_width": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.88, "title": "Region width", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "frame_height": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.28, "title": "Region height", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "align": { "type": "string", "enum": ["left", "center", "right"], "default": "center", "title": "Alignment", "x-workflow-input": { "enabled": true, "type": "enum" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "subtitle-layout-rich", "revision": "subtitle-layout.v2", "provider": "local", "model_alias": "local.subtitle-layout" },
+  "editor": { "kind": "custom", "ref": "subtitle-layout" },
+  "artifact_contract": {
+    "primary_type": "CaptionLayout",
+    "schema_id": "subtitle.layout.v2",
+    "input_roles": { "data.caption_document.v1": "caption_document", "media.video.v1": "preview_video" },
+    "output_role": "caption_layout"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.render",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Render rich captions",
+    "description": "등록된 Font Artifact와 Rich Caption Timeline을 사용해 자막을 H.264/AAC MP4에 렌더",
+    "category": "Video",
+    "icon": "render",
+    "cost_label": "$0.00",
+    "keywords": ["render", "caption", "font", "ffmpeg", "libass"]
+  },
+  "ports": {
+    "inputs": [{ "key": "timeline", "type": "data.timeline.v2", "label": "Rich caption timeline", "required": true }],
+    "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Video" }]
+  },
+  "config_schema": { "type": "object", "additionalProperties": false, "properties": {} },
+  "binding_policy": { "workflow_inputs": "none" },
+  "execution": { "kind": "local", "executor": "ffmpeg-media", "revision": "caption-video-render.v2", "provider": "local", "model_alias": "local.ffmpeg" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": { "primary_type": "FinalVideo", "schema_id": "video.rendered.v2", "input_roles": { "data.timeline.v2": "timeline" }, "output_role": "final_video" }
+}

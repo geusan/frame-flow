@@ -118,6 +118,31 @@ export interface ProviderSetting {
   fields: ProviderSettingField[];
 }
 
+export interface RegisteredFont {
+  id: string;
+  artifact_id: string;
+  profile_version: number;
+  supersedes_id?: string;
+  created_at: string;
+  updated_at: string;
+  display_name: string;
+  family_name: string;
+  subfamily_name: string;
+  postscript_name: string;
+  weight: number;
+  style: "normal" | "italic";
+  size_adjust: number;
+  baseline_shift: number;
+  lifecycle: "ACTIVE" | "RETIRED";
+  license_name: string;
+  metrics: Record<string, number | null>;
+  sha256: string;
+  content_type: string;
+  size_bytes: number;
+  css_family: string;
+  url: string;
+}
+
 export interface WorkspaceSummary {
   service: string;
   environment: string;
@@ -323,10 +348,10 @@ export interface NodeDefinitionRecord {
     additionalProperties: false;
     required?: string[];
     properties: Record<string, {
-      type: "string" | "integer" | "number" | "boolean";
+      type: "string" | "integer" | "number" | "boolean" | "object" | "array";
       title?: string;
       description?: string;
-      default?: string | number | boolean;
+      default?: unknown;
       enum?: Array<string | number>;
       minimum?: number;
       maximum?: number;
@@ -346,6 +371,7 @@ export interface NodeDefinitionRecord {
     provider: string;
     model_alias: string;
     model_families: string[];
+    approval_schema?: Record<string, unknown>;
   };
   editor: { kind: "generic" | "legacy" | "custom"; ref?: string };
   artifact_contract: {
@@ -681,6 +707,15 @@ export const frameflowApi = {
   listRuns: () => request<RunRecord[]>("/runs"),
   listWorkflowRuns: () => request<WorkflowRunRecord[]>("/workflow-runs"),
   listModels: () => request<ModelRecord[]>("/models"),
+  listFonts: (includeRetired = false) => request<RegisteredFont[]>(`/fonts${includeRetired ? "?include_retired=true" : ""}`),
+  registerFont: (file: File, options: { display_name?: string; license_name?: string } = {}) => {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    if (options.display_name) body.append("display_name", options.display_name);
+    if (options.license_name) body.append("license_name", options.license_name);
+    return request<RegisteredFont & { created: boolean }>("/fonts", { method: "POST", body });
+  },
+  updateFont: (fontId: string, payload: Partial<Pick<RegisteredFont, "display_name" | "size_adjust" | "baseline_shift" | "lifecycle" | "license_name">>) => request<RegisteredFont>(`/fonts/${encodeURIComponent(fontId)}`, { method: "PATCH", body: JSON.stringify(payload) }),
   listProviderSettings: () => request<ProviderSetting[]>("/settings/providers"),
   updateProviderSettings: (provider: ProviderSetting["provider"], payload: { enabled: boolean; auth_method?: string; values: Record<string, string>; clear_fields?: string[] }) => request<ProviderSetting>(`/settings/providers/${provider}`, { method: "PUT", body: JSON.stringify(payload) }),
   createExperiment: (payload: CreateExperimentInput) => request<ExperimentRun>("/experiments", { method: "POST", body: JSON.stringify(payload) }),

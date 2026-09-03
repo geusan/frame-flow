@@ -1,0 +1,68 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "timeline.compose",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Caption designer",
+    "description": "TipTap 문서에서 타임코드와 글자별 글꼴·색상·굵기·기울임을 편집해 재현 가능한 Timeline을 생성",
+    "category": "Video",
+    "icon": "timeline",
+    "cost_label": "$0.00",
+    "keywords": ["caption", "subtitle", "tiptap", "font", "rich text", "wysiwyg"]
+  },
+  "ports": {
+    "inputs": [
+      { "key": "video", "type": "media.video.v1", "label": "Video", "required": true },
+      { "key": "subtitle", "type": "data.subtitle.v1", "label": "Subtitle", "required": true }
+    ],
+    "outputs": [{ "key": "timeline", "type": "data.timeline.v2", "label": "Rich caption timeline" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["caption_x", "caption_y", "caption_align", "caption_font_size", "caption_document"],
+    "properties": {
+      "caption_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Caption X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "caption_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.82, "title": "Caption Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "caption_align": { "type": "string", "enum": ["left", "center", "right"], "default": "center", "title": "Alignment", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "caption_font_size": { "type": "integer", "minimum": 8, "maximum": 180, "default": 54, "title": "Default font size", "x-workflow-input": { "enabled": true, "type": "integer" } },
+      "caption_document": {
+        "type": "object",
+        "default": {
+          "schema_version": "caption.document.v1",
+          "content": { "type": "doc", "content": [] },
+          "default_style": { "font_size": 54, "color": "#FFFFFF" }
+        },
+        "title": "Rich caption document"
+      }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": {
+    "kind": "human_gate",
+    "executor": "caption-timeline",
+    "revision": "caption-timeline.v1",
+    "provider": "local",
+    "model_alias": "local.caption-timeline",
+    "approval_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caption_x", "caption_y", "caption_align", "caption_font_size", "caption_document"],
+      "properties": {
+        "caption_x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "caption_y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "caption_align": { "type": "string", "enum": ["left", "center", "right"] },
+        "caption_font_size": { "type": "integer", "minimum": 8, "maximum": 180 },
+        "caption_document": { "type": "object" }
+      }
+    }
+  },
+  "editor": { "kind": "custom", "ref": "caption-document" },
+  "artifact_contract": {
+    "primary_type": "Timeline",
+    "schema_id": "timeline.v2",
+    "input_roles": { "media.video.v1": "video", "data.subtitle.v1": "subtitle" },
+    "output_role": "timeline"
+  }
+}

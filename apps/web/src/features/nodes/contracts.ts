@@ -56,6 +56,7 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord, reg
       definitionDigest: definition.definition_digest,
       config,
       executable: definition.execution.kind !== "source",
+      waitForInput: definition.execution.kind === "human_gate",
       ...legacyConfig,
     },
   };

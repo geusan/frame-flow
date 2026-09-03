@@ -342,7 +342,10 @@ function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = no
     const completedUploadArtifactId = node.data.key === "asset.upload" ? node.data.outputArtifactIds?.[0] : undefined;
     const legacyTextNote = node.data.key === "utility.text";
     const migratedKey = completedUploadArtifactId ? "asset.select" : legacyTextNote ? "utility.sticky" : node.data.key;
-    const template = templates.find((item) => item.data.key === migratedKey);
+    const requestedVersion = node.data.contractVersion;
+    const template = requestedVersion
+      ? templates.find((item) => item.data.key === migratedKey && (item.data.contractVersion ?? 1) === requestedVersion)
+      : templates.find((item) => item.data.key === migratedKey);
     if (!template) return node;
     return {
       ...node,
@@ -655,7 +658,10 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setPortTypeRegistry(availablePortTypes);
       setModels(availableModels);
       setRegistryTemplates(manifestTemplates);
-      const migrated = migrateStoredGraph({ id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id }, templates);
+      const migrated = migrateStoredGraph(
+        { id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id },
+        [...nodeTemplates, ...templates],
+      );
       const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments);
       setNodes(reconciled.nodes);
       setEdges(migrated.edges);
@@ -1403,12 +1409,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setSelectedCandidate(0);
       setCandidateOpen(true);
     }
-    const waitingApproval = run.node_runs.find((node) => node.node_key === "timeline.compose" && node.status === "WAITING_INPUT");
+    const waitingApproval = run.node_runs.find((node) => node.node_key !== "candidate.select" && node.status === "WAITING_INPUT");
     if (waitingApproval && waitingInputNodeRef.current !== waitingApproval.canvas_node_id) {
       waitingInputNodeRef.current = waitingApproval.canvas_node_id;
       selectNode(waitingApproval.canvas_node_id);
       setInspectorOpen(true);
-      notify("자막 위치를 조정한 뒤 워크플로우를 계속 진행하세요.", "info");
+      notify("필요한 내용을 확인한 뒤 워크플로우를 계속 진행하세요.", "info");
     } else if (!waitingApproval) {
       waitingInputNodeRef.current = null;
     }
@@ -1611,15 +1617,25 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const selectedInputError = selectedNode ? stepInputError(selectedNode, nodes, edges) : null;
   const approveCaptionLayout = async () => {
     if (!activeCanvasRunId || !selectedNode) return;
+    const captionConfig = selectedNode.data.config ?? {};
+    const approvalSchema = selectedDefinition?.execution.approval_schema as { properties?: Record<string, unknown>; required?: string[] } | undefined;
+    const approvalParameters = approvalSchema
+      ? Object.fromEntries(Object.keys(approvalSchema.properties ?? {}).flatMap((key) => captionConfig[key] === undefined ? [] : [[key, captionConfig[key]]]))
+      : {
+          caption_x: captionConfig.caption_x ?? selectedNode.data.captionX ?? 0.5,
+          caption_y: captionConfig.caption_y ?? selectedNode.data.captionY ?? 0.82,
+          caption_align: captionConfig.caption_align ?? selectedNode.data.captionAlign ?? "center",
+          caption_font_size: captionConfig.caption_font_size ?? selectedNode.data.captionFontSize ?? 54,
+        };
+    const missingApprovalFields = (approvalSchema?.required ?? []).filter((key) => approvalParameters[key] === undefined);
+    if (missingApprovalFields.length) {
+      notify(`승인에 필요한 설정이 없습니다: ${missingApprovalFields.join(", ")}`, "error");
+      return;
+    }
     try {
-      const run = await frameflowApi.approveCanvasNode(activeCanvasRunId, selectedNode.id, {
-        caption_x: selectedNode.data.captionX ?? 0.5,
-        caption_y: selectedNode.data.captionY ?? 0.82,
-        caption_align: selectedNode.data.captionAlign ?? "center",
-        caption_font_size: selectedNode.data.captionFontSize ?? 54,
-      });
+      const run = await frameflowApi.approveCanvasNode(activeCanvasRunId, selectedNode.id, approvalParameters);
       applyCanvasRunUpdate(run);
-      notify("자막 레이아웃을 확정했습니다. 남은 Step을 계속 실행합니다.", "success");
+      notify("입력을 확정했습니다. 남은 Step을 계속 실행합니다.", "success");
     } catch (error) {
       notify(error instanceof Error ? error.message : "자막 레이아웃 승인에 실패했습니다.", "error");
     }

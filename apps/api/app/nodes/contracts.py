@@ -56,6 +56,7 @@ class NodeExecution(BaseModel):
     provider: str = Field(min_length=1)
     model_alias: str = Field(min_length=1)
     model_families: list[str] = Field(default_factory=list)
+    approval_schema: dict[str, Any] | None = None
 
 
 class NodeEditor(BaseModel):
@@ -122,6 +123,8 @@ class NodeDefinition(BaseModel):
             workflow_type = str(workflow.get("type") or "")
             if workflow_type not in workflow_types.get(json_type, set()):
                 raise ValueError(f"workflow input type {workflow_type!r} is incompatible with config field {name!r}")
+        if self.execution.kind == "human_gate" and self.editor.kind == "custom" and not self.execution.approval_schema:
+            raise ValueError("custom human_gate Node requires an approval_schema")
         return self
 
     @property
@@ -131,6 +134,8 @@ class NodeDefinition(BaseModel):
         # Do not rewrite digests for already published fixed-model contracts.
         if not payload["execution"]["model_families"]:
             payload["execution"].pop("model_families")
+        if payload["execution"].get("approval_schema") is None:
+            payload["execution"].pop("approval_schema", None)
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
@@ -141,6 +146,8 @@ class NodeDefinition(BaseModel):
         payload = self.model_dump(mode="json")
         if payload["editor"].get("ref") is None:
             payload["editor"].pop("ref")
+        if payload["execution"].get("approval_schema") is None:
+            payload["execution"].pop("approval_schema", None)
         return payload
 
 

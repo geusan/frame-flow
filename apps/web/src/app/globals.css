@@ -13,6 +13,8 @@
 @import "../styles/features/format-lab.css";
 @import "../styles/features/runs-models.css";
 @import "../styles/features/settings.css";
+@import "../styles/features/font-registry.css";
 @import "../styles/features/skill-registry.css";
 @import "../styles/features/generation-canvas.css";
+@import "../styles/features/rich-caption.css";
 @import "../styles/responsive.css";

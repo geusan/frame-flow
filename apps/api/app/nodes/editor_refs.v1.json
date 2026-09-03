@@ -2,6 +2,7 @@
   "schema_version": "node.editor-refs.v1",
   "refs": [
     "candidate-selection",
+    "caption-document",
     "caption-layout",
     "frame-layout",
     "image-motion",
@@ -9,6 +10,7 @@
     "provider-generation",
     "reference-analysis",
     "subtitle-layout",
+    "subtitle-design",
     "video-edit",
     "video-translate"
   ]

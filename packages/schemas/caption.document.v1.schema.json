@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/caption.document.v1.schema.json",
+  "title": "CaptionDocumentV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "content", "default_style"],
+  "properties": {
+    "schema_version": { "const": "caption.document.v1" },
+    "content": { "$ref": "#/$defs/doc" },
+    "default_style": { "$ref": "#/$defs/defaultStyle" },
+    "cues": { "type": "array", "items": { "$ref": "#/$defs/cue" } },
+    "fonts": { "type": "array", "items": { "$ref": "#/$defs/fontSnapshot" } }
+  },
+  "$defs": {
+    "doc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "content"],
+      "properties": {
+        "type": { "const": "doc" },
+        "content": { "type": "array", "items": { "$ref": "#/$defs/paragraph" } }
+      }
+    },
+    "paragraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "paragraph" },
+        "attrs": { "type": "object" },
+        "content": {
+          "type": "array",
+          "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/hardBreak" }] }
+        }
+      }
+    },
+    "text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "type": "string" },
+        "marks": { "type": "array", "items": { "$ref": "#/$defs/mark" } }
+      }
+    },
+    "hardBreak": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "hardBreak" } }
+    },
+    "mark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["bold", "italic", "textStyle"] },
+        "attrs": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "color": { "type": ["string", "null"] },
+            "fontFamily": { "type": ["string", "null"] },
+            "fontId": { "type": ["string", "null"] },
+            "fontSize": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "defaultStyle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["font_size", "color"],
+      "properties": {
+        "font_size": { "type": "number", "minimum": 8, "maximum": 240 },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "font_id": { "type": "string" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" }
+      }
+    },
+    "cue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "start_ms", "end_ms", "runs"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 1 },
+        "runs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/run" } }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "bold", "italic", "color", "font_size"],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+        "font_id": { "type": ["string", "null"] },
+        "font_size": { "type": "number", "minimum": 8, "maximum": 240 }
+      }
+    },
+    "fontSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["font_id", "artifact_id", "css_family", "family_name", "subfamily_name", "postscript_name", "weight", "style", "size_adjust", "baseline_shift", "sha256"],
+      "properties": {
+        "font_id": { "type": "string" },
+        "artifact_id": { "type": "string" },
+        "css_family": { "type": "string" },
+        "family_name": { "type": "string" },
+        "subfamily_name": { "type": "string" },
+        "postscript_name": { "type": "string" },
+        "weight": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "style": { "enum": ["normal", "italic"] },
+        "size_adjust": { "type": "number", "minimum": 0.5, "maximum": 2 },
+        "baseline_shift": { "type": "number", "minimum": -0.5, "maximum": 0.5 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

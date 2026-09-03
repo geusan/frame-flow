@@ -2,6 +2,7 @@ from .lora_train import FalLoraTrainingExecutor
 from .fal_lora_image import FalLoraImageCapabilityExecutor
 from .ffmpeg_media import FFmpegMediaCapabilityExecutor
 from .character_generation import CharacterGenerationCapabilityExecutor
+from .caption_timeline import CaptionTimelineExecutor
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
 from .image_story_video import ImageStoryVideoExecutor
@@ -14,6 +15,7 @@ from .video_retime import VideoRetimeExecutor
 from .video_generation import VideoGenerationCapabilityExecutor
 from .text_generation import TextGenerationCapabilityExecutor
 from .speech_generation import SpeechGenerationCapabilityExecutor
+from .rich_caption_sro import RichSubtitleLayoutExecutor, SubtitleDesignExecutor, VideoCaptionBurnExecutor
 from .sro_video import (
     ImageMotionExecutor,
     MediaFrameLayoutExecutor,
@@ -29,6 +31,7 @@ __all__ = [
     "FalLoraImageCapabilityExecutor",
     "FFmpegMediaCapabilityExecutor",
     "CharacterGenerationCapabilityExecutor",
+    "CaptionTimelineExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",
     "ImageStoryVideoExecutor",
@@ -43,6 +46,9 @@ __all__ = [
     "VideoGenerationCapabilityExecutor",
     "TextGenerationCapabilityExecutor",
     "SpeechGenerationCapabilityExecutor",
+    "RichSubtitleLayoutExecutor",
+    "SubtitleDesignExecutor",
+    "VideoCaptionBurnExecutor",
     "ImageMotionExecutor",
     "MediaFrameLayoutExecutor",
     "SubtitleLayoutExecutor",

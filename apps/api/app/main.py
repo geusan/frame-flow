@@ -24,6 +24,7 @@ from .database import (
     CanvasRunRecord,
     DefinitionRecord,
     ExperimentRunRecord,
+    FontRecord,
     FormatRecord,
     GenerationBriefRecord,
     NodeRunRecord,
@@ -47,6 +48,7 @@ from .domain import (
     CanvasRunResponse,
     CanvasSelectionRequest,
     CharacterLoraTrainRequest,
+    FontProfileUpdateRequest,
     ProviderSettingsUpdateRequest,
     ExperimentRunRequest,
     ExperimentRunResponse,
@@ -89,6 +91,7 @@ from .artifact_lineage import artifact_lineage_graph
 from .character_lora import character_lora_state, refresh_character_lora_training, start_character_lora_training as submit_character_lora_training
 from .canvas_temporal import CanvasRunWorkflow, CanvasWorkflowInput
 from .format_extraction import FormatSource, get_format_extractor
+from .font_registry import FONT_MAX_BYTES, inspect_font, list_fonts, register_font, update_font_profile
 from .media_capture import MediaCaptureError, capture_video_frame
 from .media_compat import BrowserVideoError
 from .nodes import node_registry
@@ -239,6 +242,66 @@ def list_node_definitions() -> list[dict[str, Any]]:
 @app.get("/node-port-types")
 def list_node_port_types() -> dict[str, Any]:
     return port_type_registry.model_dump(mode="json")
+
+
+@app.get("/fonts")
+def registered_fonts(
+    include_retired: bool = Query(default=False),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    return list_fonts(db, include_retired=include_retired)
+
+
+@app.post("/fonts", status_code=status.HTTP_201_CREATED)
+async def register_caption_font(
+    file: UploadFile = File(...),
+    display_name: str | None = Form(default=None, max_length=160),
+    license_name: str = Form(default="User provided", max_length=160),
+    created_by: str = Form(default="local-user", max_length=128),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    filename = file.filename or "font.ttf"
+    if not filename.lower().endswith((".ttf", ".otf")):
+        raise HTTPException(415, "only individual TTF and OTF font faces can be registered")
+    content = await file.read(FONT_MAX_BYTES + 1)
+    if not content:
+        raise HTTPException(422, "font file is empty")
+    if len(content) > FONT_MAX_BYTES:
+        raise HTTPException(413, "font file exceeds the 24 MB limit")
+    content_type = (file.content_type or "application/octet-stream").split(";", 1)[0].lower()
+    try:
+        # Inspect before storage so malformed font programs never enter the catalog.
+        inspect_font(content)
+        payload, created = register_font(
+            db,
+            content=content,
+            filename=filename,
+            content_type=content_type,
+            display_name=display_name,
+            license_name=license_name,
+            created_by=created_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return {**payload, "created": created}
+
+
+@app.patch("/fonts/{font_id}")
+def update_caption_font(
+    font_id: str,
+    payload: FontProfileUpdateRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    font = db.get(FontRecord, font_id)
+    if not font:
+        raise HTTPException(404, "font is not registered")
+    try:
+        result = update_font_profile(db, font, **payload.model_dump(exclude_none=True))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return result
 
 
 @app.get("/skills")

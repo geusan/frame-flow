@@ -39,6 +39,7 @@
       "script.fit_duration",
       "shot.plan",
       "subtitle.align",
+      "video.caption_burn",
       "subtitle.layout",
       "video.image_story",
       "video.media_story",
@@ -54,6 +55,7 @@
     ],
     "human_gate": [
       "candidate.select",
+      "subtitle.design",
       "timeline.compose"
     ],
     "composite": [
