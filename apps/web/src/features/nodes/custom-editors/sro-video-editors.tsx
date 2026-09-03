@@ -196,10 +196,10 @@ function MotionPreview({ url, label, scale, x, y, active, onSelect, onCommit }: 
       onPointerCancel={finishDrag}
     >
       {url ? <div className="motion-keyframe-image" style={{ backgroundImage: `url(${url})`, backgroundSize: `${draft.scale * 100}%`, backgroundPosition: `${draft.x * 100}% ${draft.y * 100}%` }} /> : <div className="motion-keyframe-empty"><Scan size={20} /><small>Image를 연결하세요</small></div>}
-      <i style={{ left: `${draft.x * 100}%`, top: `${draft.y * 100}%` }}><Crosshair size={13} /></i>
+      <i className="motion-fixed-focus"><Crosshair size={13} /></i>
       {url && <em><Move size={11} /> drag · wheel / pinch</em>}
     </div>
-    <small>X {Math.round(draft.x * 100)} · Y {Math.round(draft.y * 100)}</small>
+    <small>IMAGE X {Math.round((1 - draft.x) * 100)} · Y {Math.round((1 - draft.y) * 100)}</small>
   </button>;
 }
 
@@ -245,10 +245,10 @@ export function ImageMotionEditor(props: NodeCustomEditorProps) {
       />
     </div>
     <div className="sro-editor-controls">
-      <header><span><Move size={14} /> {keyframe === "start" ? "시작 위치" : "종료 위치"}</span><small>상세 화면에서 드래그하고 휠 또는 트랙패드 핀치로 확대하세요.</small></header>
+      <header><span><Move size={14} /> {keyframe === "start" ? "시작 이미지 위치" : "종료 이미지 위치"}</span><small>중앙 초점은 고정됩니다. 이미지를 드래그하고 휠 또는 트랙패드 핀치로 확대하세요.</small></header>
       <RangeField label="Zoom" value={current.scale} min={1} max={2} step={0.01} suffix="×" onChange={(value) => updateConfig(props, { [`${prefix}_scale`]: value })} />
-      <RangeField label="Focus X" value={current.x} min={0} max={1} step={0.01} onChange={(value) => updateConfig(props, { [`${prefix}_x`]: value })} />
-      <RangeField label="Focus Y" value={current.y} min={0} max={1} step={0.01} onChange={(value) => updateConfig(props, { [`${prefix}_y`]: value })} />
+      <RangeField label="Image position X" value={1 - current.x} min={0} max={1} step={0.01} onChange={(value) => updateConfig(props, { [`${prefix}_x`]: 1 - value })} />
+      <RangeField label="Image position Y" value={1 - current.y} min={0} max={1} step={0.01} onChange={(value) => updateConfig(props, { [`${prefix}_y`]: 1 - value })} />
       <RangeField label="장면 길이" value={numberConfig(props.node, "duration_seconds", 10)} min={0.5} max={30} step={0.5} suffix="s" onChange={(value) => updateConfig(props, { duration_seconds: value })} />
     </div>
   </div>;

@@ -720,12 +720,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setSaveState("Saving");
       const backup = { ...cloneGraph(nodes, edges), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
       window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
-      frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodes, edges, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract })
+      frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodes, edges, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, expected_revision: canvasRevision, draft_contract: draftContract })
         .then((document) => { setCanvasRevision(document.revision); setSaveState("Saved"); })
         .catch((saveError) => { setSaveState("Unsaved"); notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error"); });
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [activeCanvasRunId, canvasId, canvasName, draftContract, edges, nodeDefinitions, nodes, notify, saveState]);
+  }, [activeCanvasRunId, canvasId, canvasName, canvasRevision, draftContract, edges, nodeDefinitions, nodes, notify, saveState]);
 
   const markUnsaved = useCallback(() => setSaveState("Unsaved"), []);
 
@@ -734,7 +734,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
     window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
     try {
-      const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodesRef.current, edgesRef.current, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, draft_contract: draftContract });
+      const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodesRef.current, edgesRef.current, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, expected_revision: canvasRevision, draft_contract: draftContract });
       setCanvasRevision(document.revision);
       setSaveState("Saved");
       return document;
@@ -743,7 +743,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error");
       return null;
     }
-  }, [activeCanvasRunId, canvasId, canvasName, draftContract, nodeDefinitions, notify]);
+  }, [activeCanvasRunId, canvasId, canvasName, canvasRevision, draftContract, nodeDefinitions, notify]);
 
   const pushHistory = useCallback((snapshot?: GraphSnapshot) => {
     setHistory((current) => [...current, snapshot ?? cloneGraph(nodesRef.current, edgesRef.current)].slice(-40));
@@ -1302,6 +1302,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         name: canvasName,
         document: serializeCanvasDocument(backup.nodes, backup.edges, nodeDefinitions),
         active_run_id: activeCanvasRunId ?? undefined,
+        expected_revision: canvasRevision,
         draft_contract: nextContract,
       });
       setCanvasRevision(saved.revision);
@@ -1319,7 +1320,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     } finally {
       setPublishing(false);
     }
-  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, draftContract, nodeDefinitions, notify, registryConnectionCompatible, workflowDefinitionId]);
+  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, canvasRevision, draftContract, nodeDefinitions, notify, registryConnectionCompatible, workflowDefinitionId]);
 
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const targetNodeId = typeof run.graph.target_node_id === "string" ? run.graph.target_node_id : undefined;

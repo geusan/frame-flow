@@ -183,6 +183,7 @@
 .motion-keyframe-image { position:absolute; inset:0; background-repeat:no-repeat; transition:background-size .1s,background-position .1s; pointer-events:none; }
 .motion-keyframe-stage.dragging .motion-keyframe-image { transition:none; }
 .motion-keyframe-card i { position:absolute; width:19px; height:19px; margin:-9.5px 0 0 -9.5px; border-radius:50%; background:rgba(103,92,246,.9); color:#fff; display:grid; place-items:center; font-style:normal; box-shadow:0 0 0 2px rgba(255,255,255,.7); }
+.motion-keyframe-card i.motion-fixed-focus { left:50%; top:50%; pointer-events:none; }
 .motion-keyframe-stage > em { position:absolute; right:5px; bottom:5px; padding:3px 5px; border-radius:4px; background:rgba(16,17,14,.7); color:rgba(255,255,255,.86); display:flex; align-items:center; gap:3px; font-size:7px; font-style:normal; font-weight:700; opacity:0; transition:opacity .12s; pointer-events:none; backdrop-filter:blur(3px); }
 .motion-keyframe-stage:hover > em,.motion-keyframe-stage.dragging > em { opacity:1; }
 .motion-keyframe-empty { height:100%; color:#aaa7b5; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:5px; }
