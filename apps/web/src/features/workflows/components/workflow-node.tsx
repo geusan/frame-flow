@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   Activity,
@@ -14,6 +14,7 @@ import {
   CircleCheck,
   Clapperboard,
   ContactRound,
+  Crosshair,
   Dna,
   Film,
   Folder,
@@ -48,7 +49,7 @@ import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { PromptTokenEditor } from "@/features/workflows/components/prompt-token-editor";
-import type { ArtifactListItem, CharacterRecord } from "@/lib/api";
+import { API_BASE, type ArtifactListItem, type CharacterRecord } from "@/lib/api";
 import { inputHandleId, type CanvasOutput, type IconName, type StickyColor, type StudioFlowNode } from "@/lib/canvas-model";
 import { maximizePlaybackVolume } from "@/lib/media";
 import type { PortType } from "@/lib/types";
@@ -465,6 +466,92 @@ function NodePromptEditor({ nodeId, value, onCommit, className = "node-inline-pr
   </div>;
 }
 
+type StructuredOutput = Record<string, unknown>;
+
+function structuredOutput(output: CanvasOutput): StructuredOutput | null {
+  try {
+    const parsed = output.text ? JSON.parse(output.text) : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as StructuredOutput : null;
+  } catch {
+    return null;
+  }
+}
+
+function objectValue(value: unknown): StructuredOutput {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as StructuredOutput : {};
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function MotionPlanPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const plan = structuredOutput(output) ?? {};
+  const source = objectValue(plan.source);
+  const start = objectValue(plan.start);
+  const end = objectValue(plan.end);
+  const sourceId = typeof source.artifact_id === "string" ? source.artifact_id : "";
+  const imageUrl = sourceId ? `${API_BASE}/artifacts/${sourceId}/content` : undefined;
+  const keyframes = [["START", start], ["END", end]] as const;
+  return <div className="node-output node-output-motion-plan">
+    <header><span><Activity size={13} /> Motion preview</span><b>{numberValue(plan.duration_seconds, 0).toFixed(1)}s</b></header>
+    <section>{keyframes.map(([label, transform]) => {
+      const scale = numberValue(transform.scale, 1);
+      const x = numberValue(transform.x, 0.5);
+      const y = numberValue(transform.y, 0.5);
+      return <figure key={label}>
+        <div style={imageUrl ? { backgroundImage: `url(${imageUrl})`, backgroundSize: `${scale * 100}%`, backgroundPosition: `${x * 100}% ${y * 100}%` } : undefined}><i><Crosshair size={9} /></i></div>
+        <figcaption><span>{label}</span><b>{scale.toFixed(2)}×</b></figcaption>
+      </figure>;
+    })}</section>
+    {state}
+  </div>;
+}
+
+function MediaFramePreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output) ?? {};
+  const canvas = objectValue(payload.canvas);
+  const frame = objectValue(payload.frame);
+  const ratio = canvas.aspect_ratio === "16:9" ? "16 / 9" : canvas.aspect_ratio === "1:1" ? "1 / 1" : "9 / 16";
+  const x = numberValue(frame.x, 0.04);
+  const y = numberValue(frame.y, 0.02);
+  const width = numberValue(frame.width, 0.92);
+  const height = numberValue(frame.height, 0.62);
+  return <div className="node-output node-output-layout-preview">
+    <header><span><Layers3 size={13} /> Media frame</span><b>{String(canvas.aspect_ratio ?? "9:16")}</b></header>
+    <div style={{ aspectRatio: ratio, backgroundColor: String(canvas.background_color ?? "#11100E") }}><i style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%` }}><span>MEDIA</span></i></div>
+    {state}
+  </div>;
+}
+
+function CaptionRegionPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output) ?? {};
+  const frame = objectValue(payload.frame);
+  const x = numberValue(frame.x, 0.06);
+  const y = numberValue(frame.y, 0.68);
+  const width = numberValue(frame.width, 0.88);
+  const height = numberValue(frame.height, 0.28);
+  return <div className="node-output node-output-layout-preview caption">
+    <header><span><Subtitles size={13} /> Caption region</span><b>{numberValue(payload.cue_count, 0)} cues</b></header>
+    <div style={{ aspectRatio: "9 / 16" }}><i style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%` }}><span>CAPTION</span></i></div>
+    {state}
+  </div>;
+}
+
+function StructuredDataPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output);
+  const schema = typeof payload?.schema_version === "string" ? payload.schema_version : "structured.data";
+  if (schema === "image.motion.v1") return <MotionPlanPreview output={output} state={state} />;
+  if (schema === "layout.media_frame.v1") return <MediaFramePreview output={output} state={state} />;
+  if (schema === "subtitle.layout.v1") return <CaptionRegionPreview output={output} state={state} />;
+  return <div className="node-output node-output-structured">
+    <Braces size={17} />
+    <span><strong>{output.title}</strong><small>{schema} · Structured output ready</small></span>
+    {state}
+  </div>;
+}
+
 function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
   const state = stateLabel && <b className="node-output-state">{stateLabel}</b>;
   if (output.kind === "image") return <div className="node-output node-output-image">
@@ -479,7 +566,7 @@ function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?:
   }
   if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls onPlay={(event) => maximizePlaybackVolume(event.currentTarget)} /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span>{state}</div>;
   if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p>{state}</div>;
-  return <div className="node-output node-output-json"><small>{output.title}</small><pre>{output.text}</pre>{state}</div>;
+  return <StructuredDataPreview output={output} state={state} />;
 }
 
 function ReferenceAnalysisOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {

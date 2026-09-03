@@ -179,18 +179,59 @@ function CharacterOutputGallery({ characterId, fallbackUrl, title }: { character
   </div>;
 }
 
+type NodeDetailView = "ui" | "raw";
+
+function rawNodeSnapshot(node: StudioFlowNode): Record<string, unknown> {
+  let output: unknown = node.data.output ?? null;
+  if (node.data.output?.kind === "json" && node.data.output.text) {
+    try {
+      output = { ...node.data.output, text: JSON.parse(node.data.output.text) };
+    } catch {
+      // Keep malformed legacy output as text so it remains inspectable.
+    }
+  }
+  return {
+    protocol: {
+      node_id: node.id,
+      type_key: node.data.key,
+      contract_version: node.data.contractVersion ?? 1,
+      definition_digest: node.data.definitionDigest ?? null,
+    },
+    config: node.data.config ?? {},
+    runtime: {
+      status: node.data.status,
+      model_alias: node.data.model ?? null,
+      provider: node.data.provider ?? null,
+      execution_mode: node.data.executionMode ?? null,
+      output_artifact_ids: node.data.outputArtifactIds ?? [],
+      output,
+      last_request_hash: node.data.lastRequestHash ?? null,
+      attempt_count: node.data.attemptCount ?? 0,
+    },
+  };
+}
+
 function NodeDetailSurface({ node, open, onClose, onTextOutputSave, children }: { node: StudioFlowNode; open: boolean; onClose: () => void; onTextOutputSave: (text: string) => void; children: ReactNode }) {
+  const [view, setView] = useState<NodeDetailView>("ui");
   if (!open) return children;
   const output = node.data.output;
   const hasReferenceAnalysis = node.data.key === "reference.decompose" && Boolean(output?.text || node.data.outputArtifactIds?.[0]);
   const hasMedia = Boolean(output?.url && ["image", "video"].includes(output.kind));
   const hasMotionTrack = node.data.outputType === "MotionTrack" && Boolean(output);
-  const hasText = !hasReferenceAnalysis && !hasMotionTrack && Boolean(output?.text && ["text", "json"].includes(output.kind));
+  const hasText = !hasReferenceAnalysis && !hasMotionTrack && Boolean(output?.text && output.kind === "text");
   const hasOutput = hasReferenceAnalysis || hasMedia || hasMotionTrack || hasText;
   return <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-    <DialogContent className={`node-detail-dialog ${hasOutput ? "has-output" : "settings-only"}${hasReferenceAnalysis ? " reference-output" : ""}`} overlayClassName="node-detail-backdrop">
+    <DialogContent className={`node-detail-dialog ${view === "raw" ? "raw-data" : hasOutput ? "has-output" : "settings-only"}${hasReferenceAnalysis && view === "ui" ? " reference-output" : ""}`} overlayClassName="node-detail-backdrop">
       <DialogTitle className="sr-only">{node.data.label} node details</DialogTitle>
       <DialogDescription className="sr-only">Preview and edit the selected canvas node.</DialogDescription>
+      <div className="node-detail-view-tabs" role="tablist" aria-label="Node detail view">
+        <button type="button" role="tab" aria-selected={view === "ui"} className={view === "ui" ? "active" : ""} onClick={() => setView("ui")}><Sparkles size={13} /> UI</button>
+        <button type="button" role="tab" aria-selected={view === "raw"} className={view === "raw" ? "active" : ""} onClick={() => setView("raw")}><Braces size={13} /> Raw data</button>
+      </div>
+      {view === "raw" ? <section className="node-detail-raw-data">
+        <header><span><small>Read-only snapshot</small><strong>{node.data.key}@{node.data.contractVersion ?? 1}</strong></span><b>{node.data.outputType ?? "Node"}</b></header>
+        <pre>{JSON.stringify(rawNodeSnapshot(node), null, 2)}</pre>
+      </section> : <>
       {hasReferenceAnalysis && <section className="node-detail-reference-output">
         <ReferenceResultDetail
           artifactId={node.data.outputArtifactIds?.[0]}
@@ -232,6 +273,7 @@ function NodeDetailSurface({ node, open, onClose, onTextOutputSave, children }: 
         </div>
       </section>}
       {children}
+      </>}
     </DialogContent>
   </Dialog>;
 }
@@ -1723,7 +1765,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       </div>
 
       {(showInspector || nodeDetailOpen) && selectedNode && (
-        <NodeDetailSurface node={selectedNode} open={nodeDetailOpen} onClose={closeNodeDetail} onTextOutputSave={saveSelectedTextOutput}>
+        <NodeDetailSurface key={selectedNode.id} node={selectedNode} open={nodeDetailOpen} onClose={closeNodeDetail} onTextOutputSave={saveSelectedTextOutput}>
         <aside className={`node-inspector ${nodeDetailOpen ? "node-detail-inspector" : ""}`}>
           <div className="inspector-heading"><div><span className="subtle-label">Node inspector</span><strong>{selectedNode.data.label}</strong></div><Button variant="ghost" size="icon-sm" className="size-[25px] min-h-[25px]" type="button" onClick={nodeDetailOpen ? closeNodeDetail : () => setInspectorOpen(false)} aria-label="Close node inspector"><PanelRightClose size={16} /></Button></div>
           <div className="inspector-status"><CanvasNodeStatus data={selectedNode.data} /><span>{selectedNode.data.key}</span></div>

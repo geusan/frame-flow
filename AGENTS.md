@@ -118,6 +118,18 @@ WorkflowRun은 다음 Runtime 값을 별도로 Snapshot한다.
 - Renderer/FFmpeg revision
 - normalized config
 
+## Single-responsibility Node rule
+
+모든 production Node는 사용자 관점에서 하나의 명확한 변환 책임만 가진다. 서로 독립적으로 편집·재사용·검증할 수 있는 단계는 Typed Artifact와 Edge로 분리한다.
+
+- Motion 편집, Frame/Clip 적용, 장면 연결, 자막 영역, Audio mux를 한 Node Config나 Executor에 함께 넣지 않는다.
+- Node의 Config에는 그 Node 출력 의미를 결정하는 설정만 둔다.
+- 중간 결과가 독립적으로 미리보기·재실행·Cache될 가치가 있으면 별도 versioned Port type과 Artifact 계약으로 출력한다.
+- 최종 합성 Node는 이미 준비된 Video, Caption/Layout, Audio Track을 결합하는 책임만 가지며 상위 단계의 Motion, Crop, 장면 순서를 다시 해석하지 않는다.
+- `execution.kind=composite`는 외부에서 하나의 원자적 capability로 취급해야 하고 부분 결과를 독립적으로 편집하거나 재사용할 수 없는 경우에만 사용한다.
+
+이미 여러 책임을 가진 기존 계약은 in-place로 의미를 변경하지 않는다. 기존 Version 실행을 유지하고, 책임별 새 `type_key@contract_version`과 명시적인 Draft migration 경로를 제공한다.
+
 ## Changing an existing Node
 
 기존 Node를 변경하기 전에 변경을 호환 또는 Breaking으로 분류한다.
@@ -179,6 +191,9 @@ Human input이 필요한 Node는 특정 `node_key` 조건문 대신 Manifest의 
 ## Web rules for Nodes
 
 - Node Library의 Source of Truth를 `nodeTemplates` 같은 별도 수동 목록에 추가하지 않는다.
+- Canvas Node 카드에는 직렬화된 JSON/Raw payload를 직접 표시하지 않는다. Image, Video, Audio, Motion, Layout 등 타입에 맞는 시각 Preview를 우선하고, 알 수 없는 구조화 데이터는 Schema와 상태를 요약한다.
+- Node Detail은 공통 `UI`와 `Raw data` 탭을 제공한다. `UI` 탭이 Custom/Generic Editor를 포함하는 유일한 수정 Surface이며 `Raw data` 탭은 Config, Runtime Snapshot과 Output을 읽기 전용으로 표시한다.
+- Raw payload를 확인하기 위해 Node별 별도 JSON UI를 추가하지 않는다. 공통 `Raw data` 탭을 사용한다.
 - 일반 Config UI는 Manifest Config Schema에서 생성한다.
 - Workflow input UI는 `x-workflow-input`에서 생성한다.
 - Port handle과 연결 검증은 Registry Port 계약을 사용한다.

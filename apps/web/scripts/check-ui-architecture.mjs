@@ -102,6 +102,15 @@ for (const definition of definitions.filter((item) => item.editor?.kind === "cus
   if (!implementedEditorRefs.has(definition.editor.ref)) violations.push(`src/features/nodes/custom-editors/registry.tsx: missing Manifest editor ${definition.editor.ref}`);
 }
 
+const workflowNodePath = join(sourceRoot, "features", "workflows", "components", "workflow-node.tsx");
+const workflowNode = readFileSync(workflowNodePath, "utf8");
+if (/<pre>\{output\.text\}<\/pre>/.test(workflowNode) || /node-output-json[^\n]*<pre>/.test(workflowNode)) {
+  violations.push("src/features/workflows/components/workflow-node.tsx: Canvas Node previews must not render Raw JSON");
+}
+if (!generationCanvas.includes("node-detail-view-tabs") || !generationCanvas.includes("Raw data</button>")) {
+  violations.push("src/components/views/generation-canvas.tsx: Node Detail must provide shared UI and Raw data tabs");
+}
+
 if (violations.length) {
   console.error(`UI architecture check failed:\n${violations.map((item) => `- ${item}`).join("\n")}`);
   process.exit(1);
