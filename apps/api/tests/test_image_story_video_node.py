@@ -12,8 +12,10 @@ from app import canvas_activities
 from app.domain import ExperimentRunRequest
 from app.experiments import request_fingerprint, resolve_model, resolved_executor_revision
 from app.image_story_video import (
+    IMAGE_STORY_VIDEO_RENDERER_REVISION,
     IMAGE_STORY_VIDEO_REVISION,
     IMAGE_STORY_VIDEO_SCHEMA,
+    MEDIA_STORY_VIDEO_RENDERER_REVISION,
     MEDIA_STORY_VIDEO_REVISION,
     MEDIA_STORY_VIDEO_SCHEMA,
     RenderedImageStory,
@@ -45,6 +47,23 @@ def _fixture_image(path: Path, color: str) -> bytes:
             [
                 "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "lavfi", "-i", f"color=c={color}:s=120x120",
+                "-frames:v", "1", str(path),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
+    except FileNotFoundError:
+        pytest.skip("ffmpeg is not installed")
+    return path.read_bytes()
+
+
+def _fixture_pattern_image(path: Path) -> bytes:
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-f", "lavfi", "-i", "testsrc2=s=160x120:r=1",
                 "-frames:v", "1", str(path),
             ],
             check=True,
@@ -178,7 +197,7 @@ def test_media_story_manifest_owns_frame_crop_clip_motion_and_caption_contract(c
     moved = payload.model_copy(update={"parameters": {"frame_x": 0.08}})
     assert request_fingerprint(payload, model_alias, exact_model_id) != request_fingerprint(moved, model_alias, exact_model_id)
     runtime_revision = resolved_executor_revision(definition.type_key, model_alias, 1, config)
-    assert runtime_revision.startswith(f"{MEDIA_STORY_VIDEO_REVISION}+")
+    assert runtime_revision.startswith(f"{MEDIA_STORY_VIDEO_RENDERER_REVISION}+")
     assert len(runtime_revision) <= 64
 
 
@@ -234,8 +253,41 @@ def test_image_motion_preserves_source_aspect_ratio_with_center_cover_crop():
         fps=24,
     )
     assert "force_original_aspect_ratio=increase" in filter_graph
-    assert "crop=1114:1334" in filter_graph
+    assert "crop=2228:2666" in filter_graph
+    assert "format=yuv444p" in filter_graph
+    assert "s=994x1190" in filter_graph
     assert "zoompan=" in filter_graph
+
+
+def test_image_pan_updates_every_output_frame_at_subpixel_speed(tmp_path):
+    source_path = tmp_path / "pattern.png"
+    _fixture_pattern_image(source_path)
+    filter_graph = _motion_filter(
+        motion="pan_right",
+        amount=0.12,
+        frames=25,
+        width=100,
+        height=120,
+        fps=24,
+    )
+    completed = subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", str(source_path),
+            "-vf", f"{filter_graph},tblend=all_mode=difference,signalstats,metadata=print:file=-",
+            "-frames:v", "20", "-an", "-f", "null", "-",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    frame_deltas = [
+        float(line.split("=", 1)[1])
+        for line in completed.stdout.splitlines()
+        if line.startswith("lavfi.signalstats.YAVG=")
+    ]
+    assert len(frame_deltas) >= 19
+    assert min(frame_deltas) > 0.01
 
 
 def test_image_story_renderer_clips_images_and_reserves_the_external_caption_panel(tmp_path):
@@ -455,7 +507,7 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
     assert captured["audio"].data == b"audio"
     assert result.output_artifact_ids == ["final_1"]
     assert result.metadata["retryable"] is False
-    assert result.metadata["renderer_revision"].startswith(f"{IMAGE_STORY_VIDEO_REVISION}+")
+    assert result.metadata["renderer_revision"].startswith(f"{IMAGE_STORY_VIDEO_RENDERER_REVISION}+")
     artifact_kwargs = captured["artifact_kwargs"]
     assert captured["artifact_type"] == "FinalVideo"
     assert artifact_kwargs["schema_id"] == IMAGE_STORY_VIDEO_SCHEMA
@@ -527,6 +579,7 @@ def test_media_story_registry_executor_preserves_mixed_media_order_and_lineage(m
     assert result.output_artifact_ids == ["final_media"]
     assert result.metadata["schema_id"] == MEDIA_STORY_VIDEO_SCHEMA
     assert result.metadata["retryable"] is False
+    assert result.metadata["renderer_revision"].startswith(f"{MEDIA_STORY_VIDEO_RENDERER_REVISION}+")
 
 
 def test_temporal_image_story_uses_the_shared_canvas_node_dispatch(monkeypatch):

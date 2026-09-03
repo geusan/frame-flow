@@ -12,11 +12,16 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
+# Manifest revisions are immutable contract pins. Renderer revisions may advance
+# for compatible implementation fixes and are included in the request hash.
 IMAGE_STORY_VIDEO_REVISION = "image-story-video.v1"
 IMAGE_STORY_VIDEO_SCHEMA = "video.image_story.v1"
+IMAGE_STORY_VIDEO_RENDERER_REVISION = "image-story-video.v1.1"
 MEDIA_STORY_VIDEO_REVISION = "media-story-video.v1"
 MEDIA_STORY_VIDEO_SCHEMA = "video.media_story.v1"
+MEDIA_STORY_VIDEO_RENDERER_REVISION = "media-story-video.v1.1"
 MAX_STORY_IMAGES = 32
+MOTION_WORK_SCALE = 2
 
 
 @dataclass(frozen=True)
@@ -376,8 +381,12 @@ def _motion_filter(
     x = f"(iw-iw/zoom)*({focus_x})"
     y = f"(ih-ih/zoom)*({focus_y})"
     zoom_max = max(start_scale, end_scale)
-    pre_width = math.ceil(width * zoom_max / 2) * 2
-    pre_height = math.ceil(height * zoom_max / 2) * 2
+    # zoompan quantizes offsets to the input chroma grid. A 2x 4:4:4 working
+    # raster turns each integer work-pixel step into a half output-pixel step.
+    has_motion = (start_scale, start_x, start_y) != (end_scale, end_x, end_y)
+    work_scale = MOTION_WORK_SCALE if has_motion else 1
+    pre_width = math.ceil(width * zoom_max * work_scale / 2) * 2
+    pre_height = math.ceil(height * zoom_max * work_scale / 2) * 2
     if media_fit == "cover":
         fit_filter = (
             f"scale={pre_width}:{pre_height}:force_original_aspect_ratio=increase:flags=lanczos,"
@@ -392,8 +401,10 @@ def _motion_filter(
         )
     else:
         raise ValueError("Media Story fit must be cover or contain")
+    subpixel_filter = "format=yuv444p," if has_motion else ""
     return (
         f"{fit_filter},"
+        f"{subpixel_filter}"
         f"zoompan=z='{zoom}':x='{x}':y='{y}':d={frames if still_image else 1}:s={width}x{height}:fps={fps},"
         "setsar=1,format=yuv420p"
     )

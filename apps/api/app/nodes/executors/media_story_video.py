@@ -4,6 +4,7 @@ from typing import Any
 
 from ...database import ArtifactRecord
 from ...image_story_video import (
+    MEDIA_STORY_VIDEO_RENDERER_REVISION,
     MEDIA_STORY_VIDEO_REVISION,
     MEDIA_STORY_VIDEO_SCHEMA,
     StoryMedia,
@@ -19,7 +20,7 @@ class MediaStoryVideoExecutor:
     @staticmethod
     def runtime_revision(_, resolved_node_config: dict[str, Any]) -> str:
         fingerprint = str(renderer_environment(str(resolved_node_config["caption_font_family"]))["fingerprint"])
-        return f"{MEDIA_STORY_VIDEO_REVISION}+{fingerprint.removeprefix('sha256:')[:12]}"
+        return f"{MEDIA_STORY_VIDEO_RENDERER_REVISION}+{fingerprint.removeprefix('sha256:')[:12]}"
 
     def execute(
         self,
