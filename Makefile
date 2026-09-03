@@ -1,4 +1,4 @@
-.PHONY: setup up down ps logs migrate-runtime-permissions dev-storage dev-web dev-api seed-skills seed-assets test build check lock-python security-tools security-secrets security-node security-python security-deps security-sbom security-images security-all tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
+.PHONY: setup up down ps logs migrate-runtime-permissions dev-storage dev-web dev-api dev-mcp seed-skills seed-assets test build check lock-python security-tools security-secrets security-node security-python security-deps security-sbom security-images security-all tf-init tf-fmt tf-validate tf-plan tf-apply tf-destroy
 
 ifneq (,$(wildcard .env))
 include .env
@@ -6,6 +6,7 @@ export
 endif
 
 API_PORT ?= 8000
+MCP_PORT ?= 8001
 MINIO_PORT ?= 9000
 IMPORT_ROOT ?= /imports
 TF_DIR ?= infra/terraform
@@ -50,6 +51,10 @@ dev-storage:
 dev-api: dev-storage
 	cd apps/api && ../../.venv/bin/alembic upgrade head
 	cd apps/api && API_PUBLIC_BASE_URL=$${API_PUBLIC_BASE_URL:-http://localhost:$(API_PORT)} STORAGE_ENDPOINT=$${STORAGE_ENDPOINT:-http://localhost:$(MINIO_PORT)} STORAGE_PUBLIC_ENDPOINT=$${STORAGE_PUBLIC_ENDPOINT:-http://localhost:$(MINIO_PORT)} ../../.venv/bin/uvicorn app.main:app --reload --port $(API_PORT)
+
+dev-mcp: dev-storage
+	cd apps/api && ../../.venv/bin/alembic upgrade head
+	cd apps/api && API_PUBLIC_BASE_URL=$${API_PUBLIC_BASE_URL:-http://localhost:$(API_PORT)} STORAGE_ENDPOINT=$${STORAGE_ENDPOINT:-http://localhost:$(MINIO_PORT)} STORAGE_PUBLIC_ENDPOINT=$${STORAGE_PUBLIC_ENDPOINT:-http://localhost:$(MINIO_PORT)} ../../.venv/bin/python -m app.mcp_server --transport streamable-http --port $(MCP_PORT)
 
 seed-skills:
 	cd apps/api && ../../.venv/bin/python -m app.seed skills --root "$(IMPORT_ROOT)"

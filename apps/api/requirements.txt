@@ -18,6 +18,7 @@ google-cloud-storage>=3.4,<4
 yt-dlp[default,curl-cffi]>=2026.8.19
 openai>=3.6.0,<4
 temporalio>=1.31,<2
+mcp==2.1.1
 boto3>=1.40,<2
 # NumPy 2.5+ requires Python 3.12 and cannot be used while host development
 # continues to support Python 3.11.

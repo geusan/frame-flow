@@ -21,6 +21,7 @@
 - DB 기반 immutable Skill Definition/Version Registry와 `SKILL.md` 관리 UI
 - `/imports` read-only mount를 사용하는 Skill·Asset Seed CLI
 - FastAPI Reference·Format·Generation·Run·Artifact API
+- Node Registry 기반 Workflow 작성·게시·실행 MCP server(stdio/Streamable HTTP)
 - URL 정규화와 중복 감지, analysis-only 권한 강제
 - Format 추출·변형·가중 병합과 필드별 Lineage
 - 실행 전 그래프 확장량·비용·예산 검사
@@ -77,6 +78,18 @@ make dev-web
 ```
 
 `make dev-api`는 로컬 MinIO를 먼저 시작하고 Alembic Migration을 적용한 뒤 API를 실행합니다. 필요한 Bucket은 API 시작 시 자동 생성합니다.
+
+MCP server는 로컬 stdio 또는 별도 Streamable HTTP endpoint로 실행할 수 있습니다.
+
+```bash
+# MCP host가 subprocess로 실행
+cd apps/api && ../../.venv/bin/python -m app.mcp_server --transport stdio
+
+# 로컬 HTTP: http://127.0.0.1:8001/mcp
+make dev-mcp
+```
+
+지원 Tool, Workflow 작성 계약과 보안 범위는 [`docs/mcp-server.md`](docs/mcp-server.md)를 참고하세요.
 
 Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. 시작 포트를 직접 지정하려면
 `WEB_PORT=3100 make dev-web`을 사용합니다. API 포트를 바꿔야 할 때는
