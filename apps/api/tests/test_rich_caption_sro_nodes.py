@@ -56,6 +56,8 @@ def test_rich_caption_sro_contracts_keep_design_layout_and_render_separate():
     assert layout_v3.ports.outputs[0].type == "data.caption_layout.v3"
     assert [port.type for port in burn_v2.ports.inputs] == ["media.video.v1", "data.caption_layout.v3"]
     assert burn_v1.config_schema["properties"] == burn_v2.config_schema["properties"] == {}
+    assert node_registry.runtime_revision(burn_v1, {}) == "video-caption-burn.v1+ass-word-wrap.v1"
+    assert node_registry.runtime_revision(burn_v2, {}) == "video-caption-burn.v2+ass-word-wrap.v1"
     assert design.execution.kind == "human_gate"
     assert design.execution.approval_schema["required"] == ["caption_document"]
 

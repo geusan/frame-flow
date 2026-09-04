@@ -70,6 +70,7 @@ Audio ────────────────────────�
 - `subtitle.design@1`은 TipTap cue/run, 색상, Bold, Italic, Font profile과 크기만 `caption.document.v1`에 저장한다.
 - `subtitle.layout@3`은 CaptionDocument와 공유 MediaFrame을 받아 Media Frame과 Caption Frame을 같은 Canvas 좌표계로 `subtitle.layout.v3`에 Snapshot한다. Custom Editor에서는 Media Frame을 읽기 전용 기준선으로 보고 Caption Frame만 드래그·리사이즈한다. 글꼴이나 색상은 소유하지 않는다.
 - `video.caption_burn@2`는 Video와 Frame-aware CaptionLayout을 받아 등록 Font Artifact를 materialize하고 자막만 픽셀에 렌더한다. 오디오는 교체하지 않으며, 입력 Video 크기가 MediaFrame에서 고정한 Canvas 크기와 같은지 검증한다.
+- Caption Frame 안에서는 공백으로 구분된 단어를 보존하는 자동 줄바꿈을 기본으로 사용한다. CaptionDocument의 `hardBreak`는 자동 배치보다 우선하는 수동 줄바꿈으로 렌더한다.
 - 내레이션 오디오 결합은 기존 `video.change_voice@1`이 담당한다.
 - `subtitle.layout@2`와 `video.caption_burn@1`의 Video snapshot 경로, `subtitle.layout@1`, `video.compose@1`, `timeline.compose@2`, `video.render@2`는 과거 Draft/Version 실행을 위해 유지한다.
 

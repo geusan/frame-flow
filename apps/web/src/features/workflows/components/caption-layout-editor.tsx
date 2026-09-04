@@ -311,7 +311,7 @@ export function CaptionLayoutEditor({
         <label className="caption-inline-size"><Type size={13} /><input type="number" min="8" max="240" value={Number.isFinite(selectedFontSize) ? selectedFontSize : draft.fontSize} onChange={(event) => setSelectedFontSize(Number(event.target.value))} /><span>px</span></label>
       </div>
       <EditorContent editor={editor} />
-      <footer><code>[00:00-00:03] 자막1</code><span>텍스트를 선택한 뒤 색상·폰트·크기를 적용하세요.</span></footer>
+      <footer><code>[00:00-00:03] 자막1</code><span>자동 줄바꿈은 단어를 보존합니다. Shift+Enter로 원하는 위치에 줄바꿈을 넣으세요.</span></footer>
       {fontError && <p className="caption-document-warning">Font Registry: {fontError}</p>}
       {validationErrors.length > 0 && <p className="caption-document-warning">{validationErrors[0]}</p>}
     </section>}

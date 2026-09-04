@@ -206,6 +206,8 @@ def caption_document_to_ass(
         raise ValueError("caption alignment must be left, center or right")
     frame = track_style.get("frame")
     clip_tag = ""
+    event_margin_left = 0
+    event_margin_right = 0
     if isinstance(frame, dict):
         left = round(float(frame.get("x", 0)) * width)
         top = round(float(frame.get("y", 0)) * height)
@@ -214,6 +216,8 @@ def caption_document_to_ass(
         if left < 0 or top < 0 or right > width or bottom > height or right <= left or bottom <= top:
             raise ValueError("caption frame must stay inside the Video Canvas")
         margin = max(8, round((right - left) * 0.04))
+        event_margin_left = left + margin
+        event_margin_right = width - right + margin
         x = {"left": left + margin, "center": left + (right - left) // 2, "right": right - margin}[align]
         y = top + (bottom - top) // 2
         clip_tag = f"\\clip({left},{top},{right},{bottom})"
@@ -233,8 +237,9 @@ def caption_document_to_ass(
             rendered_runs.append(f"{{{tags}}}{_ass_text(str(run.get('text') or ''))}")
         events.append(
             "Dialogue: 0,"
-            f"{_ass_timestamp(int(cue['start_ms']))},{_ass_timestamp(int(cue['end_ms']))},Caption,,0,0,0,,"
-            f"{{\\an{alignment}\\pos({x},{y}){clip_tag}\\q2}}{''.join(rendered_runs)}"
+            f"{_ass_timestamp(int(cue['start_ms']))},{_ass_timestamp(int(cue['end_ms']))},Caption,,"
+            f"{event_margin_left},{event_margin_right},0,,"
+            f"{{\\an{alignment}\\pos({x},{y}){clip_tag}\\q1}}{''.join(rendered_runs)}"
         )
     return "\n".join([
         "[Script Info]",
@@ -242,7 +247,7 @@ def caption_document_to_ass(
         f"PlayResX: {width}",
         f"PlayResY: {height}",
         "ScaledBorderAndShadow: yes",
-        "WrapStyle: 2",
+        "WrapStyle: 1",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",

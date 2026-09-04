@@ -136,6 +136,77 @@ def test_caption_document_snapshots_fonts_and_compiles_inline_ass_marks(client: 
     assert r"\fs70.4" in ass
     assert r"\c&H006633FF" in ass
     assert r"\b1\i1" in ass
+    assert "WrapStyle: 1" in ass
+    assert r"\q1" in ass
+    assert r"\q2" not in ass
+
+
+def test_caption_ass_wraps_by_words_inside_the_frame_and_preserves_manual_breaks(client: TestClient):
+    del client
+    document = {
+        "schema_version": "caption.document.v1",
+        "default_style": {"font_size": 54, "color": "#FFFFFF"},
+        "content": {
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "[00:00-00:03] 단어 단위 자동 줄바꿈"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "수동 줄바꿈"},
+                ],
+            }],
+        },
+    }
+    with SessionLocal() as db:
+        canonical = canonical_caption_document(db, document)
+        ass = caption_document_to_ass(
+            canonical,
+            width=1000,
+            height=1000,
+            track_style={
+                "align": "center",
+                "frame": {"x": 0.1, "y": 0.7, "width": 0.8, "height": 0.2},
+            },
+        )
+    assert r"\q1" in ass
+    assert r"\N" in ass
+    assert ",Caption,,132,132,0,," in ass
+
+
+def test_caption_document_ignores_the_first_break_after_the_timestamp(client: TestClient):
+    del client
+    document = {
+        "schema_version": "caption.document.v1",
+        "default_style": {"font_size": 54, "color": "#FFFFFF"},
+        "content": {
+            "type": "doc",
+            "content": [{
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "[00:00-05:00]"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "자막1"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "자막2"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "자막3"},
+                ],
+            }],
+        },
+    }
+    with SessionLocal() as db:
+        canonical = canonical_caption_document(db, document)
+        ass = caption_document_to_ass(
+            canonical,
+            width=1000,
+            height=1000,
+            track_style={"x": 0.5, "y": 0.8, "align": "center"},
+        )
+    text = "".join(run["text"] for run in canonical["cues"][0]["runs"])
+    assert text == "자막1\n자막2\n자막3"
+    assert r"자막1\N자막2\N자막3" in ass
+    assert r"\N자막1" not in ass
 
 
 def test_caption_document_rejects_lines_without_timestamps(client: TestClient):

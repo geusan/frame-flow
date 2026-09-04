@@ -47,9 +47,15 @@ export function richCaptionDocumentFromSrt(srt: string | undefined, fontSize: nu
     const timingIndex = lines.findIndex((line) => line.includes("-->"));
     if (timingIndex < 0) continue;
     const [start, end] = lines[timingIndex].split("-->", 2).map((item) => item.trim().split(" ", 1)[0]);
-    const text = lines.slice(timingIndex + 1).map((line) => line.replace(/<[^>]*>/g, "")).join(" ").trim();
-    if (!start || !end || !text) continue;
-    paragraphs.push({ type: "paragraph", content: [{ type: "text", text: `[${srtTime(start)}-${srtTime(end)}] ${text}` }] });
+    const captionLines = lines.slice(timingIndex + 1)
+      .map((line) => line.replace(/<[^>]*>/g, "").trim())
+      .filter(Boolean);
+    if (!start || !end || !captionLines.length) continue;
+    const content = captionLines.flatMap<JSONContent>((line, index) => [
+      ...(index > 0 ? [{ type: "hardBreak" }] : []),
+      { type: "text", text: `${index === 0 ? `[${srtTime(start)}-${srtTime(end)}] ` : ""}${line}` },
+    ]);
+    paragraphs.push({ type: "paragraph", content });
   }
   if (!paragraphs.length) {
     paragraphs.push({ type: "paragraph", content: [{ type: "text", text: "[00:00-00:03] 첫 번째 자막을 입력하세요" }] });

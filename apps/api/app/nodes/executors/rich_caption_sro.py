@@ -21,6 +21,7 @@ SUBTITLE_LAYOUT_V2_REVISION = "subtitle-layout.v2"
 SUBTITLE_LAYOUT_V3_REVISION = "subtitle-layout.v3"
 VIDEO_CAPTION_BURN_REVISION = "video-caption-burn.v1"
 VIDEO_CAPTION_BURN_V2_REVISION = "video-caption-burn.v2"
+CAPTION_ASS_WORD_WRAP_REVISION = "ass-word-wrap.v1"
 VIDEO_TYPES = {"Video", "FinalVideo", "ProxyVideo"}
 
 
@@ -277,6 +278,11 @@ def _render_captioned_video(
 
 
 class VideoCaptionBurnExecutor:
+    @staticmethod
+    def runtime_revision(definition: Any, resolved_config: dict[str, Any]) -> str:
+        del resolved_config
+        return f"{definition.execution.revision}+{CAPTION_ASS_WORD_WRAP_REVISION}"
+
     def execute(
         self,
         context: NodeExecutionContext,
@@ -286,6 +292,7 @@ class VideoCaptionBurnExecutor:
         revision = context.definition.execution.revision
         if revision not in {VIDEO_CAPTION_BURN_REVISION, VIDEO_CAPTION_BURN_V2_REVISION}:
             raise RuntimeError("Video Caption Burn executor revision does not match its Node Definition")
+        runtime_revision = self.runtime_revision(context.definition, resolved_node_config)
         artifacts = _read_artifacts(context.db, typed_inputs)
         videos = _of_type(artifacts, *VIDEO_TYPES)
         layouts = _of_type(artifacts, "CaptionLayout")
@@ -320,7 +327,7 @@ class VideoCaptionBurnExecutor:
             metadata={
                 "experiment_id": context.experiment_id,
                 "request_hash": context.request_hash,
-                "execution_mode": revision,
+                "execution_mode": runtime_revision,
                 "immutable": True,
                 "source": "video_caption_burn",
                 "normalized_config": resolved_node_config,
@@ -340,5 +347,5 @@ class VideoCaptionBurnExecutor:
             output={"kind": "video", "title": "Captioned video", "mimeType": "video/mp4"},
             input_ids=input_ids,
             input_roles=input_roles,
-            revision=revision,
+            revision=runtime_revision,
         )
