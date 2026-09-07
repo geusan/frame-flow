@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+from ....domain import ArtifactResponse
 from ..domain import BinaryContent, StoredContent
 
 if TYPE_CHECKING:
@@ -66,7 +67,7 @@ class ArtifactApplication:
     def get_character_lora(self, character_id: str) -> dict[str, Any]:
         return self._operations.get_character_lora(character_id)
 
-    def get_artifact(self, artifact_id: str) -> Any:
+    def get_artifact(self, artifact_id: str) -> ArtifactResponse:
         return self._operations.get_artifact(artifact_id)
 
     def create_audio_asset(self, artifact_id: str) -> dict[str, Any]:

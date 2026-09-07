@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ....domain import CanvasRunResponse, EventResponse, ExperimentRunResponse, RunResponse
+
 if TYPE_CHECKING:
     from .ports import RunOperations
 
@@ -52,25 +54,25 @@ class RunApplication:
     def __init__(self, operations: "RunOperations") -> None:
         self._operations = operations
 
-    def create_experiment(self, command: CreateExperimentCommand) -> Any:
+    def create_experiment(self, command: CreateExperimentCommand) -> ExperimentRunResponse:
         return self._operations.create_experiment(command)
 
-    async def start_canvas_run(self, command: StartCanvasRunCommand) -> Any:
+    async def start_canvas_run(self, command: StartCanvasRunCommand) -> CanvasRunResponse:
         return await self._operations.start_canvas_run(command)
 
-    def get_canvas_run(self, run_id: str) -> Any:
+    def get_canvas_run(self, run_id: str) -> CanvasRunResponse:
         return self._operations.get_canvas_run(run_id)
 
-    async def cancel_canvas_run(self, run_id: str) -> Any:
+    async def cancel_canvas_run(self, run_id: str) -> CanvasRunResponse:
         return await self._operations.cancel_canvas_run(run_id)
 
     async def select_canvas_candidate(
         self,
         command: SelectCanvasCandidateCommand,
-    ) -> Any:
+    ) -> CanvasRunResponse:
         return await self._operations.select_canvas_candidate(command)
 
-    async def approve_canvas_node(self, command: ApproveCanvasNodeCommand) -> Any:
+    async def approve_canvas_node(self, command: ApproveCanvasNodeCommand) -> CanvasRunResponse:
         return await self._operations.approve_canvas_node(command)
 
     def list_experiments(
@@ -78,28 +80,28 @@ class RunApplication:
         canvas_id: str,
         node_id: str | None,
         limit: int,
-    ) -> list[Any]:
+    ) -> list[ExperimentRunResponse]:
         return self._operations.list_experiments(canvas_id, node_id, limit)
 
-    def set_experiment_baseline(self, experiment_id: str) -> Any:
+    def set_experiment_baseline(self, experiment_id: str) -> ExperimentRunResponse:
         return self._operations.set_experiment_baseline(experiment_id)
 
     async def create_generation_run(
         self,
         command: CreateGenerationRunCommand,
-    ) -> Any:
+    ) -> RunResponse:
         return await self._operations.create_generation_run(command)
 
-    def get_run(self, run_id: str) -> Any:
+    def get_run(self, run_id: str) -> RunResponse:
         return self._operations.get_run(run_id)
 
-    def list_runs(self) -> list[Any]:
+    def list_runs(self) -> list[RunResponse]:
         return self._operations.list_runs()
 
-    async def cancel_run(self, run_id: str) -> Any:
+    async def cancel_run(self, run_id: str) -> RunResponse:
         return await self._operations.cancel_run(run_id)
 
-    def event_snapshot(self, run_id: str, offset: int) -> list[Any]:
+    def event_snapshot(self, run_id: str, offset: int) -> list[EventResponse]:
         return self._operations.event_snapshot(run_id, offset)
 
     async def wait_for_event(self, run_id: str) -> None:

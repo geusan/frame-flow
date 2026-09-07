@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from ....domain import CanvasRunResponse
 from .use_cases import (
     CreateAnnotationCommand,
     CreateWorkflowCommand,
@@ -25,7 +26,7 @@ class WorkflowOperations(Protocol):
 
     def publish(self, command: PublishWorkflowCommand) -> dict[str, Any]: ...
 
-    async def start_run(self, command: StartWorkflowRunCommand) -> Any: ...
+    async def start_run(self, command: StartWorkflowRunCommand) -> CanvasRunResponse: ...
 
     def list_versions(self, workflow_id: str) -> list[dict[str, Any]]: ...
 

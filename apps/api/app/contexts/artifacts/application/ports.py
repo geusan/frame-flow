@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, Protocol
 
+from ....domain import ArtifactResponse
 from ..domain import BinaryContent, StoredContent
 from .use_cases import (
     CaptureFrameCommand,
@@ -27,7 +28,7 @@ class ArtifactOperations(Protocol):
 
     def get_character_lora(self, character_id: str) -> dict[str, Any]: ...
 
-    def get_artifact(self, artifact_id: str) -> Any: ...
+    def get_artifact(self, artifact_id: str) -> ArtifactResponse: ...
 
     def create_audio_asset(self, artifact_id: str) -> dict[str, Any]: ...
 
