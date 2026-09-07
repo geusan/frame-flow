@@ -1,10 +1,12 @@
 from functools import lru_cache
 
 from ..contexts.canvases.application import CanvasApplication
+from ..contexts.runs.application import RunApplication
 from ..contexts.workflows.application import WorkflowApplication
 from ..domain import utc_now
 from ..infrastructure.persistence import (
     LegacySqlAlchemyWorkflowOperations,
+    LegacySqlAlchemyRunOperations,
     SqlAlchemyCanvasUnitOfWork,
 )
 from ..service import new_id
@@ -22,3 +24,8 @@ def get_canvas_application() -> CanvasApplication:
 @lru_cache(maxsize=1)
 def get_workflow_application() -> WorkflowApplication:
     return WorkflowApplication(LegacySqlAlchemyWorkflowOperations())
+
+
+@lru_cache(maxsize=1)
+def get_run_application() -> RunApplication:
+    return RunApplication(LegacySqlAlchemyRunOperations())
