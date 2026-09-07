@@ -23,7 +23,12 @@ from ...contexts.runs.application import (
     SelectGenerationCandidateCommand,
     StartCanvasRunCommand,
 )
-from ...contexts.runs.domain import RunConflictError, RunNotFoundError, RunValidationError
+from ...contexts.runs.domain import (
+    RunConflictError,
+    RunNotFoundError,
+    RunValidationError,
+    require_successful_baseline,
+)
 from ...database import (
     CanvasRecord,
     CanvasRunRecord,
@@ -207,8 +212,7 @@ class LegacySqlAlchemyRunOperations:
             record = db.get(ExperimentRunRecord, experiment_id)
             if record is None:
                 raise RunNotFoundError("experiment not found")
-            if record.status != NodeStatus.SUCCEEDED:
-                raise RunConflictError("only successful experiments can be a baseline")
+            require_successful_baseline(record.status)
             siblings = db.scalars(
                 select(ExperimentRunRecord).where(
                     ExperimentRunRecord.canvas_id == record.canvas_id,

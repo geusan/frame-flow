@@ -18,6 +18,7 @@ from ...contexts.workflows.domain import (
     WorkflowConflictError,
     WorkflowNotFoundError,
     WorkflowValidationError,
+    require_runnable_workflow,
 )
 from ...database import (
     CanvasRunRecord,
@@ -160,8 +161,7 @@ class LegacySqlAlchemyWorkflowOperations:
     async def start_run(self, command: StartWorkflowRunCommand) -> Any:
         with self._session_factory() as db:
             definition = self._workflow_or_error(db, command.workflow_id)
-            if definition.status != "ACTIVE":
-                raise WorkflowValidationError("Archived Workflow cannot be run")
+            require_runnable_workflow(definition.status)
             if command.version is not None:
                 version = self._version_or_error(
                     db,
