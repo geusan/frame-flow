@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
+
+from .nodes.human_gates import HumanGateMode
+from .nodes.legacy_run_adapter import legacy_human_gate_modes
 
 
 @dataclass
@@ -16,6 +19,7 @@ class CanvasWorkflowInput:
     dependencies: dict[str, list[str]]
     completed_node_ids: list[str]
     approval_node_ids: list[str]
+    human_gate_modes: dict[str, HumanGateMode] = field(default_factory=dict)
 
 
 @workflow.defn(name="frameflow.canvas.v1")
@@ -30,13 +34,29 @@ class CanvasRunWorkflow:
     async def run(self, payload: CanvasWorkflowInput) -> dict[str, object]:
         completed = set(payload.completed_node_ids)
         remaining = set(payload.node_ids) - completed
-        retry = RetryPolicy(initial_interval=timedelta(seconds=2), maximum_interval=timedelta(minutes=1), maximum_attempts=3)
+        retry = RetryPolicy(
+            initial_interval=timedelta(seconds=2),
+            maximum_interval=timedelta(minutes=1),
+            maximum_attempts=3,
+        )
+        gate_modes = payload.human_gate_modes or legacy_human_gate_modes(
+            payload.node_keys,
+            payload.approval_node_ids,
+        )
         while remaining:
             ready = sorted(node_id for node_id in remaining if set(payload.dependencies.get(node_id, [])) <= completed)
             if not ready:
                 raise RuntimeError("Canvas DAG cannot make progress")
-            candidates = [node_id for node_id in ready if payload.node_keys[node_id] == "candidate.select"]
-            approvals = [node_id for node_id in ready if node_id in payload.approval_node_ids]
+            candidates = [
+                node_id
+                for node_id in ready
+                if gate_modes.get(node_id) == "select_artifact"
+            ]
+            approvals = [
+                node_id
+                for node_id in ready
+                if gate_modes.get(node_id) == "approve"
+            ]
             executable = [node_id for node_id in ready if node_id not in candidates and node_id not in approvals]
             if executable:
                 await asyncio.gather(*[

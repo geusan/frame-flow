@@ -2,6 +2,26 @@ from __future__ import annotations
 
 from typing import Any
 
+from .human_gates import HumanGateMode
+
+
+def legacy_human_gate_modes(
+    node_keys: dict[str, str],
+    approval_node_ids: list[str],
+) -> dict[str, HumanGateMode]:
+    """Restore pre-policy Temporal inputs that may still be in flight."""
+    modes: dict[str, HumanGateMode] = {
+        node_id: "approve" for node_id in approval_node_ids
+    }
+    modes.update(
+        {
+            node_id: "select_artifact"
+            for node_id, node_key in node_keys.items()
+            if node_key == "candidate.select"
+        }
+    )
+    return modes
+
 
 LEGACY_RUN_CONFIG_FIELDS = {
     "resolution": "resolution",

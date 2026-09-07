@@ -9,6 +9,7 @@ from temporalio.client import Client
 
 from .canvas_runs import (
     canvas_dependencies,
+    canvas_human_gate_modes,
     canvas_run_response,
     create_canvas_run,
     local_canvas_engine,
@@ -25,6 +26,7 @@ from .database import (
 )
 from .domain import NodeStatus, WorkflowVersionRunRequest, utc_now
 from .nodes import node_registry
+from .nodes.human_gates import human_gate_mode
 from .service import audit
 from .temporal_runtime import TASK_QUEUE
 from .workflow_definitions import (
@@ -56,11 +58,7 @@ async def schedule_canvas_run(run: CanvasRunRecord, nodes: list[dict[str, Any]])
             for node in nodes
         }
         completed = [node.canvas_node_id for node in run.node_runs if node.status == NodeStatus.SUCCEEDED]
-        approval_node_ids = [
-            str(node.get("id"))
-            for node in nodes
-            if (node.get("data") or {}).get("waitForInput") is True
-        ]
+        gate_modes = canvas_human_gate_modes(nodes)
         client = await temporal_client()
         await client.start_workflow(
             CanvasRunWorkflow.run,
@@ -70,7 +68,8 @@ async def schedule_canvas_run(run: CanvasRunRecord, nodes: list[dict[str, Any]])
                 node_keys,
                 dependencies,
                 completed,
-                approval_node_ids,
+                [node_id for node_id, mode in gate_modes.items() if mode == "approve"],
+                gate_modes,
             ),
             id=f"frameflow/canvas/{run.id}",
             task_queue=TASK_QUEUE,
@@ -217,7 +216,8 @@ def workflow_run_payload(db: Session, run: CanvasRunRecord) -> dict[str, Any]:
         contract_version = int(data.get("contractVersion") or 1)
         node_definition = node_registry.get(node_run.node_key, contract_version)
         approval_schema = node_definition.execution.approval_schema if node_definition else None
-        is_approval = data.get("waitForInput") is True
+        gate_mode = human_gate_mode(node_definition)
+        is_approval = gate_mode == "approve"
         action: dict[str, Any] = {
             "node_id": node_run.canvas_node_id,
             "type_key": node_run.node_key,
@@ -315,7 +315,14 @@ async def respond_to_workflow_run(
         raise ValueError("Workflow Node is not waiting for input")
     graph_node = _graph_node(run, node_id)
     data = dict(graph_node.get("data") or {})
-    expects_approval = data.get("waitForInput") is True
+    node_definition = node_registry.get(
+        node_run.node_key,
+        int(data.get("contractVersion") or 1),
+    )
+    gate_mode = human_gate_mode(node_definition)
+    if gate_mode is None:
+        raise ValueError("Workflow Node is not a Human Gate")
+    expects_approval = gate_mode == "approve"
     if expects_approval and action != "approve":
         raise ValueError("Workflow Node requires approval parameters")
     if not expects_approval and action != "select_artifact":

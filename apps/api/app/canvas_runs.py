@@ -13,6 +13,7 @@ from .database import CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, Sessio
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
 from .nodes import node_registry
+from .nodes.human_gates import HumanGateMode, human_gate_mode
 from .nodes.legacy_run_adapter import legacy_canvas_run_parameters
 from .service import new_id
 
@@ -50,6 +51,23 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
             error=node.error,
         ) for node in run.node_runs],
     )
+
+
+def canvas_human_gate_modes(
+    nodes: list[dict[str, Any]],
+) -> dict[str, HumanGateMode]:
+    modes: dict[str, HumanGateMode] = {}
+    for node in nodes:
+        data = dict(node.get("data") or {})
+        definition = node_registry.get(
+            str(data.get("key") or ""),
+            int(data.get("contractVersion") or 1),
+        )
+        mode = human_gate_mode(definition)
+        node_id = str(node.get("id") or "")
+        if mode and node_id:
+            modes[node_id] = mode
+    return modes
 
 
 def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord:
@@ -175,6 +193,14 @@ def record_canvas_selection(run_id: str, canvas_node_id: str, artifact_id: str) 
         node = db.scalar(select(CanvasNodeRunRecord).where(CanvasNodeRunRecord.run_id == run_id, CanvasNodeRunRecord.canvas_node_id == canvas_node_id))
         if not run or not node or node.status != NodeStatus.WAITING_INPUT:
             raise ValueError("Canvas node is not waiting for candidate selection")
+        graph_node = _graph_node(run, canvas_node_id)
+        data = dict(graph_node.get("data") or {})
+        definition = node_registry.get(
+            node.node_key,
+            int(data.get("contractVersion") or 1),
+        )
+        if human_gate_mode(definition) != "select_artifact":
+            raise ValueError("Canvas node does not accept Artifact selection")
         incoming = _incoming_sources(run, canvas_node_id)
         source_nodes = db.scalars(select(CanvasNodeRunRecord).where(CanvasNodeRunRecord.run_id == run_id, CanvasNodeRunRecord.canvas_node_id.in_(incoming))).all()
         source = next((candidate for candidate in source_nodes if artifact_id in (candidate.output_artifact_ids or [])), None)
@@ -200,9 +226,9 @@ def record_canvas_approval(run_id: str, canvas_node_id: str, parameters: dict[st
         if not graph_node:
             raise ValueError("Canvas graph node was not found")
         data = dict(graph_node.get("data") or {})
-        if data.get("waitForInput") is not True:
-            raise ValueError("Canvas node does not accept workflow input approval")
         definition = node_registry.get(str(data.get("key") or ""), int(data.get("contractVersion") or 1))
+        if human_gate_mode(definition) != "approve":
+            raise ValueError("Canvas node does not accept workflow input approval")
         approval_schema = definition.execution.approval_schema if definition else None
         if approval_schema:
             node_registry.validate_object(approval_schema, parameters, label="approval")
@@ -283,8 +309,20 @@ class LocalCanvasRunEngine:
                     run.status = NodeStatus.FAILED
                     db.commit()
                     return
-                candidate_nodes = [node for node in ready if node.node_key == "candidate.select"]
-                approval_nodes = [node for node in ready if _canvas_node_requires_input(run, node)]
+                gate_modes = canvas_human_gate_modes(
+                    list((run.graph_snapshot or {}).get("nodes") or [])
+                )
+                candidate_nodes = [
+                    node
+                    for node in ready
+                    if gate_modes.get(node.canvas_node_id) == "select_artifact"
+                ]
+                approval_nodes = [
+                    node
+                    for node in ready
+                    if gate_modes.get(node.canvas_node_id) == "approve"
+                    and _canvas_node_requires_input(run, node)
+                ]
                 waiting_ids = {node.canvas_node_id for node in [*candidate_nodes, *approval_nodes]}
                 executable = [node.canvas_node_id for node in ready if node.canvas_node_id not in waiting_ids]
                 for waiting_node in [*candidate_nodes, *approval_nodes]:
@@ -406,7 +444,14 @@ def _graph_node(run: CanvasRunRecord, canvas_node_id: str) -> dict[str, Any]:
 
 def _canvas_node_requires_input(run: CanvasRunRecord, node: CanvasNodeRunRecord) -> bool:
     data = dict(_graph_node(run, node.canvas_node_id).get("data") or {})
-    return data.get("waitForInput") is True and data.get("inputApproved") is not True
+    definition = node_registry.get(
+        node.node_key,
+        int(data.get("contractVersion") or 1),
+    )
+    return (
+        human_gate_mode(definition) == "approve"
+        and data.get("inputApproved") is not True
+    )
 
 
 def _incoming_sources(run: CanvasRunRecord, target_id: str) -> list[str]:
