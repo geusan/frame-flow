@@ -1,10 +1,12 @@
 from functools import lru_cache
 
+from ..contexts.artifacts.application import ArtifactApplication
 from ..contexts.canvases.application import CanvasApplication
 from ..contexts.runs.application import RunApplication
 from ..contexts.workflows.application import WorkflowApplication
 from ..domain import utc_now
 from ..infrastructure.persistence import (
+    LegacySqlAlchemyArtifactOperations,
     LegacySqlAlchemyWorkflowOperations,
     LegacySqlAlchemyRunOperations,
     SqlAlchemyCanvasUnitOfWork,
@@ -19,6 +21,11 @@ def get_canvas_application() -> CanvasApplication:
         id_generator=new_id,
         clock=utc_now,
     )
+
+
+@lru_cache(maxsize=1)
+def get_artifact_application() -> ArtifactApplication:
+    return ArtifactApplication(LegacySqlAlchemyArtifactOperations())
 
 
 @lru_cache(maxsize=1)
