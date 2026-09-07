@@ -1,0 +1,50 @@
+from fastapi.routing import APIRoute
+
+from app.api.routers.canvases import router as canvases_router
+from app.main import app
+
+
+CANVAS_OPERATIONS = {
+    ("GET", "/canvases"),
+    ("POST", "/canvases"),
+    ("POST", "/canvases/import"),
+    ("GET", "/canvases/{canvas_id}"),
+    ("GET", "/canvases/{canvas_id}/export"),
+    ("PUT", "/canvases/{canvas_id}"),
+    ("DELETE", "/canvases/{canvas_id}"),
+}
+
+
+def _operations(routes: list[object]) -> list[tuple[str, str, str]]:
+    operations: list[tuple[str, str, str]] = []
+    for route in routes:
+        if isinstance(route, APIRoute):
+            operations.extend(
+                (method, route.path, route.endpoint.__module__)
+                for method in route.methods
+            )
+            continue
+        included_router = getattr(route, "original_router", None)
+        nested_routes = getattr(included_router, "routes", None)
+        if nested_routes is None:
+            nested_routes = getattr(route, "routes", None)
+        if nested_routes is not None:
+            operations.extend(_operations(nested_routes))
+    return operations
+
+
+def test_canvas_endpoints_are_owned_by_the_canvas_router() -> None:
+    operations = _operations(canvases_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == CANVAS_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.canvases"}
+
+
+def test_canvas_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in CANVAS_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
