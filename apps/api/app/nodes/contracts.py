@@ -264,6 +264,24 @@ class NodeMediaRuntime(Protocol):
 
 
 @dataclass(frozen=True)
+class NodeCharacterLoraResult:
+    character: NodeArtifactSnapshot
+    state: dict[str, Any]
+
+
+class NodeCharacterLoraRuntime(Protocol):
+    def ensure_ready(
+        self,
+        character_id: str,
+        *,
+        trigger_word: str,
+        steps: int,
+        learning_rate: float,
+        timeout_seconds: int,
+    ) -> NodeCharacterLoraResult: ...
+
+
+@dataclass(frozen=True)
 class NodeExecutionContext:
     db: Session
     payload: ExperimentRunRequest
@@ -273,6 +291,7 @@ class NodeExecutionContext:
     artifact_store: NodeArtifactStore | None = None
     provider_settings: NodeProviderSettings | None = None
     media_runtime: NodeMediaRuntime | None = None
+    character_lora_runtime: NodeCharacterLoraRuntime | None = None
 
     def require_artifact_store(self) -> NodeArtifactStore:
         if self.artifact_store is None:
@@ -289,6 +308,10 @@ class NodeExecutionContext:
             raise RuntimeError("Node Executor requires MediaRuntime")
         return self.media_runtime
 
+    def require_character_lora_runtime(self) -> NodeCharacterLoraRuntime:
+        if self.character_lora_runtime is None:
+            raise RuntimeError("Node Executor requires CharacterLoraRuntime")
+        return self.character_lora_runtime
 
 @dataclass(frozen=True)
 class NodeExecutionResult:

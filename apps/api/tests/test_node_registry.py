@@ -20,6 +20,7 @@ from app.nodes.contracts import (
     NodeArtifactContent,
     NodeArtifactRef,
     NodeArtifactSnapshot,
+    NodeCharacterLoraResult,
     NodeDefinition,
     NodeExecutionContext,
 )
@@ -27,7 +28,6 @@ from app.nodes.editor_refs import node_editor_ref_registry
 from app.nodes.inventory import canvas_only_keys, load_node_inventory, production_node_keys
 from app.nodes.port_types import port_type_registry
 from app.nodes.registry import NodeRegistry
-from app.nodes.executors import lora_train as lora_train_module
 from app.nodes.executors.lora_train import FalLoraTrainingExecutor
 from app.nodes.executors import motion_control_video as motion_control_module
 from app.nodes.executors.motion_control_video import MotionControlVideoExecutor
@@ -326,33 +326,46 @@ def test_lora_train_config_defaults_and_validation_come_from_manifest():
         node_registry.resolve_config(definition, {"trigger_word": "mori", "legacy_extra": "nope"})
 
 
-def test_lora_train_executor_returns_trained_character_contract(monkeypatch):
+def test_lora_train_executor_returns_trained_character_contract():
     definition = node_registry.get("lora.train", 1)
     assert definition is not None
-    character = SimpleNamespace(
+    character = NodeArtifactSnapshot(
         id="character_1",
         type="Character",
-        metadata_json={
+        metadata={
             "name": "Mori",
             "cover_artifact_id": "image_1",
             "lora_status": "UNTRAINED",
         },
     )
 
-    class FakeDb:
-        def get(self, _, artifact_id):
-            return character if artifact_id == character.id else None
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            assert artifact_id == character.id
+            return NodeArtifactContent(character, b"{}", "application/json")
 
-    monkeypatch.setattr(lora_train_module, "start_character_lora_training", lambda *args, **kwargs: {"status": "IN_QUEUE"})
-    monkeypatch.setattr(lora_train_module, "wait_for_character_lora_training", lambda *args, **kwargs: {
-        "status": "READY",
-        "trigger_word": "mori_cat_v1",
-        "lora_artifact_id": "lora_1",
-        "weights_url": "https://weights.example/mori.safetensors",
-        "request_id": "fal_request_1",
-    })
-    monkeypatch.setattr(lora_train_module, "require_character", lambda *args, **kwargs: character)
-    monkeypatch.setattr(lora_train_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
+
+    class FakeLoraRuntime:
+        def ensure_ready(self, character_id, **kwargs):
+            assert character_id == character.id
+            assert kwargs["trigger_word"] == "mori_cat_v1"
+            ready_character = NodeArtifactSnapshot(
+                id=character.id,
+                type=character.type,
+                metadata={**character.metadata, "lora_status": "READY"},
+            )
+            return NodeCharacterLoraResult(
+                character=ready_character,
+                state={
+                    "status": "READY",
+                    "trigger_word": "mori_cat_v1",
+                    "lora_artifact_id": "lora_1",
+                    "weights_url": "https://weights.example/mori.safetensors",
+                    "request_id": "fal_request_1",
+                },
+            )
 
     payload = ExperimentRunRequest(
         canvas_id="canvas_1",
@@ -363,7 +376,15 @@ def test_lora_train_executor_returns_trained_character_contract(monkeypatch):
         parameters={},
         inputs=[],
     )
-    context = NodeExecutionContext(db=FakeDb(), payload=payload, definition=definition, request_hash="digest", experiment_id="experiment_1")
+    context = NodeExecutionContext(
+        db=object(),
+        payload=payload,
+        definition=definition,
+        request_hash="digest",
+        experiment_id="experiment_1",
+        artifact_store=FakeArtifactStore(),
+        character_lora_runtime=FakeLoraRuntime(),
+    )
     result = FalLoraTrainingExecutor().execute(
         context,
         {"trigger_word": "mori_cat_v1", "steps": 1000, "learning_rate": 0.00005, "timeout_seconds": 1800},
