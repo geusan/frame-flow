@@ -3,12 +3,14 @@ from functools import lru_cache
 from ..contexts.artifacts.application import ArtifactApplication
 from ..contexts.canvases.application import CanvasApplication
 from ..contexts.runs.application import RunApplication
+from ..contexts.references.application import ReferenceApplication
 from ..contexts.workflows.application import WorkflowApplication
 from ..domain import utc_now
 from ..infrastructure.persistence import (
     LegacySqlAlchemyArtifactOperations,
     LegacySqlAlchemyWorkflowOperations,
     LegacySqlAlchemyRunOperations,
+    LegacySqlAlchemyReferenceOperations,
     SqlAlchemyCanvasUnitOfWork,
 )
 from ..service import new_id
@@ -36,3 +38,8 @@ def get_workflow_application() -> WorkflowApplication:
 @lru_cache(maxsize=1)
 def get_run_application() -> RunApplication:
     return RunApplication(LegacySqlAlchemyRunOperations())
+
+
+@lru_cache(maxsize=1)
+def get_reference_application() -> ReferenceApplication:
+    return ReferenceApplication(LegacySqlAlchemyReferenceOperations())
