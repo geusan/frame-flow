@@ -113,41 +113,41 @@ def test_legacy_executor_routes_xai_text_by_manifest_capability(monkeypatch):
         parameters={"temperature": 0.4},
         inputs=[],
     )
-    context = SimpleNamespace(definition=definition, payload=payload)
+    context = SimpleNamespace(definition=definition, model_alias=payload.model_alias, prompt=payload.prompt)
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "live")
     assert node_registry.can_execute(context) is True
-    google_context = SimpleNamespace(definition=definition, payload=payload.model_copy(update={"model_alias": "google.text.fast"}))
+    google_context = SimpleNamespace(definition=definition, model_alias="google.text.fast", prompt=payload.prompt)
     assert node_registry.can_execute(google_context) is True
     image_definition = node_registry.get("image.generate", 1)
     assert image_definition is not None
-    image_context = SimpleNamespace(definition=image_definition, payload=payload.model_copy(update={"node_key": "image.generate", "node_contract_version": 1, "model_alias": "google.image.fast"}))
+    image_context = SimpleNamespace(definition=image_definition, model_alias="google.image.fast", prompt=payload.prompt)
     assert node_registry.can_execute(image_context) is True
     character_definition = node_registry.get("character.generate", 1)
     assert character_definition is not None
-    character_context = SimpleNamespace(definition=character_definition, payload=payload.model_copy(update={"node_key": "character.generate", "node_contract_version": 1, "model_alias": "google.image.fast"}))
+    character_context = SimpleNamespace(definition=character_definition, model_alias="google.image.fast", prompt=payload.prompt)
     assert node_registry.can_execute(character_context) is True
     lora_definition = node_registry.get("lora.image.generate", 1)
     assert lora_definition is not None
-    lora_context = SimpleNamespace(definition=lora_definition, payload=payload.model_copy(update={"node_key": "lora.image.generate", "node_contract_version": 1, "model_alias": "fal.image.flux2-lora"}))
+    lora_context = SimpleNamespace(definition=lora_definition, model_alias="fal.image.flux2-lora", prompt=payload.prompt)
     assert node_registry.can_execute(lora_context) is True
     video_definition = node_registry.get("video.generate", 1)
     assert video_definition is not None
-    video_context = SimpleNamespace(definition=video_definition, payload=payload.model_copy(update={"node_key": "video.generate", "node_contract_version": 1, "model_alias": "google.video.fast"}))
+    video_context = SimpleNamespace(definition=video_definition, model_alias="google.video.fast", prompt=payload.prompt)
     assert node_registry.can_execute(video_context) is True
     tts_definition = node_registry.get("tts.generate", 1)
     assert tts_definition is not None
-    tts_context = SimpleNamespace(definition=tts_definition, payload=payload.model_copy(update={"node_key": "tts.generate", "node_contract_version": 1, "model_alias": "google.tts.fast"}))
+    tts_context = SimpleNamespace(definition=tts_definition, model_alias="google.tts.fast", prompt=payload.prompt)
     assert node_registry.can_execute(tts_context) is True
     local_definition = node_registry.get("video.edit", 1)
     assert local_definition is not None
-    local_context = SimpleNamespace(definition=local_definition, payload=payload.model_copy(update={"node_key": "video.edit", "node_contract_version": 1, "model_alias": "local.ffmpeg"}))
+    local_context = SimpleNamespace(definition=local_definition, model_alias="local.ffmpeg", prompt=payload.prompt)
     assert node_registry.can_execute(local_context) is True
     motion_definition = node_registry.get("motion.extract", 1)
     assert motion_definition is not None
-    motion_context = SimpleNamespace(definition=motion_definition, payload=payload.model_copy(update={"node_key": "motion.extract", "node_contract_version": 1, "model_alias": "local.mediapipe.holistic"}))
-    assert node_registry.can_execute(motion_context) is False
+    motion_context = SimpleNamespace(definition=motion_definition, model_alias="local.mediapipe.holistic", prompt=payload.prompt)
+    assert node_registry.can_execute(motion_context) is True
     monkeypatch.setenv("GENERATION_PROVIDER_MODE", "fixture")
-    assert node_registry.can_execute(context) is False
+    assert node_registry.can_execute(context) is True
 
 
 def test_experiments_does_not_dispatch_xai_provider_directly():
@@ -377,8 +377,9 @@ def test_lora_train_executor_returns_trained_character_contract():
         inputs=[],
     )
     context = NodeExecutionContext(
-        payload=payload,
         definition=definition,
+        prompt=payload.prompt,
+        model_alias=payload.model_alias,
         request_hash="digest",
         experiment_id="experiment_1",
         artifact_store=FakeArtifactStore(),
@@ -553,8 +554,9 @@ def test_motion_control_executor_records_artifact_contract_and_lineage(monkeypat
         inputs=[],
     )
     context = NodeExecutionContext(
-        payload=payload,
         definition=definition,
+        prompt=payload.prompt,
+        model_alias=payload.model_alias,
         request_hash="abcd1234",
         experiment_id="experiment_1",
         artifact_store=FakeArtifactStore(),
@@ -588,8 +590,9 @@ def test_motion_control_rejects_missing_or_invalid_motion_track():
         inputs=[],
     )
     context = NodeExecutionContext(
-        payload=payload,
         definition=definition,
+        prompt=payload.prompt,
+        model_alias=payload.model_alias,
         request_hash="digest",
         experiment_id="experiment_1",
         artifact_store=SimpleNamespace(read=lambda *_: None),

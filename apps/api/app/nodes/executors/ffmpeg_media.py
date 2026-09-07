@@ -2,9 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...canvas_operations import _edit_videos, _replace_audio, _require
-from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
+from ..contracts import NodeArtifactContent, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
+
+
+def _require(
+    artifacts: list[NodeArtifactContent],
+    label: str,
+    *artifact_types: str,
+) -> NodeArtifactContent:
+    artifact = next((item for item in artifacts if item.type in set(artifact_types)), None)
+    if artifact is None:
+        raise ValueError(f"{label} input artifact is required")
+    return artifact
 
 
 class FFmpegMediaCapabilityExecutor:
@@ -31,22 +41,23 @@ class FFmpegMediaCapabilityExecutor:
         if not self.supports(context):
             raise RuntimeError("FFmpeg media capability does not support this execution context")
         artifact_store = context.require_artifact_store()
+        media_runtime = context.require_media_runtime()
         artifacts = artifact_store.read_inputs(typed_inputs)
         input_artifact_ids, input_roles = input_lineage(context, typed_inputs)
         input_types = {port.type for port in context.definition.ports.inputs}
         if input_types & {"data.timeline.v1", "data.timeline.v2"}:
             timeline = _require(artifacts, "Timeline", "Timeline")
-            content = context.require_media_runtime().render_timeline(timeline)
+            content = media_runtime.render_timeline(timeline)
             title = "Rendered final MP4"
             filename = "final.mp4"
         elif {"media.video.v1", "media.audio.v1"} <= input_types:
             video = _require(artifacts, "Video", "Video", "FinalVideo")
             audio = _require(artifacts, "Audio", "Audio")
-            content = _replace_audio(video, audio)
+            content = media_runtime.replace_audio(video, audio)
             title = "Video with replaced audio"
             filename = "localized.mp4"
         else:
-            content = _edit_videos(artifacts, resolved_node_config)
+            content = media_runtime.edit_videos(artifacts, resolved_node_config)
             title = "Edited video"
             filename = "edited.mp4"
         artifact = artifact_store.create(

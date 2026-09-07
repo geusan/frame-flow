@@ -6,11 +6,17 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ...canvas_operations import ArtifactData, _of_type, _probe, _run, _video_stream, _write_artifact
 from ...caption_documents import caption_document_to_ass
 from ...image_story_video import output_dimensions
 from ..contracts import NodeArtifactContent, NodeArtifactRef, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
+from .media_tools import (
+    artifacts_of_type as _of_type,
+    probe_media as _probe,
+    run_media_command as _run,
+    video_stream as _video_stream,
+    write_media_artifact as _write_artifact,
+)
 
 
 SUBTITLE_DESIGN_REVISION = "subtitle-design.v1"
@@ -64,7 +70,7 @@ def _result(
     )
 
 
-def _json_payload(artifact: ArtifactData, *, schema: str, label: str) -> dict[str, Any]:
+def _json_payload(artifact: NodeArtifactContent, *, schema: str, label: str) -> dict[str, Any]:
     try:
         payload = json.loads(artifact.data)
     except (TypeError, ValueError) as exc:
@@ -249,7 +255,7 @@ class RichSubtitleLayoutExecutor:
 
 def _render_captioned_video(
     db_context: NodeExecutionContext,
-    video: ArtifactData,
+    video: NodeArtifactContent,
     layout: dict[str, Any],
     document: dict[str, Any],
 ) -> tuple[bytes, dict[str, int]]:

@@ -844,7 +844,7 @@ def test_canvas_upload_and_real_media_edit_pipeline(client: TestClient, monkeypa
             return SynthesizedSpeech(render_audio_wav("abc123", duration_seconds=2), "audio/wav", "google_tts_test")
 
     monkeypatch.setattr(
-        "app.canvas_operations.get_localization_services",
+        "app.nodes.executors.contract_capabilities.get_localization_services",
         lambda: LocalizationServices(FakeRecognizer(), FakeTranslator(), FakeSynthesizer()),
     )
     translated = execute(
@@ -1079,7 +1079,7 @@ def test_holistic_motion_extractor_creates_motion_track_artifact(client: TestCli
             }],
         }
 
-    monkeypatch.setattr("app.canvas_operations.extract_holistic_motion", fake_extract)
+    monkeypatch.setattr("app.nodes.executors.contract_capabilities.extract_holistic_motion", fake_extract)
     response = client.post("/experiments", json={
         "canvas_id": "motion_canvas",
         "node_id": "motion-extractor",

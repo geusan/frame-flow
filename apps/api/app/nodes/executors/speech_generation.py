@@ -24,7 +24,7 @@ class SpeechGenerationCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Audio"
-            and context.payload.model_alias.startswith(("google.tts.", "openai.tts."))
+            and context.model_alias.startswith(("google.tts.", "openai.tts."))
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -36,10 +36,10 @@ class SpeechGenerationCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("speech generation capability does not support this execution context")
-        text = context.payload.prompt.strip()
+        text = context.prompt.strip()
         if not text:
             raise ValueError("speech generation requires a connected Prompt")
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         voice_name = str(resolved_node_config.get("voice_name") or "Kore")
         style_prompt = str(resolved_node_config.get("style_prompt") or "Read naturally and clearly for a short-form video.")
         if model_alias.startswith("google.tts."):

@@ -19,7 +19,7 @@ class VideoGenerationCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Video"
-            and context.payload.model_alias.startswith("google.video.")
+            and context.model_alias.startswith("google.video.")
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -31,7 +31,7 @@ class VideoGenerationCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("video generation capability does not support this execution context")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("video generation requires a connected Prompt")
         ordered_inputs = sorted(
@@ -46,7 +46,7 @@ class VideoGenerationCapabilityExecutor:
         image_inputs = [item for item in media if item.artifact_type == "Image"][:3]
         video_inputs = [item for item in media if item.artifact_type in {"Video", "FinalVideo"}][:1]
         seed = resolved_node_config.get("seed")
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         generated = get_google_generation_services().generate_videos(
             logical_model=model_alias,
             prompt=prompt,

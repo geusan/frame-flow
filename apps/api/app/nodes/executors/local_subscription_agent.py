@@ -19,7 +19,7 @@ class LocalSubscriptionAgentExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != LOCAL_SUBSCRIPTION_AGENT_REVISION:
             raise RuntimeError("Local subscription agent revision does not match its Node Definition")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("Local Subscription Agent requires a connected Prompt")
 

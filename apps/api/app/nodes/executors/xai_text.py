@@ -12,7 +12,7 @@ class XAITextCapabilityExecutor:
     def supports(self, context: NodeExecutionContext) -> bool:
         return (
             context.definition.execution.kind == "provider"
-            and context.payload.model_alias.startswith("xai.text.")
+            and context.model_alias.startswith("xai.text.")
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -24,11 +24,11 @@ class XAITextCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("xAI text capability does not support this execution context")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("xAI text generation requires a connected Prompt")
         generated = get_xai_text_services().generate(
-            model_alias=context.payload.model_alias,
+            model_alias=context.model_alias,
             prompt=prompt,
             instructions=text_instructions(context, resolved_node_config),
             reasoning_effort="high",

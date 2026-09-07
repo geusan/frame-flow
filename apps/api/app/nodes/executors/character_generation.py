@@ -16,7 +16,7 @@ class CharacterGenerationCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Character"
-            and context.payload.model_alias.startswith(("google.image.", "openai.image."))
+            and context.model_alias.startswith(("google.image.", "openai.image."))
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -28,7 +28,7 @@ class CharacterGenerationCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("character generation capability does not support this execution context")
-        synopsis = context.payload.prompt.strip()
+        synopsis = context.prompt.strip()
         artifact_store = context.require_artifact_store()
         media, input_artifact_ids, input_roles = artifact_store.load_input_media(
             context.definition,
@@ -37,7 +37,7 @@ class CharacterGenerationCapabilityExecutor:
         )
         references = [item for item in media if item.artifact_type == "Image"][:3]
         name = str(resolved_node_config.get("character_name") or "Generated character").strip() or "Generated character"
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         common = {
             "logical_model": model_alias,
             "synopsis": synopsis,

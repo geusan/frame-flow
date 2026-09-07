@@ -35,7 +35,7 @@ def _record(artifact_id: str, artifact_type: str, sha256: str = "a" * 64):
     )
 
 
-def _context(definition, db, *, content_by_id=None) -> NodeExecutionContext:
+def _context(definition, db, *, content_by_id=None, media_runtime=None) -> NodeExecutionContext:
     content_by_id = content_by_id or {}
 
     class FakeArtifactStore:
@@ -66,19 +66,13 @@ def _context(definition, db, *, content_by_id=None) -> NodeExecutionContext:
             return f"http://api/artifacts/{artifact_id}/content"
 
     return NodeExecutionContext(
-        payload=ExperimentRunRequest(
-            canvas_id="canvas_sro",
-            node_id="node_sro",
-            node_key=definition.type_key,
-            node_contract_version=definition.contract_version,
-            model_alias=definition.execution.model_alias,
-            parameters={},
-            inputs=[],
-        ),
         definition=definition,
+        prompt="",
+        model_alias=definition.execution.model_alias,
         request_hash="b" * 64,
         experiment_id="experiment_sro",
         artifact_store=FakeArtifactStore(),
+        media_runtime=media_runtime,
     )
 
 
@@ -255,9 +249,12 @@ def test_frame_apply_and_concatenate_executors_only_render_and_join(monkeypatch)
     second = _record("clip_2", "Video")
     videos = [ArtifactData(first, b"one", "video/mp4"), ArtifactData(second, b"two", "video/mp4")]
     monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: videos)
-    monkeypatch.setattr(executor_module, "_edit_videos", lambda artifacts, config: b"joined")
     concatenate_result = VideoConcatenateExecutor().execute(
-        _context(concatenate_definition, db),
+        _context(
+            concatenate_definition,
+            db,
+            media_runtime=SimpleNamespace(edit_videos=lambda artifacts, config: b"joined"),
+        ),
         {},
         [{"type": "Video", "artifact_ids": [first.id, second.id]}],
     )

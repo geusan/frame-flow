@@ -160,8 +160,9 @@ def test_local_subscription_agent_executor_returns_text_artifact_contract(monkey
         inputs=[],
     )
     context = NodeExecutionContext(
-        payload=payload,
         definition=definition,
+        prompt=payload.prompt,
+        model_alias=payload.model_alias,
         request_hash="digest",
         experiment_id="experiment_1",
         artifact_store=artifact_store,

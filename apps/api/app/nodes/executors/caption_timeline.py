@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ...canvas_operations import _timeline
 from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
 
@@ -26,7 +25,7 @@ class CaptionTimelineExecutor:
         config = {**resolved_node_config, "caption_document": document}
         artifact_store = context.require_artifact_store()
         artifacts = artifact_store.read_inputs(typed_inputs)
-        timeline = _timeline(artifacts, config)
+        timeline = context.require_media_runtime().build_timeline(artifacts, config)
         content = json.dumps(timeline, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_artifact_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = artifact_store.create(

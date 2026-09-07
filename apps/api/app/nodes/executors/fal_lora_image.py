@@ -13,7 +13,7 @@ class FalLoraImageCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Image"
-            and context.payload.model_alias.startswith("fal.image.")
+            and context.model_alias.startswith("fal.image.")
             and "lora_url" in context.definition.config_schema.get("properties", {})
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
@@ -26,7 +26,7 @@ class FalLoraImageCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("fal LoRA image capability does not support this execution context")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("fal LoRA image generation requires a connected Prompt")
         artifact_store = context.require_artifact_store()
@@ -47,7 +47,7 @@ class FalLoraImageCapabilityExecutor:
             aspect_ratio=str(resolved_node_config.get("aspect_ratio") or "9:16"),
             resolution=str(resolved_node_config.get("resolution") or "2K"),
         )
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         exact_model_id = model_id_for_alias(model_alias) or model_alias
         artifact = artifact_store.create(
             NodeArtifactWrite(

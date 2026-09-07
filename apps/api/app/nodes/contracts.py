@@ -7,7 +7,6 @@ from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..domain import ExperimentRunRequest
 from .port_types import port_type_registry
 
 
@@ -261,6 +260,43 @@ class NodeMediaRuntime(Protocol):
 
     def render_timeline(self, timeline: NodeArtifactContent) -> bytes: ...
 
+    def build_timeline(
+        self,
+        artifacts: list[NodeArtifactContent],
+        config: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    def edit_videos(
+        self,
+        artifacts: list[NodeArtifactContent],
+        config: dict[str, Any],
+    ) -> bytes: ...
+
+    def replace_audio(
+        self,
+        video: NodeArtifactContent,
+        audio: NodeArtifactContent,
+        subtitle: NodeArtifactContent | None = None,
+        *,
+        language: str = "und",
+    ) -> bytes: ...
+
+    def media_duration(self, artifact: NodeArtifactContent) -> float: ...
+
+    def extract_speech_audio(self, video: NodeArtifactContent) -> tuple[bytes, int]: ...
+
+    def synthesized_wav(self, speech: Any) -> bytes: ...
+
+    def build_subtitles(self, script: str, duration: float) -> bytes: ...
+
+    def segments_to_srt(self, segments: list[Any]) -> bytes: ...
+
+    def quality_report(
+        self,
+        video: NodeArtifactContent,
+        config: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
 
 @dataclass(frozen=True)
 class NodeCharacterLoraResult:
@@ -282,8 +318,9 @@ class NodeCharacterLoraRuntime(Protocol):
 
 @dataclass(frozen=True)
 class NodeExecutionContext:
-    payload: ExperimentRunRequest
     definition: NodeDefinition
+    prompt: str
+    model_alias: str
     request_hash: str
     experiment_id: str
     artifact_store: NodeArtifactStore | None = None

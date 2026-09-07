@@ -59,7 +59,7 @@ def complete_text_execution(
                 "immutable": True,
                 "source": "node_executor_registry",
                 "provider": provider,
-                "model_alias": context.payload.model_alias,
+                "model_alias": context.model_alias,
                 "exact_model_id": generated.exact_model_id,
                 "normalized_config": config,
                 "output_role": artifact_contract.output_role,

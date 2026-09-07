@@ -499,8 +499,9 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
         inputs=[],
     )
     context = NodeExecutionContext(
-        payload=payload,
         definition=definition,
+        prompt=payload.prompt,
+        model_alias=payload.model_alias,
         request_hash="abcdef0123456789",
         experiment_id="experiment_story",
         artifact_store=FakeArtifactStore(),
@@ -573,11 +574,9 @@ def test_media_story_registry_executor_preserves_mixed_media_order_and_lineage(m
 
     monkeypatch.setattr(media_executor_module, "render_image_story", fake_render)
     context = NodeExecutionContext(
-        payload=ExperimentRunRequest(
-            canvas_id="canvas", node_id="media", node_key=definition.type_key,
-            node_contract_version=1, model_alias=definition.execution.model_alias,
-        ),
         definition=definition,
+        prompt="",
+        model_alias=definition.execution.model_alias,
         request_hash="abcdef0123456789",
         experiment_id="experiment_media",
         artifact_store=FakeArtifactStore(),

@@ -29,7 +29,7 @@ class ImageGenerationCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Image"
-            and context.payload.model_alias.startswith(("google.image.", "openai.image."))
+            and context.model_alias.startswith(("google.image.", "openai.image."))
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -41,7 +41,7 @@ class ImageGenerationCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("image generation capability does not support this execution context")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("image generation requires a connected Prompt")
         artifact_store = context.require_artifact_store()
@@ -50,7 +50,7 @@ class ImageGenerationCapabilityExecutor:
             typed_inputs,
         )
         image_inputs = [item for item in media if item.artifact_type == "Image"][:4]
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         count = max(1, min(4, int(resolved_node_config.get("output_count") or 1)))
         aspect_ratio = str(resolved_node_config.get("aspect_ratio") or "9:16")
         if model_alias.startswith("google.image."):

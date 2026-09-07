@@ -27,7 +27,7 @@ class TextGenerationCapabilityExecutor:
     def supports(self, context: NodeExecutionContext) -> bool:
         return (
             context.definition.execution.kind == "provider"
-            and context.payload.model_alias.startswith(("google.text.", "openai.text.", "openai.chat."))
+            and context.model_alias.startswith(("google.text.", "openai.text.", "openai.chat."))
             and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
@@ -39,11 +39,11 @@ class TextGenerationCapabilityExecutor:
     ) -> NodeExecutionResult:
         if not self.supports(context):
             raise RuntimeError("text generation capability does not support this execution context")
-        prompt = context.payload.prompt.strip()
+        prompt = context.prompt.strip()
         if not prompt:
             raise ValueError("text generation requires a connected Prompt")
         instructions = text_instructions(context, resolved_node_config)
-        model_alias = context.payload.model_alias
+        model_alias = context.model_alias
         exact_model_id = model_id_for_alias(model_alias)
         if not exact_model_id:
             raise ValueError(f"text model alias is not registered: {model_alias}")

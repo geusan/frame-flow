@@ -6,16 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ...canvas_operations import (
-    ArtifactData,
-    _duration_seconds,
-    _edit_videos,
-    _of_type,
-    _probe,
-    _run,
-    _video_stream,
-    _write_artifact,
-)
 from ...image_story_video import _motion_filter, _subtitle_ass, output_dimensions, parse_srt_cues
 from ...storage import artifact_content_url
 from ..contracts import (
@@ -27,6 +17,14 @@ from ..contracts import (
     NodeExecutionResult,
 )
 from .text_support import input_lineage
+from .media_tools import (
+    artifacts_of_type as _of_type,
+    media_duration_seconds as _duration_seconds,
+    probe_media as _probe,
+    run_media_command as _run,
+    video_stream as _video_stream,
+    write_media_artifact as _write_artifact,
+)
 
 
 IMAGE_MOTION_SCHEMA = "image.motion.v1"
@@ -64,7 +62,7 @@ def create_artifact(
     )
 
 
-def _json_artifact(artifact: ArtifactData, *, schema: str, label: str) -> dict[str, Any]:
+def _json_artifact(artifact: NodeArtifactContent, *, schema: str, label: str) -> dict[str, Any]:
     try:
         payload = json.loads(artifact.data)
     except (TypeError, ValueError) as exc:
@@ -184,9 +182,9 @@ def render_framed_motion(
 
 
 def compose_video(
-    video: ArtifactData,
-    subtitle: ArtifactData,
-    audio: ArtifactData,
+    video: NodeArtifactContent,
+    subtitle: NodeArtifactContent,
+    audio: NodeArtifactContent,
     layout: dict[str, Any],
 ) -> tuple[bytes, dict[str, int | float]]:
     with tempfile.TemporaryDirectory(prefix="frameflow-video-compose-") as temp_dir:
@@ -469,7 +467,10 @@ class VideoConcatenateExecutor:
         videos = _of_type(artifacts, *VIDEO_TYPES)
         if not videos:
             raise ValueError("Video Concatenate requires at least one connected Video Artifact")
-        content = _edit_videos(videos, {"resolution": "source", "aspect_ratio": "source", "transition": "hard_cut"})
+        content = context.require_media_runtime().edit_videos(
+            videos,
+            {"resolution": "source", "aspect_ratio": "source", "transition": "hard_cut"},
+        )
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
             context,

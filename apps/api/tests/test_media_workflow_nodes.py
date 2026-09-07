@@ -137,17 +137,9 @@ def test_video_split_rejects_unbounded_fan_out(tmp_path):
 
 def _context(definition, db, *, parameters=None, artifact_store=None):
     return NodeExecutionContext(
-        payload=ExperimentRunRequest(
-            canvas_id="canvas_media",
-            node_id="node_media",
-            node_key=definition.type_key,
-            node_contract_version=definition.contract_version,
-            prompt="",
-            model_alias=definition.execution.model_alias,
-            parameters=parameters or {},
-            inputs=[],
-        ),
         definition=definition,
+        prompt="",
+        model_alias=definition.execution.model_alias,
         request_hash="abcdef0123456789",
         experiment_id="experiment_media",
         artifact_store=artifact_store,

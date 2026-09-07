@@ -22,17 +22,9 @@ def _context(db, type_key: str, version: int, node_id: str) -> NodeExecutionCont
     definition = node_registry.get(type_key, version)
     assert definition is not None
     return NodeExecutionContext(
-        payload=ExperimentRunRequest(
-            canvas_id="rich_caption_sro_canvas",
-            node_id=node_id,
-            node_key=type_key,
-            node_contract_version=version,
-            prompt="",
-            model_alias=definition.execution.model_alias,
-            parameters={},
-            inputs=[],
-        ),
         definition=definition,
+        prompt="",
+        model_alias=definition.execution.model_alias,
         request_hash=(node_id * 64)[:64],
         experiment_id=f"experiment_{node_id}",
         artifact_store=SqlAlchemyNodeArtifactStore(db),

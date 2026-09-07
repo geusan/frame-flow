@@ -3,6 +3,18 @@ from .fal_lora_image import FalLoraImageCapabilityExecutor
 from .ffmpeg_media import FFmpegMediaCapabilityExecutor
 from .character_generation import CharacterGenerationCapabilityExecutor
 from .caption_timeline import CaptionTimelineExecutor
+from .contract_capabilities import (
+    FixtureProviderCapabilityExecutor,
+    GenerationPolicyCapabilityExecutor,
+    MediaQcCapabilityExecutor,
+    MotionExtractCapabilityExecutor,
+    ReferenceAnalysisCapabilityExecutor,
+    ScriptFitCapabilityExecutor,
+    ShotPlanCapabilityExecutor,
+    SubtitleAlignCapabilityExecutor,
+    TimelineCapabilityExecutor,
+    VideoTranslateCapabilityExecutor,
+)
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
 from .image_story_video import ImageStoryVideoExecutor
@@ -32,6 +44,16 @@ __all__ = [
     "FFmpegMediaCapabilityExecutor",
     "CharacterGenerationCapabilityExecutor",
     "CaptionTimelineExecutor",
+    "FixtureProviderCapabilityExecutor",
+    "GenerationPolicyCapabilityExecutor",
+    "MediaQcCapabilityExecutor",
+    "MotionExtractCapabilityExecutor",
+    "ReferenceAnalysisCapabilityExecutor",
+    "ScriptFitCapabilityExecutor",
+    "ShotPlanCapabilityExecutor",
+    "SubtitleAlignCapabilityExecutor",
+    "TimelineCapabilityExecutor",
+    "VideoTranslateCapabilityExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",
     "ImageStoryVideoExecutor",
