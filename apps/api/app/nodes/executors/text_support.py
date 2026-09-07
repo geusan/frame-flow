@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...project_skills import project_skill_system_prompt
-from ...service import create_artifact
-from ..contracts import NodeExecutionContext, NodeExecutionResult
+from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from ..port_types import port_type_registry
 
 
@@ -46,30 +45,32 @@ def complete_text_execution(
         else "Generated text"
     )
     filename = "script.txt" if artifact_contract.primary_type == "Script" else "master-prompt.txt" if artifact_contract.schema_id == "prompt.master.v1" else "result.txt"
-    artifact = create_artifact(
-        context.db,
-        artifact_contract.primary_type,
-        schema_id=artifact_contract.schema_id,
-        input_artifact_ids=input_artifact_ids,
-        input_artifact_roles=input_roles,
-        metadata={
-            "experiment_id": context.experiment_id,
-            "request_hash": context.request_hash,
-            "execution_mode": execution_revision,
-            "immutable": True,
-            "source": "node_executor_registry",
-            "provider": provider,
-            "model_alias": context.payload.model_alias,
-            "exact_model_id": generated.exact_model_id,
-            "normalized_config": config,
-            "output_role": artifact_contract.output_role,
-            **generated.metadata,
-        },
-        content=generated.text.encode(),
-        content_type="text/plain",
-        filename=filename,
+    artifact_store = context.require_artifact_store()
+    artifact = artifact_store.create(
+        NodeArtifactWrite(
+            artifact_type=artifact_contract.primary_type,
+            schema_id=artifact_contract.schema_id,
+            input_artifact_ids=input_artifact_ids,
+            input_artifact_roles=input_roles,
+            metadata={
+                "experiment_id": context.experiment_id,
+                "request_hash": context.request_hash,
+                "execution_mode": execution_revision,
+                "immutable": True,
+                "source": "node_executor_registry",
+                "provider": provider,
+                "model_alias": context.payload.model_alias,
+                "exact_model_id": generated.exact_model_id,
+                "normalized_config": config,
+                "output_role": artifact_contract.output_role,
+                **generated.metadata,
+            },
+            content=generated.text.encode(),
+            content_type="text/plain",
+            filename=filename,
+        )
     )
-    context.db.flush()
+    artifact_store.flush()
     return NodeExecutionResult(
         output={"kind": "text", "title": title, "text": generated.text},
         output_artifact_ids=[artifact.id],

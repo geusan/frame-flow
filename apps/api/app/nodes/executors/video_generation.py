@@ -4,10 +4,7 @@ import os
 from typing import Any
 
 from ...providers_generation import LIVE_GENERATION_REVISION, get_google_generation_services
-from ...service import create_artifact
-from ...storage import artifact_content_url
-from ..contracts import NodeExecutionContext, NodeExecutionResult
-from .media_support import load_input_media
+from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 
 
 VIDEO_MODEL_COSTS = {
@@ -41,7 +38,11 @@ class VideoGenerationCapabilityExecutor:
             typed_inputs,
             key=lambda item: {"Image": 0, "Character": 1, "Video": 2}.get(str(item.get("type") or ""), 3),
         )
-        media, input_artifact_ids, input_roles = load_input_media(context.db, context.definition, ordered_inputs)
+        artifact_store = context.require_artifact_store()
+        media, input_artifact_ids, input_roles = artifact_store.load_input_media(
+            context.definition,
+            ordered_inputs,
+        )
         image_inputs = [item for item in media if item.artifact_type == "Image"][:3]
         video_inputs = [item for item in media if item.artifact_type in {"Video", "FinalVideo"}][:1]
         seed = resolved_node_config.get("seed")
@@ -58,32 +59,33 @@ class VideoGenerationCapabilityExecutor:
             video_inputs=video_inputs,
         )
         artifacts = [
-            create_artifact(
-                context.db,
-                context.definition.artifact_contract.primary_type,
-                schema_id=context.definition.artifact_contract.schema_id,
-                input_artifact_ids=input_artifact_ids,
-                input_artifact_roles=input_roles,
-                metadata={
-                    "experiment_id": context.experiment_id,
-                    "request_hash": context.request_hash,
-                    "execution_mode": LIVE_GENERATION_REVISION,
-                    "immutable": True,
-                    "source": "node_executor_registry",
-                    "provider": "google",
-                    "model_alias": model_alias,
-                    "exact_model_id": item.exact_model_id,
-                    "normalized_config": resolved_node_config,
-                    "output_role": context.definition.artifact_contract.output_role,
-                    "candidate_index": index,
-                },
-                content=item.data,
-                content_type=item.mime_type,
-                filename=f"generated-{index}.mp4",
+            artifact_store.create(
+                NodeArtifactWrite(
+                    artifact_type=context.definition.artifact_contract.primary_type,
+                    schema_id=context.definition.artifact_contract.schema_id,
+                    input_artifact_ids=input_artifact_ids,
+                    input_artifact_roles=input_roles,
+                    metadata={
+                        "experiment_id": context.experiment_id,
+                        "request_hash": context.request_hash,
+                        "execution_mode": LIVE_GENERATION_REVISION,
+                        "immutable": True,
+                        "source": "node_executor_registry",
+                        "provider": "google",
+                        "model_alias": model_alias,
+                        "exact_model_id": item.exact_model_id,
+                        "normalized_config": resolved_node_config,
+                        "output_role": context.definition.artifact_contract.output_role,
+                        "candidate_index": index,
+                    },
+                    content=item.data,
+                    content_type=item.mime_type,
+                    filename=f"generated-{index}.mp4",
+                )
             )
             for index, item in enumerate(generated, start=1)
         ]
-        context.db.flush()
+        artifact_store.flush()
         primary = artifacts[0]
         omni = model_alias == "google.video.omni"
         return NodeExecutionResult(
@@ -91,7 +93,7 @@ class VideoGenerationCapabilityExecutor:
                 "kind": "video",
                 "title": "Generated character video" if omni else "Generated video",
                 "mimeType": generated[0].mime_type,
-                "url": artifact_content_url(primary.id),
+                "url": artifact_store.content_url(primary.id),
             },
             output_artifact_ids=[artifact.id for artifact in artifacts],
             provider_request_id=generated[0].provider_request_id,
