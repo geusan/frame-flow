@@ -5,12 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...providers import model_id_for_alias
-from ...providers_generation import LIVE_GENERATION_REVISION, InputMedia, get_google_generation_services
+from ...providers_generation import LIVE_GENERATION_REVISION, get_google_generation_services
 from ...providers_openai import OPENAI_LIVE_REVISION, get_openai_generation_services
-from ...service import create_artifact
-from ...storage import artifact_content_url
-from ..contracts import NodeExecutionContext, NodeExecutionResult
-from .media_support import load_input_media
+from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 
 
 IMAGE_MODEL_COSTS = {
@@ -47,7 +44,11 @@ class ImageGenerationCapabilityExecutor:
         prompt = context.payload.prompt.strip()
         if not prompt:
             raise ValueError("image generation requires a connected Prompt")
-        media, input_artifact_ids, input_roles = load_input_media(context.db, context.definition, typed_inputs)
+        artifact_store = context.require_artifact_store()
+        media, input_artifact_ids, input_roles = artifact_store.load_input_media(
+            context.definition,
+            typed_inputs,
+        )
         image_inputs = [item for item in media if item.artifact_type == "Image"][:4]
         model_alias = context.payload.model_alias
         count = max(1, min(4, int(resolved_node_config.get("output_count") or 1)))
@@ -84,35 +85,36 @@ class ImageGenerationCapabilityExecutor:
             provider = "openai"
             revision = OPENAI_LIVE_REVISION
         artifacts = [
-            create_artifact(
-                context.db,
-                context.definition.artifact_contract.primary_type,
-                schema_id=context.definition.artifact_contract.schema_id,
-                input_artifact_ids=input_artifact_ids,
-                input_artifact_roles=input_roles,
-                metadata={
-                    "experiment_id": context.experiment_id,
-                    "request_hash": context.request_hash,
-                    "execution_mode": revision,
-                    "immutable": True,
-                    "source": "node_executor_registry",
-                    "provider": provider,
-                    "model_alias": model_alias,
-                    "exact_model_id": exact_model_id,
-                    "normalized_config": resolved_node_config,
-                    "output_role": context.definition.artifact_contract.output_role,
-                    "candidate_index": index,
-                },
-                content=asset.data,
-                content_type=asset.content_type,
-                filename=asset.filename,
+            artifact_store.create(
+                NodeArtifactWrite(
+                    artifact_type=context.definition.artifact_contract.primary_type,
+                    schema_id=context.definition.artifact_contract.schema_id,
+                    input_artifact_ids=input_artifact_ids,
+                    input_artifact_roles=input_roles,
+                    metadata={
+                        "experiment_id": context.experiment_id,
+                        "request_hash": context.request_hash,
+                        "execution_mode": revision,
+                        "immutable": True,
+                        "source": "node_executor_registry",
+                        "provider": provider,
+                        "model_alias": model_alias,
+                        "exact_model_id": exact_model_id,
+                        "normalized_config": resolved_node_config,
+                        "output_role": context.definition.artifact_contract.output_role,
+                        "candidate_index": index,
+                    },
+                    content=asset.data,
+                    content_type=asset.content_type,
+                    filename=asset.filename,
+                )
             )
             for index, asset in enumerate(assets, start=1)
         ]
-        context.db.flush()
+        artifact_store.flush()
         primary = artifacts[0]
         return NodeExecutionResult(
-            output={"kind": "image", "title": "Generated image", "mimeType": assets[0].content_type, "url": artifact_content_url(primary.id)},
+            output={"kind": "image", "title": "Generated image", "mimeType": assets[0].content_type, "url": artifact_store.content_url(primary.id)},
             output_artifact_ids=[artifact.id for artifact in artifacts],
             provider_request_id=request_id,
             cost_usd=IMAGE_MODEL_COSTS.get(model_alias, 0.0),

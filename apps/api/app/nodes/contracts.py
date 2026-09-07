@@ -152,12 +152,60 @@ class NodeDefinition(BaseModel):
 
 
 @dataclass(frozen=True)
+class NodeInputMedia:
+    artifact_id: str
+    artifact_type: str
+    data: bytes
+    content_type: str
+
+
+@dataclass(frozen=True)
+class NodeArtifactRef:
+    id: str
+    type: str
+
+
+@dataclass(frozen=True)
+class NodeArtifactWrite:
+    artifact_type: str
+    schema_id: str | None = None
+    input_artifact_ids: list[str] = field(default_factory=list)
+    input_artifact_roles: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+    content: bytes | None = None
+    content_type: str | None = None
+    filename: str | None = None
+
+
+class NodeArtifactStore(Protocol):
+    def load_input_media(
+        self,
+        definition: NodeDefinition,
+        typed_inputs: list[dict[str, Any]],
+        *,
+        expand_characters: bool = True,
+    ) -> tuple[list[NodeInputMedia], list[str], dict[str, str]]: ...
+
+    def create(self, write: NodeArtifactWrite) -> NodeArtifactRef: ...
+
+    def flush(self) -> None: ...
+
+    def content_url(self, artifact_id: str) -> str: ...
+
+
+@dataclass(frozen=True)
 class NodeExecutionContext:
     db: Session
     payload: ExperimentRunRequest
     definition: NodeDefinition
     request_hash: str
     experiment_id: str
+    artifact_store: NodeArtifactStore | None = None
+
+    def require_artifact_store(self) -> NodeArtifactStore:
+        if self.artifact_store is None:
+            raise RuntimeError("Node Executor requires an ArtifactStore")
+        return self.artifact_store
 
 
 @dataclass(frozen=True)
