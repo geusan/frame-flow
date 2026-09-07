@@ -1,262 +1,98 @@
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
-from ...database import (
-    ArtifactRecord,
-    DefinitionRecord,
-    FormatRecord,
-    ReferenceRecord,
-    ReferenceSetRecord,
-    get_db,
+from ...contexts.formats.application import (
+    CreateExtractionRecipeCommand,
+    CreateFormatRunCommand,
+    CreateVariantsCommand,
+    FormatApplication,
+    MergeFormatsCommand,
 )
+from ...contexts.formats.domain import FormatNotFoundError, FormatValidationError
 from ...domain import ExtractionRecipeRequest, FormatRunRequest, MergeRequest, VariationRequest
-from ...format_extraction import FormatSource, get_format_extractor
-from ...service import create_artifact, new_id
-from ...storage import get_storage, storage_location
+from ..dependencies import get_format_application
 
 
 router = APIRouter(tags=["formats"])
 
 
+def _raise_format_http_error(exc: Exception) -> NoReturn:
+    if isinstance(exc, FormatNotFoundError):
+        raise HTTPException(404, str(exc)) from exc
+    if isinstance(exc, FormatValidationError):
+        raise HTTPException(422, str(exc)) from exc
+    raise exc
+
+
 @router.post("/extraction-recipes", status_code=201)
 def create_extraction_recipe(
     payload: ExtractionRecipeRequest,
-    db: Session = Depends(get_db),
+    application: FormatApplication = Depends(get_format_application),
 ) -> dict[str, Any]:
-    record = DefinitionRecord(
-        id=new_id("recipe"),
-        kind="extraction_recipe",
-        version=payload.version,
-        payload=payload.model_dump(mode="json"),
+    return application.create_recipe(
+        CreateExtractionRecipeCommand(payload.model_dump(mode="python"))
     )
-    db.add(record)
-    db.commit()
-    return {"id": record.id, **record.payload}
 
 
 @router.post("/format-runs", status_code=201)
 def create_format_run(
     payload: FormatRunRequest,
-    db: Session = Depends(get_db),
+    application: FormatApplication = Depends(get_format_application),
 ) -> dict[str, Any]:
-    reference_set = db.get(ReferenceSetRecord, payload.reference_set_id)
-    if not reference_set:
-        raise HTTPException(404, "reference set not found")
-    references = [
-        db.get(ReferenceRecord, reference_id)
-        for reference_id in reference_set.reference_ids
-    ]
-    if any(reference is None for reference in references):
-        raise HTTPException(404, "reference set contains a missing reference")
-    proxy_artifacts = db.scalars(
-        select(ArtifactRecord).where(ArtifactRecord.type == "ProxyVideo")
-    ).all()
-    proxy_by_reference = {
-        str(artifact.metadata_json.get("reference_id")): artifact
-        for artifact in proxy_artifacts
-        if artifact.metadata_json.get("reference_id")
-    }
-    storage = get_storage()
-    sources: list[FormatSource] = []
-    for reference in references:
-        assert reference is not None
-        proxy = proxy_by_reference.get(reference.id)
-        if not proxy:
-            raise HTTPException(
-                409,
-                f"reference has no ProxyVideo artifact: {reference.id}",
-            )
-        bucket, key = storage_location(proxy.uri, proxy.metadata_json)
-        sources.append(
-            FormatSource(
-                reference.id,
-                reference.title,
-                reference.creator,
-                reference.duration_ms,
-                storage.get_bytes(bucket=bucket, key=key),
-                str(
-                    (proxy.metadata_json.get("storage") or {}).get("content_type")
-                    or "video/mp4"
-                ),
-            )
-        )
     try:
-        extracted = get_format_extractor().extract(sources)
-    except Exception as exc:
-        raise HTTPException(422, str(exc)) from exc
-    profile = extracted.profile
-    record = FormatRecord(
-        id=new_id("fmt"),
-        name=payload.name,
-        kind="profile",
-        parent_ids=reference_set.reference_ids,
-        payload=profile.model_dump(mode="json"),
-        lineage={
-            "recipe_id": payload.recipe_id,
-            "recipe_version": payload.recipe_version,
-            "provider_request_id": extracted.provider_request_id,
-            "exact_model_id": extracted.exact_model_id,
-        },
-    )
-    db.add(record)
-    content = json.dumps(
-        record.payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
-    ).encode()
-    artifact = create_artifact(
-        db,
-        "FormatProfile",
-        schema_id="format.profile.v1",
-        content=content,
-        content_type="application/json",
-        filename="format-profile.json",
-        input_artifact_ids=[
-            proxy_by_reference[reference_id].id
-            for reference_id in reference_set.reference_ids
-        ],
-        metadata={
-            "format_id": record.id,
-            "provider_request_id": extracted.provider_request_id,
-        },
-    )
-    db.commit()
-    return {
-        "id": record.id,
-        "name": record.name,
-        "kind": record.kind,
-        "payload": record.payload,
-        "lineage": record.lineage,
-        "artifact_id": artifact.id,
-    }
+        return application.create_run(
+            CreateFormatRunCommand(payload.model_dump(mode="python"))
+        )
+    except (FormatNotFoundError, FormatValidationError) as exc:
+        _raise_format_http_error(exc)
 
 
 @router.get("/formats/{format_id}")
 def get_format(
     format_id: str,
-    db: Session = Depends(get_db),
+    application: FormatApplication = Depends(get_format_application),
 ) -> dict[str, Any]:
-    record = db.get(FormatRecord, format_id)
-    if not record:
-        raise HTTPException(404, "format not found")
-    return {
-        "id": record.id,
-        "name": record.name,
-        "kind": record.kind,
-        "parent_ids": record.parent_ids,
-        "payload": record.payload,
-        "lineage": record.lineage,
-    }
+    try:
+        return application.get(format_id)
+    except FormatNotFoundError as exc:
+        _raise_format_http_error(exc)
 
 
 @router.get("/formats")
-def list_formats(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    rows = db.scalars(
-        select(FormatRecord).order_by(FormatRecord.created_at.desc())
-    ).all()
-    return [
-        {
-            "id": row.id,
-            "created_at": row.created_at,
-            "name": row.name,
-            "kind": row.kind,
-            "parent_ids": row.parent_ids,
-            "payload": row.payload,
-            "lineage": row.lineage,
-        }
-        for row in rows
-    ]
+def list_formats(
+    application: FormatApplication = Depends(get_format_application),
+) -> list[dict[str, Any]]:
+    return application.list()
 
 
 @router.post("/formats/{format_id}/variants", status_code=201)
 def create_variants(
     format_id: str,
     payload: VariationRequest,
-    db: Session = Depends(get_db),
+    application: FormatApplication = Depends(get_format_application),
 ) -> list[dict[str, Any]]:
-    parent = db.get(FormatRecord, format_id)
-    if not parent:
-        raise HTTPException(404, "format not found")
-    results = []
-    for index in range(payload.count):
-        variant_payload = json.loads(json.dumps(parent.payload))
-        previous = variant_payload["core"]["visual"]["motion_intensity"]
-        new_value = round(min(1, previous + (index + 1) * 0.04), 2)
-        variant_payload["core"]["visual"]["motion_intensity"] = new_value
-        record = FormatRecord(
-            id=new_id("fmtvar"),
-            name=f"{parent.name} · Variant {index + 1}",
-            kind="variant",
-            parent_ids=[parent.id],
-            payload=variant_payload,
-            lineage={
-                "variation_recipe": payload.model_dump(mode="json"),
-                "diff": [
-                    {
-                        "field": "core.visual.motion_intensity",
-                        "previous": previous,
-                        "value": new_value,
-                        "reason": "diversity axis",
-                    }
-                ],
-            },
+    try:
+        return application.create_variants(
+            CreateVariantsCommand(
+                format_id=format_id,
+                values=payload.model_dump(mode="python"),
+            )
         )
-        db.add(record)
-        results.append(
-            {"id": record.id, "name": record.name, "diff": record.lineage["diff"]}
-        )
-    db.commit()
-    return results
+    except FormatNotFoundError as exc:
+        _raise_format_http_error(exc)
 
 
 @router.post("/formats/merge", status_code=201)
 def merge_formats(
     payload: MergeRequest,
-    db: Session = Depends(get_db),
+    application: FormatApplication = Depends(get_format_application),
 ) -> dict[str, Any]:
-    rows = [db.get(FormatRecord, source.format_id) for source in payload.sources]
-    if any(row is None for row in rows):
-        raise HTTPException(404, "one or more formats were not found")
-    formats = [row for row in rows if row is not None]
-    merged = json.loads(json.dumps(formats[0].payload))
-    total_weight = sum(source.weight for source in payload.sources) or 1
-    fields = ["median_shot_duration_ms", "cuts_per_10_seconds"]
-    lineage: dict[str, Any] = {}
-    for field in fields:
-        value = (
-            sum(
-                float(row.payload["core"]["editing"][field]) * source.weight
-                for row, source in zip(formats, payload.sources, strict=True)
-            )
-            / total_weight
+    try:
+        return application.merge(
+            MergeFormatsCommand(payload.model_dump(mode="python"))
         )
-        merged["core"]["editing"][field] = round(value, 2)
-        lineage[f"core.editing.{field}"] = {
-            "value": round(value, 2),
-            "sources": [source.model_dump() for source in payload.sources],
-            "strategy": payload.default_strategy,
-        }
-    record = FormatRecord(
-        id=new_id("fmtmerge"),
-        name=payload.name,
-        kind="composition",
-        parent_ids=[source.format_id for source in payload.sources],
-        payload=merged,
-        lineage=lineage,
-    )
-    db.add(record)
-    db.commit()
-    return {
-        "id": record.id,
-        "name": record.name,
-        "kind": record.kind,
-        "payload": record.payload,
-        "lineage": record.lineage,
-    }
+    except FormatNotFoundError as exc:
+        _raise_format_http_error(exc)
