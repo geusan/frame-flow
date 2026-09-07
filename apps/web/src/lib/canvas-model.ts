@@ -53,13 +53,12 @@ export interface CanvasOutput {
   rightHandCoverage?: number;
 }
 
-export interface StudioNodeData extends Record<string, unknown> {
+export interface StudioNodeContractData {
   key: string;
   label: string;
   description: string;
   icon: IconName;
   kind: NodeKind;
-  status: NodeStatus;
   inputTypes?: PortType[];
   inputsRequired?: boolean;
   requiredInputTypes?: PortType[];
@@ -68,23 +67,35 @@ export interface StudioNodeData extends Record<string, unknown> {
   model?: string;
   provider?: ProviderName;
   cost?: string;
-  duration?: string;
-  preview?: string;
-  fanout?: string;
+  contractVersion?: number;
+  definitionDigest?: string;
+  config?: Record<string, unknown>;
+  executable?: boolean;
+}
+
+export interface StudioNodeRuntimeData {
+  status: NodeStatus;
+  output?: CanvasOutput;
+  outputEdited?: boolean;
+  outputArtifactIds?: string[];
   attemptCount?: number;
   lastRunAt?: string;
   logs?: string[];
-  configText?: string;
-  output?: CanvasOutput;
-  outputEdited?: boolean;
   lastExperimentId?: string;
-  outputArtifactIds?: string[];
   lastRequestHash?: string;
   executionMode?: string;
   lastCostUsd?: number;
   runProgress?: number;
-  skillId?: string;
   promptEdited?: boolean;
+}
+
+/** Fields read only by the pre-canonical Canvas compatibility adapter. */
+export interface LegacyStudioNodeFields {
+  duration?: string;
+  preview?: string;
+  fanout?: string;
+  configText?: string;
+  skillId?: string;
   resolution?: string;
   aspectRatio?: string;
   batchSize?: number;
@@ -94,10 +105,6 @@ export interface StudioNodeData extends Record<string, unknown> {
   loraUrl?: string;
   loraScale?: number;
   triggerWord?: string;
-  contractVersion?: number;
-  definitionDigest?: string;
-  config?: Record<string, unknown>;
-  executable?: boolean;
   transition?: string;
   targetDurationSeconds?: number;
   sourceLanguage?: string;
@@ -117,6 +124,11 @@ export interface StudioNodeData extends Record<string, unknown> {
   stickyColor?: StickyColor;
   drawing?: DrawingDocument;
 }
+
+export type StudioNodeData = Record<string, unknown>
+  & StudioNodeContractData
+  & StudioNodeRuntimeData
+  & LegacyStudioNodeFields;
 
 export type StudioFlowNode = Node<StudioNodeData, "studio">;
 
@@ -178,7 +190,8 @@ export interface NodeTemplate {
   };
 }
 
-export const nodeTemplates: NodeTemplate[] = [
+/** Read-only compatibility catalog for Canvas documents created before the Registry API. */
+export const legacyNodeTemplates: NodeTemplate[] = [
   { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "직접 입력하거나 상위 Prompt를 받아 이미지 참조와 함께 편집", icon: "brief", kind: "input", inputTypes: ["Prompt", "Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
   { id: "drawing-canvas", label: "Drawing Canvas", group: "Quick", data: { key: "utility.drawing", label: "Drawing canvas", description: "이미지를 배치하고 펜으로 지시사항을 표시", icon: "drawing", kind: "input", outputType: "Image", executable: false, drawing: { version: 1, width: 1280, height: 720, images: [], strokes: [] } } },
   { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
@@ -223,11 +236,11 @@ export const nodeTemplates: NodeTemplate[] = [
   { id: "qc", label: "Quality control", group: "Advanced", visible: false, data: { key: "media.qc", label: "Quality control", description: "ffprobe 기반 Codec·Pixel Format·Audio·Duration 검사", icon: "qc", kind: "review", inputTypes: ["Video"], outputType: "QCReport", model: "local.ffprobe", cost: "$0.00" } },
 ];
 
-export const canvasElementTemplates = nodeTemplates.filter((template) => ["utility.sticky", "folder.group", "asset.upload", "utility.drawing"].includes(template.data.key));
+export const canvasElementTemplates = legacyNodeTemplates.filter((template) => ["utility.sticky", "folder.group", "asset.upload", "utility.drawing"].includes(template.data.key));
 
 export const inputHandleId = (type: PortType, index: number) => `input-${type}-${index}`;
 
-export function createNodeFromTemplate(templateId: string, position: XYPosition, sequence: number, templates: NodeTemplate[] = nodeTemplates): StudioFlowNode | null {
+export function createNodeFromTemplate(templateId: string, position: XYPosition, sequence: number, templates: NodeTemplate[]): StudioFlowNode | null {
   const template = templates.find((item) => item.id === templateId);
   if (!template) return null;
   return {

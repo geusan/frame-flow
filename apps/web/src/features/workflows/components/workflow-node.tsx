@@ -330,7 +330,21 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
   const inputs = data.inputTypes ?? [];
   const running = ["QUEUED", "CLAIMED", "SUBMITTED", "RUNNING"].includes(data.status);
   const progress = Math.max(0, Math.min(100, data.runProgress ?? 0));
-  const runningLabel = data.key === "character.generate" ? "Generating character views" : ["image.generate", "lora.image.generate"].includes(data.key) ? "Generating image" : data.key === "video.generate" ? "Generating video" : "Running step";
+  const runningLabel = data.outputType === "Character"
+    ? "Generating character views"
+    : data.outputType === "Image"
+      ? "Generating image"
+      : data.outputType === "Video"
+        ? "Generating video"
+        : "Running step";
+  const nodeEditor: Record<string, ReactNode> = {
+    "prompt.input": <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />,
+    "skill.execute": <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>,
+    "asset.upload": <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />,
+    "asset.select": <AssetPickerPopover nodeId={id} value={data.configText ?? ""} preferredTab={data.outputType === "Audio" ? "audio" : undefined} />,
+    "character.select": <CharacterPickerPopover nodeId={id} value={data.configText ?? ""} />,
+  };
+  const editor = nodeEditor[data.key];
   return (
     <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
       {inputs.map((type, index) => (
@@ -356,21 +370,17 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
         <span><strong>{runningLabel}…</strong><small>{progress > 5 ? `${progress}% complete` : "Provider request in progress"}</small></span>
         <i className="node-running-track"><b className={progress > 5 ? "determinate" : "indeterminate"} style={progress > 5 ? { width: `${progress}%` } : undefined} /></i>
       </div>}
-      {data.key === "prompt.input" && <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />}
-      {data.key === "skill.execute" && <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>}
-      {data.key === "asset.upload" && <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />}
-      {data.key === "asset.select" && <AssetPickerPopover nodeId={id} value={data.configText ?? ""} preferredTab={data.outputType === "Audio" ? "audio" : undefined} />}
-      {data.key === "character.select" && <CharacterPickerPopover nodeId={id} value={data.configText ?? ""} />}
-      {data.configText !== undefined && !["asset.select", "asset.upload", "prompt.input"].includes(data.key) && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
-      {data.output ? data.key === "reference.decompose"
+      {editor}
+      {data.configText !== undefined && !editor && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
+      {data.output ? data.outputType === "ReferenceAnalysis"
         ? <ReferenceAnalysisOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
-        : data.key === "motion.extract"
+        : data.outputType === "MotionTrack"
           ? <MotionTrackOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
           : <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
         : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
       <div className="node-meta">
         {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
-        {data.key === "character.generate" ? <span><GitFork size={10} /> {data.shotCount ?? 6} views</span> : data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
+        {data.outputType === "Character" ? <span><GitFork size={10} /> {data.shotCount ?? 6} views</span> : data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
         {!!data.attemptCount && <span><RefreshCw size={10} /> {data.attemptCount}</span>}
         {data.cost && <span className="node-cost">{data.cost}</span>}
         {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={running || data.status === "BLOCKED"}>{running ? <><RefreshCw className="spin" size={13} /> Running</> : <><Play size={12} fill="currentColor" /> Run</>}</button>}

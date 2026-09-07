@@ -62,7 +62,7 @@ import {
   canvasElementTemplates,
   graphCost,
   inputHandleId,
-  nodeTemplates,
+  legacyNodeTemplates,
   refreshReadyStatuses,
   stepInputError,
   validateGraph,
@@ -334,7 +334,7 @@ function providerFromModel(model?: string): ProviderName {
   return model?.startsWith("openai.") ? "openai" : model?.startsWith("xai.") ? "xai" : model?.startsWith("fal.") ? "fal" : "google";
 }
 
-function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = nodeTemplates): GraphSnapshot {
+function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = legacyNodeTemplates): GraphSnapshot {
   const isLegacyMockGraph = graph.nodes.some((node) => node.id === "brief" && node.data.description.includes("로마 도로"))
     || graph.nodes.some((node) => node.id === "format" && node.data.label === "Contrarian History");
   if (isLegacyMockGraph) return { ...graph, nodes: [], edges: [], activeRunId: undefined };
@@ -660,7 +660,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setRegistryTemplates(manifestTemplates);
       const migrated = migrateStoredGraph(
         { id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id },
-        [...nodeTemplates, ...templates],
+        [...legacyNodeTemplates, ...templates],
       );
       const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments);
       setNodes(reconciled.nodes);
@@ -1213,7 +1213,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     };
     const position = screenToFlowPosition({ x: screenPoint.x + offset * 28, y: screenPoint.y + offset * 28 });
     const sequence = sequenceRef.current++;
-    const node = createNodeFromTemplate("upload", position, sequence);
+    const node = createNodeFromTemplate("upload", position, sequence, canvasElementTemplates);
     if (!node) return;
     const clipboardName = file.name || `clipboard-image-${Date.now()}.png`;
     node.data = { ...node.data, label: "Pasted image", status: "RUNNING", configText: clipboardName, preview: `Uploading ${clipboardName}…` };
@@ -1231,7 +1231,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       y: bounds ? bounds.top + bounds.height / 2 : window.innerHeight / 2,
     };
     const position = screenToFlowPosition(screenPoint);
-    const node = createNodeFromTemplate("upload", position, sequenceRef.current++);
+    const node = createNodeFromTemplate("upload", position, sequenceRef.current++, canvasElementTemplates);
     if (!node) return;
     node.data = { ...node.data, label: "URL video", status: "RUNNING", configText: sourceUrl, preview: "Downloading video from URL…" };
     pushHistory();
