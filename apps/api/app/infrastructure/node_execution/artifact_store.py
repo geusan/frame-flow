@@ -4,7 +4,9 @@ from sqlalchemy.orm import Session
 
 from ...database import ArtifactRecord
 from ...nodes.contracts import (
+    NodeArtifactContent,
     NodeArtifactRef,
+    NodeArtifactSnapshot,
     NodeArtifactWrite,
     NodeDefinition,
     NodeInputMedia,
@@ -84,6 +86,42 @@ class SqlAlchemyNodeArtifactStore:
             for value in values:
                 append_artifact(str(value), role)
         return media, artifact_ids, roles
+
+    def read(self, artifact_id: str) -> NodeArtifactContent:
+        artifact = self._session.get(ArtifactRecord, artifact_id)
+        if artifact is None:
+            raise ValueError(f"input artifact does not exist: {artifact_id}")
+        storage = get_storage()
+        bucket, key = storage_location(artifact.uri, artifact.metadata_json)
+        content_type = str(
+            (artifact.metadata_json.get("storage") or {}).get("content_type")
+            or "application/octet-stream"
+        )
+        return NodeArtifactContent(
+            record=NodeArtifactSnapshot(
+                id=artifact.id,
+                type=artifact.type,
+                metadata=dict(artifact.metadata_json or {}),
+            ),
+            data=storage.get_bytes(bucket=bucket, key=key),
+            content_type=content_type,
+        )
+
+    def read_inputs(
+        self,
+        typed_inputs: list[dict],
+    ) -> list[NodeArtifactContent]:
+        artifact_ids: list[str] = []
+        for item in typed_inputs:
+            values = [
+                *(item.get("artifact_ids") or []),
+                *([item.get("artifact_id")] if item.get("artifact_id") else []),
+            ]
+            for value in values:
+                artifact_id = str(value)
+                if artifact_id and artifact_id not in artifact_ids:
+                    artifact_ids.append(artifact_id)
+        return [self.read(artifact_id) for artifact_id in artifact_ids]
 
     def create(self, write: NodeArtifactWrite) -> NodeArtifactRef:
         artifact = create_artifact(

@@ -166,6 +166,24 @@ class NodeArtifactRef:
 
 
 @dataclass(frozen=True)
+class NodeArtifactSnapshot:
+    id: str
+    type: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def metadata_json(self) -> dict[str, Any]:
+        return self.metadata
+
+
+@dataclass(frozen=True)
+class NodeArtifactContent:
+    record: NodeArtifactSnapshot
+    data: bytes
+    content_type: str
+
+
+@dataclass(frozen=True)
 class NodeArtifactWrite:
     artifact_type: str
     schema_id: str | None = None
@@ -178,6 +196,13 @@ class NodeArtifactWrite:
 
 
 class NodeArtifactStore(Protocol):
+    def read(self, artifact_id: str) -> NodeArtifactContent: ...
+
+    def read_inputs(
+        self,
+        typed_inputs: list[dict[str, Any]],
+    ) -> list[NodeArtifactContent]: ...
+
     def load_input_media(
         self,
         definition: NodeDefinition,
@@ -204,6 +229,10 @@ class NodeProviderSettings(Protocol):
     def get_auth(self, provider_key: str) -> NodeProviderAuth | None: ...
 
 
+class NodeMediaRuntime(Protocol):
+    def render_timeline(self, timeline: NodeArtifactContent) -> bytes: ...
+
+
 @dataclass(frozen=True)
 class NodeExecutionContext:
     db: Session
@@ -213,6 +242,7 @@ class NodeExecutionContext:
     experiment_id: str
     artifact_store: NodeArtifactStore | None = None
     provider_settings: NodeProviderSettings | None = None
+    media_runtime: NodeMediaRuntime | None = None
 
     def require_artifact_store(self) -> NodeArtifactStore:
         if self.artifact_store is None:
@@ -223,6 +253,11 @@ class NodeExecutionContext:
         if self.provider_settings is None:
             raise RuntimeError("Node Executor requires ProviderSettings")
         return self.provider_settings
+
+    def require_media_runtime(self) -> NodeMediaRuntime:
+        if self.media_runtime is None:
+            raise RuntimeError("Node Executor requires MediaRuntime")
+        return self.media_runtime
 
 
 @dataclass(frozen=True)

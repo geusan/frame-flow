@@ -16,7 +16,13 @@ from app.experiments import request_fingerprint, resolve_model
 from app.motion_control_video import MOTION_CONTROL_VIDEO_REVISION, RenderedMotionControlVideo, parse_motion_track, render_motion_control_video
 from app.motion_segmentation import MOTION_SEGMENT_REVISION, segment_motion_track
 from app.nodes import node_registry
-from app.nodes.contracts import NodeDefinition, NodeExecutionContext
+from app.nodes.contracts import (
+    NodeArtifactContent,
+    NodeArtifactRef,
+    NodeArtifactSnapshot,
+    NodeDefinition,
+    NodeExecutionContext,
+)
 from app.nodes.editor_refs import node_editor_ref_registry
 from app.nodes.inventory import canvas_only_keys, load_node_inventory, production_node_keys
 from app.nodes.port_types import port_type_registry
@@ -491,33 +497,32 @@ def test_motion_control_renderer_creates_playable_mp4():
 def test_motion_control_executor_records_artifact_contract_and_lineage(monkeypatch):
     definition = node_registry.get("motion.control_video", 1)
     assert definition is not None
-    source = SimpleNamespace(id="motion_1", type="MotionTrack", uri="s3://bucket/motion.json", metadata_json={})
-    output = SimpleNamespace(id="video_1", type="Video")
+    source = NodeArtifactContent(
+        record=NodeArtifactSnapshot(id="motion_1", type="MotionTrack"),
+        data=json.dumps(motion_track_fixture()).encode(),
+        content_type="application/json",
+    )
     captured = {}
 
-    class FakeDb:
-        def get(self, _, artifact_id):
-            return source if artifact_id == source.id else output if artifact_id == output.id else None
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            if artifact_id != source.record.id:
+                raise ValueError("input artifact does not exist")
+            return source
+
+        def create(self, write):
+            captured.update({"artifact_type": write.artifact_type, **write.__dict__})
+            return NodeArtifactRef(id="video_1", type="Video")
 
         def flush(self):
             captured["flushed"] = True
 
-    class FakeStorage:
-        def get_bytes(self, **_):
-            return json.dumps(motion_track_fixture()).encode()
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
 
-    monkeypatch.setattr(motion_control_module, "get_storage", lambda: FakeStorage())
-    monkeypatch.setattr(motion_control_module, "storage_location", lambda *_: ("bucket", "motion.json"))
     monkeypatch.setattr(motion_control_module, "render_motion_control_video", lambda *args, **kwargs: RenderedMotionControlVideo(
         data=b"video", width=720, height=1280, fps=24, duration_ms=250, frame_count=6,
     ))
-
-    def fake_create_artifact(db, artifact_type, **kwargs):
-        captured.update({"artifact_type": artifact_type, **kwargs})
-        return output
-
-    monkeypatch.setattr(motion_control_module, "create_artifact", fake_create_artifact)
-    monkeypatch.setattr(motion_control_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
     payload = ExperimentRunRequest(
         canvas_id="canvas_1",
         node_id="control_1",
@@ -528,16 +533,17 @@ def test_motion_control_executor_records_artifact_contract_and_lineage(monkeypat
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=FakeDb(),
+        db=object(),
         payload=payload,
         definition=definition,
         request_hash="abcd1234",
         experiment_id="experiment_1",
+        artifact_store=FakeArtifactStore(),
     )
     result = MotionControlVideoExecutor().execute(
         context,
         node_registry.resolve_config(definition, {}),
-        [{"type": "MotionTrack", "artifact_ids": [source.id]}],
+        [{"type": "MotionTrack", "artifact_ids": [source.record.id]}],
     )
     assert result.output_artifact_ids == ["video_1"]
     assert result.output["url"].endswith("/video_1/content")
@@ -563,11 +569,12 @@ def test_motion_control_rejects_missing_or_invalid_motion_track():
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=SimpleNamespace(get=lambda *_: None),
+        db=object(),
         payload=payload,
         definition=definition,
         request_hash="digest",
         experiment_id="experiment_1",
+        artifact_store=SimpleNamespace(read=lambda *_: None),
     )
     with pytest.raises(ValueError, match="connected MotionTrack"):
         MotionControlVideoExecutor().execute(context, node_registry.resolve_config(definition, {}), [])

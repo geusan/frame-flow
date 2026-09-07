@@ -23,6 +23,7 @@ from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
 from .nodes import node_registry
 from .infrastructure.node_execution import (
     SqlAlchemyNodeArtifactStore,
+    SqlAlchemyNodeMediaRuntime,
     SqlAlchemyNodeProviderSettings,
 )
 from .nodes.contracts import NodeExecutionContext, NodeExecutionResult
@@ -436,6 +437,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             experiment_id=record.id,
             artifact_store=SqlAlchemyNodeArtifactStore(db),
             provider_settings=SqlAlchemyNodeProviderSettings(db),
+            media_runtime=SqlAlchemyNodeMediaRuntime(db),
         ) if definition else None
         if context and node_registry.can_execute(context):
             result = node_registry.execute(

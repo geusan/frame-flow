@@ -12,6 +12,10 @@ def test_provider_executors_use_artifact_port_instead_of_database_session() -> N
         "character_generation.py",
         "fal_lora_image.py",
         "local_subscription_agent.py",
+        "ffmpeg_media.py",
+        "motion_control_video.py",
+        "motion_segment.py",
+        "video_retime.py",
     ):
         source = (executor_root / filename).read_text()
         assert "context.db" not in source, filename
@@ -24,6 +28,9 @@ def test_provider_executors_use_artifact_port_instead_of_database_session() -> N
     assert "get_provider_record" not in local_agent_source
     assert "provider_is_configured" not in local_agent_source
     assert "require_provider_settings" in local_agent_source
+
+    ffmpeg_source = (executor_root / "ffmpeg_media.py").read_text()
+    assert "require_media_runtime" in ffmpeg_source
 
 
 def test_node_contract_does_not_expose_sqlalchemy_through_artifact_port() -> None:
