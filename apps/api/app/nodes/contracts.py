@@ -194,6 +194,17 @@ class NodeArtifactStore(Protocol):
 
 
 @dataclass(frozen=True)
+class NodeProviderAuth:
+    auth_method: str
+    configured: bool
+    setup_token: str = ""
+
+
+class NodeProviderSettings(Protocol):
+    def get_auth(self, provider_key: str) -> NodeProviderAuth | None: ...
+
+
+@dataclass(frozen=True)
 class NodeExecutionContext:
     db: Session
     payload: ExperimentRunRequest
@@ -201,11 +212,17 @@ class NodeExecutionContext:
     request_hash: str
     experiment_id: str
     artifact_store: NodeArtifactStore | None = None
+    provider_settings: NodeProviderSettings | None = None
 
     def require_artifact_store(self) -> NodeArtifactStore:
         if self.artifact_store is None:
             raise RuntimeError("Node Executor requires an ArtifactStore")
         return self.artifact_store
+
+    def require_provider_settings(self) -> NodeProviderSettings:
+        if self.provider_settings is None:
+            raise RuntimeError("Node Executor requires ProviderSettings")
+        return self.provider_settings
 
 
 @dataclass(frozen=True)

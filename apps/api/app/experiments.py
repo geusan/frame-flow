@@ -21,7 +21,10 @@ from .canvas_operations import (
 from .domain import ExperimentRunRequest, ExperimentRunResponse, NodeStatus
 from .media_preview import render_audio_wav, render_image_svg, render_video_mp4
 from .nodes import node_registry
-from .infrastructure.node_execution import SqlAlchemyNodeArtifactStore
+from .infrastructure.node_execution import (
+    SqlAlchemyNodeArtifactStore,
+    SqlAlchemyNodeProviderSettings,
+)
 from .nodes.contracts import NodeExecutionContext, NodeExecutionResult
 from .providers import model_id_for_alias
 from .providers_fal import FAL_LIVE_REVISION, get_fal_generation_services
@@ -432,6 +435,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             request_hash=digest,
             experiment_id=record.id,
             artifact_store=SqlAlchemyNodeArtifactStore(db),
+            provider_settings=SqlAlchemyNodeProviderSettings(db),
         ) if definition else None
         if context and node_registry.can_execute(context):
             result = node_registry.execute(

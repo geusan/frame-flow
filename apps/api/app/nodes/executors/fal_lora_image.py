@@ -5,10 +5,7 @@ from typing import Any
 
 from ...providers import model_id_for_alias
 from ...providers_fal import FAL_LIVE_REVISION, get_fal_generation_services
-from ...service import create_artifact
-from ...storage import artifact_content_url
-from ..contracts import NodeExecutionContext, NodeExecutionResult
-from .media_support import load_input_media
+from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 
 
 class FalLoraImageCapabilityExecutor:
@@ -32,8 +29,8 @@ class FalLoraImageCapabilityExecutor:
         prompt = context.payload.prompt.strip()
         if not prompt:
             raise ValueError("fal LoRA image generation requires a connected Prompt")
-        _, input_artifact_ids, input_roles = load_input_media(
-            context.db,
+        artifact_store = context.require_artifact_store()
+        _, input_artifact_ids, input_roles = artifact_store.load_input_media(
             context.definition,
             typed_inputs,
             expand_characters=False,
@@ -52,32 +49,33 @@ class FalLoraImageCapabilityExecutor:
         )
         model_alias = context.payload.model_alias
         exact_model_id = model_id_for_alias(model_alias) or model_alias
-        artifact = create_artifact(
-            context.db,
-            context.definition.artifact_contract.primary_type,
-            schema_id=context.definition.artifact_contract.schema_id,
-            input_artifact_ids=input_artifact_ids,
-            input_artifact_roles=input_roles,
-            metadata={
-                "experiment_id": context.experiment_id,
-                "request_hash": context.request_hash,
-                "execution_mode": FAL_LIVE_REVISION,
-                "immutable": True,
-                "source": "node_executor_registry",
-                "provider": "fal",
-                "model_alias": model_alias,
-                "exact_model_id": exact_model_id,
-                "normalized_config": resolved_node_config,
-                "output_role": context.definition.artifact_contract.output_role,
-                "lora_artifact_id": lora_artifact_id or None,
-            },
-            content=generated.data,
-            content_type=generated.content_type,
-            filename="lora-generated.png",
+        artifact = artifact_store.create(
+            NodeArtifactWrite(
+                artifact_type=context.definition.artifact_contract.primary_type,
+                schema_id=context.definition.artifact_contract.schema_id,
+                input_artifact_ids=input_artifact_ids,
+                input_artifact_roles=input_roles,
+                metadata={
+                    "experiment_id": context.experiment_id,
+                    "request_hash": context.request_hash,
+                    "execution_mode": FAL_LIVE_REVISION,
+                    "immutable": True,
+                    "source": "node_executor_registry",
+                    "provider": "fal",
+                    "model_alias": model_alias,
+                    "exact_model_id": exact_model_id,
+                    "normalized_config": resolved_node_config,
+                    "output_role": context.definition.artifact_contract.output_role,
+                    "lora_artifact_id": lora_artifact_id or None,
+                },
+                content=generated.data,
+                content_type=generated.content_type,
+                filename="lora-generated.png",
+            )
         )
-        context.db.flush()
+        artifact_store.flush()
         return NodeExecutionResult(
-            output={"kind": "image", "title": "LoRA generated image", "mimeType": generated.content_type, "url": artifact_content_url(artifact.id)},
+            output={"kind": "image", "title": "LoRA generated image", "mimeType": generated.content_type, "url": artifact_store.content_url(artifact.id)},
             output_artifact_ids=[artifact.id],
             provider_request_id=generated.provider_request_id,
             cost_usd=0.07,

@@ -3,11 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from ...local_subscription_agents import LOCAL_SUBSCRIPTION_AGENT_REVISION, run_local_subscription_agent
-from ...provider_settings import get_provider_record, provider_auth_method_key, provider_is_configured
 from ...providers import model_id_for_alias
-from ...service import create_artifact
-from ...storage import artifact_content_url
-from ..contracts import NodeExecutionContext, NodeExecutionResult
+from ..contracts import NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 
 
 LOCAL_SUBSCRIPTION_AGENT_SCHEMA = "agent.response.v1"
@@ -32,13 +29,13 @@ class LocalSubscriptionAgentExecutor:
             if model_alias.startswith("chatgpt.local.")
             else ("claude", "setup_token")
         )
-        provider_record = get_provider_record(context.db, provider_key)
-        if not provider_record or provider_auth_method_key(provider_record) != required_auth_method:
+        provider_auth = context.require_provider_settings().get_auth(provider_key)
+        if not provider_auth or provider_auth.auth_method != required_auth_method:
             raise RuntimeError(f"Select {required_auth_method} for the {provider_key} provider in Settings")
-        if not provider_is_configured(provider_record):
+        if not provider_auth.configured:
             raise RuntimeError(f"The {provider_key} local subscription is not ready on the execution host")
 
-        setup_token = str((provider_record.secrets or {}).get("setup_token") or "") if provider_key == "claude" else ""
+        setup_token = provider_auth.setup_token if provider_key == "claude" else ""
         exact_model_id = model_id_for_alias(model_alias)
         if not exact_model_id:
             raise ValueError(f"Local subscription model alias is not registered: {model_alias}")
@@ -52,36 +49,38 @@ class LocalSubscriptionAgentExecutor:
 
         input_artifact_ids = _input_artifact_ids(typed_inputs)
         input_roles = {artifact_id: "supporting_input" for artifact_id in input_artifact_ids}
-        artifact = create_artifact(
-            context.db,
-            "Text",
-            schema_id=LOCAL_SUBSCRIPTION_AGENT_SCHEMA,
-            input_artifact_ids=input_artifact_ids,
-            input_artifact_roles=input_roles,
-            metadata={
-                "experiment_id": context.experiment_id,
-                "request_hash": context.request_hash,
-                "execution_mode": LOCAL_SUBSCRIPTION_AGENT_REVISION,
-                "immutable": True,
-                "source": "local_subscription_agent",
-                "provider": provider_key,
-                "client": executed.client,
-                "model_alias": model_alias,
-                "exact_model_id": exact_model_id,
-                "normalized_config": resolved_node_config,
-                **executed.metadata,
-            },
-            content=executed.text.encode(),
-            content_type="text/plain",
-            filename="agent-response.txt",
+        artifact_store = context.require_artifact_store()
+        artifact = artifact_store.create(
+            NodeArtifactWrite(
+                artifact_type="Text",
+                schema_id=LOCAL_SUBSCRIPTION_AGENT_SCHEMA,
+                input_artifact_ids=input_artifact_ids,
+                input_artifact_roles=input_roles,
+                metadata={
+                    "experiment_id": context.experiment_id,
+                    "request_hash": context.request_hash,
+                    "execution_mode": LOCAL_SUBSCRIPTION_AGENT_REVISION,
+                    "immutable": True,
+                    "source": "local_subscription_agent",
+                    "provider": provider_key,
+                    "client": executed.client,
+                    "model_alias": model_alias,
+                    "exact_model_id": exact_model_id,
+                    "normalized_config": resolved_node_config,
+                    **executed.metadata,
+                },
+                content=executed.text.encode(),
+                content_type="text/plain",
+                filename="agent-response.txt",
+            )
         )
-        context.db.flush()
+        artifact_store.flush()
         return NodeExecutionResult(
             output={
                 "kind": "text",
                 "title": "Local subscription response",
                 "text": executed.text,
-                "url": artifact_content_url(artifact.id),
+                "url": artifact_store.content_url(artifact.id),
             },
             output_artifact_ids=[artifact.id],
             provider_request_id=executed.provider_request_id,

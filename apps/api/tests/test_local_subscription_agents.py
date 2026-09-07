@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -15,7 +14,7 @@ from app.local_subscription_agents import (
     run_local_subscription_agent,
 )
 from app.nodes import node_registry
-from app.nodes.contracts import NodeExecutionContext
+from app.nodes.contracts import NodeArtifactRef, NodeExecutionContext, NodeProviderAuth
 from app.nodes.executors import local_subscription_agent as executor_module
 from app.nodes.executors.local_subscription_agent import LocalSubscriptionAgentExecutor
 from app import provider_settings as provider_settings_module
@@ -121,24 +120,36 @@ def test_claude_execution_disables_tools_and_parses_result(monkeypatch):
 def test_local_subscription_agent_executor_returns_text_artifact_contract(monkeypatch):
     definition = node_registry.get("agent.execute", 1)
     assert definition is not None
-    provider_record = SimpleNamespace(configuration={"_auth_method": "chatgpt_oauth"}, secrets={})
-    artifact = SimpleNamespace(id="artifact_text_1")
-    monkeypatch.setattr(executor_module, "get_provider_record", lambda *_: provider_record)
-    monkeypatch.setattr(executor_module, "provider_auth_method_key", lambda *_: "chatgpt_oauth")
-    monkeypatch.setattr(executor_module, "provider_is_configured", lambda *_: True)
     monkeypatch.setattr(executor_module, "run_local_subscription_agent", lambda **_: LocalAgentExecution(
         text="Local agent result",
         provider_request_id="thread_1",
         client="codex-cli",
         metadata={"model": "gpt-5.6-terra"},
     ))
-    monkeypatch.setattr(executor_module, "create_artifact", lambda *args, **kwargs: artifact)
-    monkeypatch.setattr(executor_module, "artifact_content_url", lambda artifact_id: f"/artifacts/{artifact_id}/content")
 
     class FakeDb:
+        pass
+
+    class FakeArtifactStore:
+        def __init__(self):
+            self.write = None
+
+        def create(self, write):
+            self.write = write
+            return NodeArtifactRef(id="artifact_text_1", type="Text")
+
         def flush(self):
             return None
 
+        def content_url(self, artifact_id):
+            return f"/artifacts/{artifact_id}/content"
+
+    class FakeProviderSettings:
+        def get_auth(self, provider_key):
+            assert provider_key == "openai"
+            return NodeProviderAuth(auth_method="chatgpt_oauth", configured=True)
+
+    artifact_store = FakeArtifactStore()
     payload = ExperimentRunRequest(
         canvas_id="canvas_1",
         node_id="agent_1",
@@ -154,6 +165,8 @@ def test_local_subscription_agent_executor_returns_text_artifact_contract(monkey
         definition=definition,
         request_hash="digest",
         experiment_id="experiment_1",
+        artifact_store=artifact_store,
+        provider_settings=FakeProviderSettings(),
     )
 
     result = LocalSubscriptionAgentExecutor().execute(
@@ -170,6 +183,7 @@ def test_local_subscription_agent_executor_returns_text_artifact_contract(monkey
     assert result.provider_request_id == "thread_1"
     assert result.output["text"] == "Local agent result"
     assert result.metadata["schema_id"] == "agent.response.v1"
+    assert artifact_store.write.schema_id == "agent.response.v1"
 
 
 def test_claude_error_result_is_not_treated_as_success(monkeypatch):
