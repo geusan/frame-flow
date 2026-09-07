@@ -1623,8 +1623,14 @@ def test_character_lora_training_persists_weights_and_hydrates_lora_generator(cl
                 "expires_at": "2026-08-31T02:00:00+00:00",
             })()
 
-    monkeypatch.setattr("app.main.get_fal_generation_services", lambda: FakeTrainingService())
-    monkeypatch.setattr("app.main.get_r2_training_dataset_store", lambda: FakeDatasetStore())
+    monkeypatch.setattr(
+        "app.api.routers.artifacts.get_fal_generation_services",
+        lambda: FakeTrainingService(),
+    )
+    monkeypatch.setattr(
+        "app.api.routers.artifacts.get_r2_training_dataset_store",
+        lambda: FakeDatasetStore(),
+    )
     monkeypatch.setattr("app.character_lora.build_captioned_lora_archive", lambda images, trigger_word: b"PK-test-archive")
     submitted = client.post(f"/characters/{character_id}/lora-training", json={
         "trigger_word": "mori_catgirl_v1",

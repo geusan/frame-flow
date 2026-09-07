@@ -1,7 +1,15 @@
 from fastapi.routing import APIRoute
 
+from app.api.routers.artifacts import router as artifacts_router
 from app.api.routers.canvases import router as canvases_router
+from app.api.routers.fonts import router as fonts_router
+from app.api.routers.formats import router as formats_router
+from app.api.routers.generation import router as generation_router
+from app.api.routers.references import router as references_router
 from app.api.routers.runs import router as runs_router
+from app.api.routers.settings import router as settings_router
+from app.api.routers.skills import router as skills_router
+from app.api.routers.system import router as system_router
 from app.api.routers.workflows import router as workflows_router
 from app.main import app
 
@@ -55,6 +63,73 @@ RUN_OPERATIONS = {
     ("POST", "/node-runs/{node_run_id}/regenerate"),
     ("POST", "/node-runs/{node_run_id}/fork"),
     ("POST", "/node-runs/{node_run_id}/select"),
+}
+
+ARTIFACT_OPERATIONS = {
+    ("GET", "/artifacts"),
+    ("GET", "/characters"),
+    ("POST", "/characters/{character_id}/lora-training"),
+    ("GET", "/characters/{character_id}/lora-training"),
+    ("GET", "/artifacts/{artifact_id}"),
+    ("POST", "/artifacts/{artifact_id}/audio-asset"),
+    ("GET", "/artifacts/{artifact_id}/lineage"),
+    ("POST", "/artifacts/{artifact_id}/scene-search"),
+    ("POST", "/artifacts/{artifact_id}/capture-frame"),
+    ("GET", "/artifacts/{artifact_id}/frame-preview"),
+    ("POST", "/artifacts/upload-url"),
+    ("POST", "/artifacts/import-url"),
+    ("POST", "/artifacts/upload"),
+    ("POST", "/artifacts/{artifact_id}/image-edits"),
+    ("GET", "/artifacts/{artifact_id}/download-url"),
+    ("GET", "/artifacts/{artifact_id}/content"),
+}
+
+REFERENCE_OPERATIONS = {
+    ("POST", "/references/inspect"),
+    ("POST", "/references/import"),
+    ("GET", "/references"),
+    ("POST", "/reference-sets"),
+}
+
+FORMAT_OPERATIONS = {
+    ("POST", "/extraction-recipes"),
+    ("POST", "/format-runs"),
+    ("GET", "/formats/{format_id}"),
+    ("GET", "/formats"),
+    ("POST", "/formats/{format_id}/variants"),
+    ("POST", "/formats/merge"),
+}
+
+GENERATION_OPERATIONS = {
+    ("POST", "/generation-briefs"),
+}
+
+SETTINGS_OPERATIONS = {
+    ("GET", "/settings/providers"),
+    ("PUT", "/settings/providers/{provider}"),
+    ("GET", "/models"),
+}
+
+FONT_OPERATIONS = {
+    ("GET", "/fonts"),
+    ("POST", "/fonts"),
+    ("PATCH", "/fonts/{font_id}"),
+}
+
+SKILL_OPERATIONS = {
+    ("GET", "/skills"),
+    ("POST", "/skills"),
+    ("POST", "/skills/{skill_id}/versions"),
+    ("GET", "/skills/{skill_id}/versions"),
+    ("POST", "/skills/{skill_id}/versions/{version_number}/activate"),
+    ("PUT", "/skills/{skill_id}/installation"),
+}
+
+SYSTEM_OPERATIONS = {
+    ("GET", "/health"),
+    ("GET", "/node-definitions"),
+    ("GET", "/node-port-types"),
+    ("GET", "/workspace/summary"),
 }
 
 
@@ -121,6 +196,142 @@ def test_run_router_is_registered_once_in_the_http_app() -> None:
     operations = _operations(app.routes)
 
     for method, path in RUN_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_artifact_endpoints_are_owned_by_the_artifact_router() -> None:
+    operations = _operations(artifacts_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == ARTIFACT_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.artifacts"}
+
+
+def test_artifact_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in ARTIFACT_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_reference_endpoints_are_owned_by_the_reference_router() -> None:
+    operations = _operations(references_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == REFERENCE_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.references"}
+
+
+def test_reference_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in REFERENCE_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_format_endpoints_are_owned_by_the_format_router() -> None:
+    operations = _operations(formats_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == FORMAT_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.formats"}
+
+
+def test_format_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in FORMAT_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_generation_endpoints_are_owned_by_the_generation_router() -> None:
+    operations = _operations(generation_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == GENERATION_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.generation"}
+
+
+def test_generation_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in GENERATION_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_settings_endpoints_are_owned_by_the_settings_router() -> None:
+    operations = _operations(settings_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == SETTINGS_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.settings"}
+
+
+def test_settings_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in SETTINGS_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_font_endpoints_are_owned_by_the_font_router() -> None:
+    operations = _operations(fonts_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == FONT_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.fonts"}
+
+
+def test_font_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in FONT_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_skill_endpoints_are_owned_by_the_skill_router() -> None:
+    operations = _operations(skills_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == SKILL_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.skills"}
+
+
+def test_skill_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in SKILL_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_system_endpoints_are_owned_by_the_system_router() -> None:
+    operations = _operations(system_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == SYSTEM_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.system"}
+
+
+def test_system_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in SYSTEM_OPERATIONS:
         assert sum(
             registered_method == method and registered_path == path
             for registered_method, registered_path, _ in operations
