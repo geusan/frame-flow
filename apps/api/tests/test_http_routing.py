@@ -1,6 +1,7 @@
 from fastapi.routing import APIRoute
 
 from app.api.routers.canvases import router as canvases_router
+from app.api.routers.workflows import router as workflows_router
 from app.main import app
 
 
@@ -12,6 +13,26 @@ CANVAS_OPERATIONS = {
     ("GET", "/canvases/{canvas_id}/export"),
     ("PUT", "/canvases/{canvas_id}"),
     ("DELETE", "/canvases/{canvas_id}"),
+}
+
+WORKFLOW_OPERATIONS = {
+    ("POST", "/workflows"),
+    ("GET", "/workflows"),
+    ("GET", "/workflows/{workflow_id}"),
+    ("PATCH", "/workflows/{workflow_id}"),
+    ("POST", "/workflows/{workflow_id}/publish"),
+    ("POST", "/workflows/{workflow_id}/runs"),
+    ("GET", "/workflows/{workflow_id}/versions"),
+    ("GET", "/workflows/{workflow_id}/versions/{version_number}"),
+    ("GET", "/workflows/{workflow_id}/annotations"),
+    ("POST", "/workflows/{workflow_id}/annotations"),
+    ("GET", "/workflows/{workflow_id}/versions/{version_number}/annotations"),
+    ("POST", "/workflows/{workflow_id}/versions/{version_number}/annotations"),
+    ("PATCH", "/workflow-annotations/{annotation_id}"),
+    ("DELETE", "/workflow-annotations/{annotation_id}"),
+    ("POST", "/workflows/{workflow_id}/archive"),
+    ("POST", "/workflows/{workflow_id}/activate"),
+    ("GET", "/workflow-runs"),
 }
 
 
@@ -44,6 +65,23 @@ def test_canvas_router_is_registered_once_in_the_http_app() -> None:
     operations = _operations(app.routes)
 
     for method, path in CANVAS_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_workflow_endpoints_are_owned_by_the_workflow_router() -> None:
+    operations = _operations(workflows_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == WORKFLOW_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.workflows"}
+
+
+def test_workflow_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in WORKFLOW_OPERATIONS:
         assert sum(
             registered_method == method and registered_path == path
             for registered_method, registered_path, _ in operations
