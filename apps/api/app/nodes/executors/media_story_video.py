@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...database import ArtifactRecord
 from ...image_story_video import (
     MEDIA_STORY_VIDEO_RENDERER_REVISION,
     MEDIA_STORY_VIDEO_REVISION,
@@ -11,9 +10,7 @@ from ...image_story_video import (
     render_image_story,
     renderer_environment,
 )
-from ...service import create_artifact
-from ...storage import artifact_content_url, get_storage, storage_location
-from ..contracts import NodeExecutionContext, NodeExecutionResult
+from ..contracts import NodeArtifactContent, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 
 
 class MediaStoryVideoExecutor:
@@ -31,15 +28,9 @@ class MediaStoryVideoExecutor:
         if context.definition.execution.revision != MEDIA_STORY_VIDEO_REVISION:
             raise RuntimeError("Media Story Video executor revision does not match its Node Definition")
         media, subtitle, audio, artifact_ids, roles = self._resolve_inputs(context, typed_inputs)
-        storage = get_storage()
 
-        def read(artifact: ArtifactRecord, *, kind: str) -> StoryMedia:
-            bucket, key = storage_location(artifact.uri, artifact.metadata_json)
-            content_type = str(
-                (artifact.metadata_json.get("storage") or {}).get("content_type")
-                or "application/octet-stream"
-            )
-            return StoryMedia(storage.get_bytes(bucket=bucket, key=key), content_type, kind)
+        def read(artifact: NodeArtifactContent, *, kind: str) -> StoryMedia:
+            return StoryMedia(artifact.data, artifact.content_type, kind)
 
         config = resolved_node_config
         sources = [read(artifact, kind=kind) for artifact, kind in media]
@@ -81,48 +72,50 @@ class MediaStoryVideoExecutor:
         )
         runtime_revision = self.runtime_revision(context.definition, config)
         resolved_motion_plan = [
-            {**item, "artifact_id": media[int(item["scene_index"])][0].id}
+            {**item, "artifact_id": media[int(item["scene_index"])][0].record.id}
             for item in rendered.motion_plan
         ]
-        artifact = create_artifact(
-            context.db,
-            context.definition.artifact_contract.primary_type,
-            schema_id=context.definition.artifact_contract.schema_id,
-            input_artifact_ids=artifact_ids,
-            input_artifact_roles=roles,
-            metadata={
-                "experiment_id": context.experiment_id,
-                "request_hash": context.request_hash,
-                "execution_mode": runtime_revision,
-                "immutable": True,
-                "source": "media_story_video",
-                "provider": "local",
-                "model_alias": context.definition.execution.model_alias,
-                "renderer_revision": runtime_revision,
-                "renderer_environment": rendered.renderer_environment,
-                "width": rendered.width,
-                "height": rendered.height,
-                "fps": rendered.fps,
-                "duration_ms": rendered.duration_ms,
-                "scene_count": rendered.scene_count,
-                "cue_count": rendered.cue_count,
-                "has_audio": rendered.has_audio,
-                "media_kinds": [kind for _, kind in media],
-                "resolved_motion_plan": resolved_motion_plan,
-                "normalized_config": config,
-                "output_role": context.definition.artifact_contract.output_role,
-            },
-            content=rendered.data,
-            content_type="video/mp4",
-            filename="media-story.mp4",
+        artifact_store = context.require_artifact_store()
+        artifact = artifact_store.create(
+            NodeArtifactWrite(
+                artifact_type=context.definition.artifact_contract.primary_type,
+                schema_id=context.definition.artifact_contract.schema_id,
+                input_artifact_ids=artifact_ids,
+                input_artifact_roles=roles,
+                metadata={
+                    "experiment_id": context.experiment_id,
+                    "request_hash": context.request_hash,
+                    "execution_mode": runtime_revision,
+                    "immutable": True,
+                    "source": "media_story_video",
+                    "provider": "local",
+                    "model_alias": context.definition.execution.model_alias,
+                    "renderer_revision": runtime_revision,
+                    "renderer_environment": rendered.renderer_environment,
+                    "width": rendered.width,
+                    "height": rendered.height,
+                    "fps": rendered.fps,
+                    "duration_ms": rendered.duration_ms,
+                    "scene_count": rendered.scene_count,
+                    "cue_count": rendered.cue_count,
+                    "has_audio": rendered.has_audio,
+                    "media_kinds": [kind for _, kind in media],
+                    "resolved_motion_plan": resolved_motion_plan,
+                    "normalized_config": config,
+                    "output_role": context.definition.artifact_contract.output_role,
+                },
+                content=rendered.data,
+                content_type="video/mp4",
+                filename="media-story.mp4",
+            )
         )
-        context.db.flush()
+        artifact_store.flush()
         return NodeExecutionResult(
             output={
                 "kind": "video",
                 "title": f"Media story · {rendered.scene_count} scenes",
                 "mimeType": "video/mp4",
-                "url": artifact_content_url(artifact.id),
+                "url": artifact_store.content_url(artifact.id),
             },
             output_artifact_ids=[artifact.id],
             provider_request_id=f"local_{context.request_hash[:20]}",
@@ -145,15 +138,16 @@ class MediaStoryVideoExecutor:
         context: NodeExecutionContext,
         typed_inputs: list[dict[str, Any]],
     ) -> tuple[
-        list[tuple[ArtifactRecord, str]],
-        ArtifactRecord,
-        ArtifactRecord | None,
+        list[tuple[NodeArtifactContent, str]],
+        NodeArtifactContent,
+        NodeArtifactContent | None,
         list[str],
         dict[str, str],
     ]:
-        media: list[tuple[ArtifactRecord, str]] = []
-        subtitle: ArtifactRecord | None = None
-        audio: ArtifactRecord | None = None
+        artifact_store = context.require_artifact_store()
+        media: list[tuple[NodeArtifactContent, str]] = []
+        subtitle: NodeArtifactContent | None = None
+        audio: NodeArtifactContent | None = None
         artifact_ids: list[str] = []
         roles: dict[str, str] = {}
         for item in typed_inputs:
@@ -163,30 +157,28 @@ class MediaStoryVideoExecutor:
                 *([str(item["artifact_id"])] if item.get("artifact_id") else []),
             ]
             for artifact_id in values:
-                artifact = context.db.get(ArtifactRecord, artifact_id)
-                if not artifact:
-                    raise ValueError(f"Media Story Video input Artifact does not exist: {artifact_id}")
-                if legacy_type == "Image" and artifact.type == "Image":
+                artifact = artifact_store.read(artifact_id)
+                if legacy_type == "Image" and artifact.record.type == "Image":
                     media.append((artifact, "image"))
                     role = "story_image"
-                elif legacy_type == "Video" and artifact.type in {"Video", "FinalVideo", "ProxyVideo"}:
+                elif legacy_type == "Video" and artifact.record.type in {"Video", "FinalVideo", "ProxyVideo"}:
                     media.append((artifact, "video"))
                     role = "story_video"
-                elif legacy_type == "Subtitle" and artifact.type == "Subtitle":
-                    if subtitle is not None and subtitle.id != artifact.id:
+                elif legacy_type == "Subtitle" and artifact.record.type == "Subtitle":
+                    if subtitle is not None and subtitle.record.id != artifact.record.id:
                         raise ValueError("Media Story Video accepts one Timed Subtitle Artifact")
                     subtitle = artifact
                     role = "timed_caption"
-                elif legacy_type == "Audio" and artifact.type == "Audio":
-                    if audio is not None and audio.id != artifact.id:
+                elif legacy_type == "Audio" and artifact.record.type == "Audio":
+                    if audio is not None and audio.record.id != artifact.record.id:
                         raise ValueError("Media Story Video accepts one Narration Audio Artifact")
                     audio = artifact
                     role = "narration_audio"
                 else:
                     continue
-                if artifact.id not in artifact_ids:
-                    artifact_ids.append(artifact.id)
-                    roles[artifact.id] = role
+                if artifact.record.id not in artifact_ids:
+                    artifact_ids.append(artifact.record.id)
+                    roles[artifact.record.id] = role
         if not media:
             raise ValueError("Media Story Video requires at least one connected Image or Video Artifact")
         if subtitle is None:

@@ -21,7 +21,12 @@ from app.media_workflow import (
 )
 from app.domain import ExperimentRunRequest
 from app.nodes import node_registry
-from app.nodes.contracts import NodeExecutionContext
+from app.nodes.contracts import (
+    NodeArtifactContent,
+    NodeArtifactRef,
+    NodeArtifactSnapshot,
+    NodeExecutionContext,
+)
 from app.nodes.executors import media_workflow as executor_module
 from app.nodes.executors.media_workflow import AudioExtractExecutor, VideoClipSelectExecutor, VideoSplitExecutor
 
@@ -130,9 +135,8 @@ def test_video_split_rejects_unbounded_fan_out(tmp_path):
         )
 
 
-def _context(definition, db, *, parameters=None):
+def _context(definition, db, *, parameters=None, artifact_store=None):
     return NodeExecutionContext(
-        db=db,
         payload=ExperimentRunRequest(
             canvas_id="canvas_media",
             node_id="node_media",
@@ -146,26 +150,35 @@ def _context(definition, db, *, parameters=None):
         definition=definition,
         request_hash="abcdef0123456789",
         experiment_id="experiment_media",
+        artifact_store=artifact_store,
     )
 
 
 def test_audio_extract_executor_records_stream_copy_and_source_lineage(monkeypatch):
     definition = node_registry.get("audio.extract", 1)
     assert definition is not None
-    source = SimpleNamespace(id="video_1", type="Video", uri="s3://bucket/video.mp4", metadata_json={})
+    source = NodeArtifactContent(
+        NodeArtifactSnapshot(id="video_1", type="Video"),
+        b"video",
+        "video/mp4",
+    )
+    captured = {}
 
-    class FakeDb:
-        flushed = False
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            assert artifact_id == source.record.id
+            return source
 
-        def get(self, _, artifact_id):
-            return source if artifact_id == source.id else None
+        def create(self, write):
+            captured.update({"artifact_type": write.artifact_type, **write.__dict__})
+            return NodeArtifactRef(id="audio_1", type="Audio")
 
         def flush(self):
-            self.flushed = True
+            captured["flushed"] = True
 
-    db = FakeDb()
-    captured = {}
-    monkeypatch.setattr(executor_module, "_read_artifact", lambda _: (b"video", "video/mp4"))
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
+
     monkeypatch.setattr(executor_module, "extract_audio_stream", lambda *_: ExtractedAudio(
         data=b"audio",
         content_type="audio/mp4",
@@ -176,71 +189,67 @@ def test_audio_extract_executor_records_stream_copy_and_source_lineage(monkeypat
         channels=2,
     ))
 
-    def create_artifact(_, artifact_type, **kwargs):
-        captured.update({"artifact_type": artifact_type, **kwargs})
-        return SimpleNamespace(id="audio_1")
-
-    monkeypatch.setattr(executor_module, "create_artifact", create_artifact)
-    monkeypatch.setattr(executor_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
     result = AudioExtractExecutor().execute(
-        _context(definition, db),
+        _context(definition, object(), artifact_store=FakeArtifactStore()),
         node_registry.resolve_config(definition, {}),
-        [{"type": "Video", "artifact_ids": [source.id]}],
+        [{"type": "Video", "artifact_ids": [source.record.id]}],
     )
     assert result.output_artifact_ids == ["audio_1"]
     assert result.output["mimeType"] == "audio/mp4"
     assert result.metadata["retryable"] is False
     assert captured["artifact_type"] == "Audio"
     assert captured["schema_id"] == "audio.extracted.v1"
-    assert captured["input_artifact_roles"] == {source.id: "source_video"}
+    assert captured["input_artifact_roles"] == {source.record.id: "source_video"}
     assert captured["metadata"]["stream_copy"] is True
-    assert db.flushed is True
+    assert captured["flushed"] is True
 
 
 def test_video_split_and_clip_select_executors_preserve_ordered_collection(monkeypatch):
     split_definition = node_registry.get("video.split", 1)
     select_definition = node_registry.get("video.clip.select", 1)
     assert split_definition is not None and select_definition is not None
-    source = SimpleNamespace(id="video_1", type="Video", schema_id=None, uri="s3://bucket/video.mp4", metadata_json={})
-    stored = {source.id: source}
-
-    class FakeDb:
-        def get(self, _, artifact_id):
-            return stored.get(artifact_id)
-
-        def flush(self):
-            return None
-
-    db = FakeDb()
-    monkeypatch.setattr(executor_module, "_read_artifact", lambda artifact: (
-        json.dumps({
-            "schema_version": VIDEO_CLIP_LIST_SCHEMA,
-            "clips": [
-                {"index": 0, "artifact_id": "clip_1", "start_ms": 0, "duration_ms": 8000},
-                {"index": 1, "artifact_id": "clip_2", "start_ms": 8000, "duration_ms": 8000},
-            ],
-        }).encode() if artifact.type == "VideoClipList" else b"video",
-        "application/json" if artifact.type == "VideoClipList" else "video/mp4",
-    ))
+    source = NodeArtifactContent(
+        NodeArtifactSnapshot(id="video_1", type="Video"),
+        b"video",
+        "video/mp4",
+    )
+    stored = {source.record.id: source}
     monkeypatch.setattr(executor_module, "split_video", lambda *_, **__: SplitVideo((
         SplitVideoClip(b"clip-one", 0, 0, 8000, 1080, 1920, 24),
         SplitVideoClip(b"clip-two", 1, 8000, 8000, 1080, 1920, 24),
     ), 16000))
     created = []
 
-    def create_artifact(_, artifact_type, **kwargs):
-        artifact_id = "collection_1" if artifact_type == "VideoClipList" else f"clip_{len([item for item in created if item['artifact_type'] == 'Video']) + 1}"
-        artifact = SimpleNamespace(id=artifact_id, type=artifact_type, schema_id=kwargs.get("schema_id"), uri=f"s3://bucket/{artifact_id}", metadata_json={})
-        created.append({"artifact_type": artifact_type, "artifact": artifact, **kwargs})
-        stored[artifact_id] = artifact
-        return artifact
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            return stored[artifact_id]
 
-    monkeypatch.setattr(executor_module, "create_artifact", create_artifact)
-    monkeypatch.setattr(executor_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
+        def create(self, write):
+            artifact_id = "collection_1" if write.artifact_type == "VideoClipList" else f"clip_{len([item for item in created if item['artifact_type'] == 'Video']) + 1}"
+            artifact = NodeArtifactRef(id=artifact_id, type=write.artifact_type)
+            created.append({"artifact_type": write.artifact_type, "artifact": artifact, **write.__dict__})
+            stored[artifact_id] = NodeArtifactContent(
+                NodeArtifactSnapshot(
+                    id=artifact_id,
+                    type=write.artifact_type,
+                    schema_id=write.schema_id,
+                ),
+                write.content or b"",
+                write.content_type or "application/octet-stream",
+            )
+            return artifact
+
+        def flush(self):
+            return None
+
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
+
+    artifact_store = FakeArtifactStore()
     split_result = VideoSplitExecutor().execute(
-        _context(split_definition, db),
+        _context(split_definition, object(), artifact_store=artifact_store),
         node_registry.resolve_config(split_definition, {"segment_duration_seconds": 8}),
-        [{"type": "Video", "artifact_ids": [source.id]}],
+        [{"type": "Video", "artifact_ids": [source.record.id]}],
     )
     assert split_result.output_artifact_ids == ["collection_1"]
     assert split_result.output["clipCount"] == 2
@@ -252,7 +261,7 @@ def test_video_split_and_clip_select_executors_preserve_ordered_collection(monke
     assert all(item["schema_id"] == VIDEO_CLIP_SCHEMA for item in created[:2])
 
     selected = VideoClipSelectExecutor().execute(
-        _context(select_definition, db, parameters={"clip_index": 1}),
+        _context(select_definition, object(), parameters={"clip_index": 1}, artifact_store=artifact_store),
         {"clip_index": 1},
         [{"type": "VideoClipList", "artifact_ids": ["collection_1"]}],
     )

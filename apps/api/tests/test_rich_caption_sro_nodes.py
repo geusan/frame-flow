@@ -6,6 +6,10 @@ from fastapi.testclient import TestClient
 
 from app.database import ArtifactRecord, SessionLocal
 from app.domain import ExperimentRunRequest
+from app.infrastructure.node_execution import (
+    SqlAlchemyNodeArtifactStore,
+    SqlAlchemyNodeMediaRuntime,
+)
 from app.nodes import node_registry
 from app.nodes.contracts import NodeExecutionContext
 from app.nodes.executors import rich_caption_sro as rich_caption_module
@@ -18,7 +22,6 @@ def _context(db, type_key: str, version: int, node_id: str) -> NodeExecutionCont
     definition = node_registry.get(type_key, version)
     assert definition is not None
     return NodeExecutionContext(
-        db=db,
         payload=ExperimentRunRequest(
             canvas_id="rich_caption_sro_canvas",
             node_id=node_id,
@@ -32,6 +35,8 @@ def _context(db, type_key: str, version: int, node_id: str) -> NodeExecutionCont
         definition=definition,
         request_hash=(node_id * 64)[:64],
         experiment_id=f"experiment_{node_id}",
+        artifact_store=SqlAlchemyNodeArtifactStore(db),
+        media_runtime=SqlAlchemyNodeMediaRuntime(db),
     )
 
 

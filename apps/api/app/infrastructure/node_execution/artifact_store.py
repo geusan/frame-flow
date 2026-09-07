@@ -101,6 +101,8 @@ class SqlAlchemyNodeArtifactStore:
             record=NodeArtifactSnapshot(
                 id=artifact.id,
                 type=artifact.type,
+                schema_id=artifact.schema_id,
+                sha256=artifact.sha256,
                 metadata=dict(artifact.metadata_json or {}),
             ),
             data=storage.get_bytes(bucket=bucket, key=key),

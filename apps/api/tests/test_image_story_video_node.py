@@ -26,7 +26,12 @@ from app.image_story_video import (
     render_image_story,
 )
 from app.nodes import node_registry
-from app.nodes.contracts import NodeExecutionContext
+from app.nodes.contracts import (
+    NodeArtifactContent,
+    NodeArtifactRef,
+    NodeArtifactSnapshot,
+    NodeExecutionContext,
+)
 from app.nodes.executors import image_story_video as executor_module
 from app.nodes.executors import media_story_video as media_executor_module
 
@@ -451,23 +456,33 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
         "audio_1": SimpleNamespace(id="audio_1", type="Audio", uri="memory://bucket/audio-1", metadata_json={"storage": {"bucket": "bucket", "key": "audio-1", "content_type": "audio/wav"}}),
     }
 
-    class FakeDb:
-        flushed = False
+    captured: dict[str, object] = {}
+    content = {
+        "image_1": (b"one", "image/png"),
+        "image_2": (b"two", "image/png"),
+        "subtitle_1": (STORY_SRT, "application/x-subrip"),
+        "audio_1": (b"audio", "audio/wav"),
+    }
 
-        def get(self, _, artifact_id):
-            return artifacts.get(artifact_id)
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            record = artifacts[artifact_id]
+            data, content_type = content[artifact_id]
+            return NodeArtifactContent(
+                NodeArtifactSnapshot(id=record.id, type=record.type),
+                data,
+                content_type,
+            )
+
+        def create(self, write):
+            captured.update({"artifact_type": write.artifact_type, "artifact_kwargs": write.__dict__})
+            return NodeArtifactRef(id="final_1", type=write.artifact_type)
 
         def flush(self):
-            self.flushed = True
+            captured["flushed"] = True
 
-    class FakeStorage:
-        def get_bytes(self, *, bucket, key):
-            assert bucket == "bucket"
-            return {"image-1": b"one", "image-2": b"two", "subtitle-1": STORY_SRT, "audio-1": b"audio"}[key]
-
-    db = FakeDb()
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(executor_module, "get_storage", lambda: FakeStorage())
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
 
     def fake_render(images, subtitle_content, *, audio, **config):
         captured.update({"images": images, "subtitle": subtitle_content, "audio": audio, "config": config})
@@ -475,12 +490,6 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
 
     monkeypatch.setattr(executor_module, "render_image_story", fake_render)
 
-    def fake_create_artifact(_, artifact_type, **kwargs):
-        captured.update({"artifact_type": artifact_type, "artifact_kwargs": kwargs})
-        return SimpleNamespace(id="final_1")
-
-    monkeypatch.setattr(executor_module, "create_artifact", fake_create_artifact)
-    monkeypatch.setattr(executor_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
     payload = ExperimentRunRequest(
         canvas_id="canvas_story",
         node_id="story_video",
@@ -490,11 +499,11 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=db,
         payload=payload,
         definition=definition,
         request_hash="abcdef0123456789",
         experiment_id="experiment_story",
+        artifact_store=FakeArtifactStore(),
     )
     result = node_registry.execute(context, {}, [
         {"type": "Image", "artifact_ids": ["image_1"]},
@@ -519,7 +528,7 @@ def test_registry_executor_records_final_video_metadata_and_ordered_lineage(monk
         "audio_1": "narration_audio",
     }
     assert artifact_kwargs["metadata"]["normalized_config"]["scene_timing"] == "subtitle_cues"
-    assert db.flushed is True
+    assert captured["flushed"] is True
 
 
 def test_media_story_registry_executor_preserves_mixed_media_order_and_lineage(monkeypatch):
@@ -531,29 +540,39 @@ def test_media_story_registry_executor_preserves_mixed_media_order_and_lineage(m
         "subtitle_1": SimpleNamespace(id="subtitle_1", type="Subtitle", uri="memory://bucket/subtitle-1", metadata_json={"storage": {"bucket": "bucket", "key": "subtitle-1", "content_type": "application/x-subrip"}}),
     }
 
-    class FakeDb:
-        def get(self, _, artifact_id):
-            return artifacts.get(artifact_id)
+    captured = {}
+    content = {
+        "image_1": (b"image", "image/png"),
+        "video_1": (b"video", "video/mp4"),
+        "subtitle_1": (STORY_SRT, "application/x-subrip"),
+    }
+
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            record = artifacts[artifact_id]
+            data, content_type = content[artifact_id]
+            return NodeArtifactContent(
+                NodeArtifactSnapshot(id=record.id, type=record.type),
+                data,
+                content_type,
+            )
+
+        def create(self, write):
+            captured["artifact"] = write.__dict__
+            return NodeArtifactRef(id="final_media", type=write.artifact_type)
 
         def flush(self):
             return None
 
-    class FakeStorage:
-        def get_bytes(self, *, bucket, key):
-            return {"image-1": b"image", "video-1": b"video", "subtitle-1": STORY_SRT}[key]
-
-    captured = {}
-    monkeypatch.setattr(media_executor_module, "get_storage", lambda: FakeStorage())
+        def content_url(self, artifact_id):
+            return f"http://api/{artifact_id}"
 
     def fake_render(sources, subtitle, **kwargs):
         captured.update({"sources": sources, "subtitle": subtitle, "kwargs": kwargs})
         return RenderedImageStory(b"rendered", 1080, 1920, 24, 1000, 2, 2, False)
 
     monkeypatch.setattr(media_executor_module, "render_image_story", fake_render)
-    monkeypatch.setattr(media_executor_module, "create_artifact", lambda *args, **kwargs: captured.update({"artifact": kwargs}) or SimpleNamespace(id="final_media"))
-    monkeypatch.setattr(media_executor_module, "artifact_content_url", lambda artifact_id: f"http://api/{artifact_id}")
     context = NodeExecutionContext(
-        db=FakeDb(),
         payload=ExperimentRunRequest(
             canvas_id="canvas", node_id="media", node_key=definition.type_key,
             node_contract_version=1, model_alias=definition.execution.model_alias,
@@ -561,6 +580,7 @@ def test_media_story_registry_executor_preserves_mixed_media_order_and_lineage(m
         definition=definition,
         request_hash="abcdef0123456789",
         experiment_id="experiment_media",
+        artifact_store=FakeArtifactStore(),
     )
     result = node_registry.execute(context, {}, [
         {"type": "Image", "artifact_ids": ["image_1"]},

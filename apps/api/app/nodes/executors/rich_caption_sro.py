@@ -6,13 +6,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ...canvas_operations import ArtifactData, _of_type, _probe, _read_artifacts, _run, _video_stream, _write_artifact
-from ...caption_documents import canonical_caption_document, caption_document_to_ass, materialize_caption_fonts
-from ...database import ArtifactRecord
+from ...canvas_operations import ArtifactData, _of_type, _probe, _run, _video_stream, _write_artifact
+from ...caption_documents import caption_document_to_ass
 from ...image_story_video import output_dimensions
-from ...service import create_artifact
-from ...storage import artifact_content_url, get_storage, storage_location
-from ..contracts import NodeExecutionContext, NodeExecutionResult
+from ..contracts import NodeArtifactContent, NodeArtifactRef, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
 
 
@@ -25,9 +22,26 @@ CAPTION_ASS_WORD_WRAP_REVISION = "ass-word-wrap.v1"
 VIDEO_TYPES = {"Video", "FinalVideo", "ProxyVideo"}
 
 
+def _read_artifacts(
+    context: NodeExecutionContext,
+    typed_inputs: list[dict[str, Any]],
+) -> list[NodeArtifactContent]:
+    return context.require_artifact_store().read_inputs(typed_inputs)
+
+
+def create_artifact(
+    context: NodeExecutionContext,
+    artifact_type: str,
+    **kwargs: Any,
+) -> NodeArtifactRef:
+    return context.require_artifact_store().create(
+        NodeArtifactWrite(artifact_type=artifact_type, **kwargs)
+    )
+
+
 def _result(
     context: NodeExecutionContext,
-    artifact: ArtifactRecord,
+    artifact: NodeArtifactRef,
     *,
     output: dict[str, object],
     input_ids: list[str],
@@ -35,7 +49,7 @@ def _result(
     revision: str,
 ) -> NodeExecutionResult:
     return NodeExecutionResult(
-        output={**output, "url": artifact_content_url(artifact.id)},
+        output={**output, "url": context.require_artifact_store().content_url(artifact.id)},
         output_artifact_ids=[artifact.id],
         provider_request_id=f"local_{context.request_hash[:20]}",
         cost_usd=0.0,
@@ -69,15 +83,17 @@ class SubtitleDesignExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != SUBTITLE_DESIGN_REVISION:
             raise RuntimeError("Subtitle Design executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         subtitles = _of_type(artifacts, "Subtitle", "ReferenceSubtitle")
         if len(subtitles) != 1:
             raise ValueError("Subtitle Design requires one connected Timed Subtitle Artifact")
-        document = canonical_caption_document(context.db, dict(resolved_node_config["caption_document"]))
+        document = context.require_media_runtime().canonical_caption_document(
+            dict(resolved_node_config["caption_document"])
+        )
         content = json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=context.definition.artifact_contract.schema_id,
             input_artifact_ids=input_ids,
@@ -97,7 +113,7 @@ class SubtitleDesignExecutor:
             content_type="application/json",
             filename="caption-document.json",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -118,7 +134,7 @@ class RichSubtitleLayoutExecutor:
         revision = context.definition.execution.revision
         if revision not in {SUBTITLE_LAYOUT_V2_REVISION, SUBTITLE_LAYOUT_V3_REVISION}:
             raise RuntimeError("Rich Subtitle Layout executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         documents = _of_type(artifacts, "CaptionDocument")
         if len(documents) != 1:
             raise ValueError("Rich Subtitle Layout requires one Caption Document")
@@ -200,7 +216,7 @@ class RichSubtitleLayoutExecutor:
         content = json.dumps(layout, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=context.definition.artifact_contract.schema_id,
             input_artifact_ids=input_ids,
@@ -220,7 +236,7 @@ class RichSubtitleLayoutExecutor:
             content_type="application/json",
             filename="caption-layout.json",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -229,12 +245,6 @@ class RichSubtitleLayoutExecutor:
             input_roles=input_roles,
             revision=revision,
         )
-
-
-def _read_record(record: ArtifactRecord) -> ArtifactData:
-    bucket, key = storage_location(record.uri, record.metadata_json)
-    content_type = str((record.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream")
-    return ArtifactData(record, get_storage().get_bytes(bucket=bucket, key=key), content_type)
 
 
 def _render_captioned_video(
@@ -263,7 +273,10 @@ def _render_captioned_video(
         subtitle_path.write_text(ass_content, encoding="utf-8")
         fonts_directory = directory / "fonts"
         if document.get("fonts"):
-            materialize_caption_fonts(db_context.db, document, fonts_directory)
+            db_context.require_media_runtime().materialize_caption_fonts(
+                document,
+                fonts_directory,
+            )
         ass_filter = f"ass={subtitle_path.as_posix()}"
         if fonts_directory.is_dir():
             ass_filter += f":fontsdir={fonts_directory.as_posix()}"
@@ -293,7 +306,7 @@ class VideoCaptionBurnExecutor:
         if revision not in {VIDEO_CAPTION_BURN_REVISION, VIDEO_CAPTION_BURN_V2_REVISION}:
             raise RuntimeError("Video Caption Burn executor revision does not match its Node Definition")
         runtime_revision = self.runtime_revision(context.definition, resolved_node_config)
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         videos = _of_type(artifacts, *VIDEO_TYPES)
         layouts = _of_type(artifacts, "CaptionLayout")
         if len(videos) != 1 or len(layouts) != 1:
@@ -304,10 +317,12 @@ class VideoCaptionBurnExecutor:
         if layout_schema == "subtitle.layout.v2" and layout.get("canvas", {}).get("video_sha256") != video.record.sha256:
             raise ValueError("Video Caption Burn source does not match the Caption Layout snapshot")
         document_ref = dict(layout["source"])
-        document_record = context.db.get(ArtifactRecord, str(document_ref.get("artifact_id") or ""))
-        if not document_record or document_record.type != "CaptionDocument" or document_record.sha256 != document_ref.get("sha256"):
+        document_artifact = context.require_artifact_store().read(
+            str(document_ref.get("artifact_id") or "")
+        )
+        document_record = document_artifact.record
+        if document_record.type != "CaptionDocument" or document_record.sha256 != document_ref.get("sha256"):
             raise ValueError("Video Caption Burn Caption Document snapshot is unavailable or changed")
-        document_artifact = _read_record(document_record)
         document = _json_payload(document_artifact, schema="caption.document.v1", label="Video Caption Burn")
         content, media = _render_captioned_video(context, video, layout, document)
         base_input_ids, base_roles = input_lineage(context, typed_inputs)
@@ -319,7 +334,7 @@ class VideoCaptionBurnExecutor:
             **{artifact_id: "caption_font" for artifact_id in font_artifact_ids},
         }
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=context.definition.artifact_contract.schema_id,
             input_artifact_ids=input_ids,
@@ -340,7 +355,7 @@ class VideoCaptionBurnExecutor:
             content_type="video/mp4",
             filename="captioned-video.mp4",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,

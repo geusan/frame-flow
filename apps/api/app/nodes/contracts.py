@@ -169,6 +169,8 @@ class NodeArtifactRef:
 class NodeArtifactSnapshot:
     id: str
     type: str
+    schema_id: str | None = None
+    sha256: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -181,6 +183,26 @@ class NodeArtifactContent:
     record: NodeArtifactSnapshot
     data: bytes
     content_type: str
+
+    @property
+    def id(self) -> str:
+        return self.record.id
+
+    @property
+    def type(self) -> str:
+        return self.record.type
+
+    @property
+    def schema_id(self) -> str | None:
+        return self.record.schema_id
+
+    @property
+    def sha256(self) -> str:
+        return self.record.sha256
+
+    @property
+    def metadata_json(self) -> dict[str, Any]:
+        return self.record.metadata
 
 
 @dataclass(frozen=True)
@@ -230,6 +252,14 @@ class NodeProviderSettings(Protocol):
 
 
 class NodeMediaRuntime(Protocol):
+    def canonical_caption_document(self, document: dict[str, Any]) -> dict[str, Any]: ...
+
+    def materialize_caption_fonts(
+        self,
+        document: dict[str, Any],
+        directory: Any,
+    ) -> None: ...
+
     def render_timeline(self, timeline: NodeArtifactContent) -> bytes: ...
 
 
