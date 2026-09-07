@@ -3,11 +3,14 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 
-from ...database import FormatRecord, GenerationBriefRecord, get_db
+from ...contexts.generation.application import (
+    CreateGenerationBriefCommand,
+    GenerationApplication,
+)
+from ...contexts.generation.domain import GenerationNotFoundError
 from ...domain import GenerationBriefRequest
-from ...service import new_id
+from ..dependencies import get_generation_application
 
 
 router = APIRouter(tags=["generation"])
@@ -16,16 +19,11 @@ router = APIRouter(tags=["generation"])
 @router.post("/generation-briefs", status_code=201)
 def create_generation_brief(
     payload: GenerationBriefRequest,
-    db: Session = Depends(get_db),
+    application: GenerationApplication = Depends(get_generation_application),
 ) -> dict[str, Any]:
-    if not db.get(FormatRecord, payload.format_id):
-        raise HTTPException(404, "format not found")
-    record = GenerationBriefRecord(
-        id=new_id("brief"),
-        topic=payload.topic,
-        format_id=payload.format_id,
-        payload=payload.model_dump(mode="json"),
-    )
-    db.add(record)
-    db.commit()
-    return {"id": record.id, **record.payload}
+    try:
+        return application.create_brief(
+            CreateGenerationBriefCommand(payload.model_dump(mode="python"))
+        )
+    except GenerationNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc

@@ -3,6 +3,7 @@ from functools import lru_cache
 from ..contexts.artifacts.application import ArtifactApplication
 from ..contexts.canvases.application import CanvasApplication
 from ..contexts.formats.application import FormatApplication
+from ..contexts.generation.application import GenerationApplication
 from ..contexts.runs.application import RunApplication
 from ..contexts.references.application import ReferenceApplication
 from ..contexts.workflows.application import WorkflowApplication
@@ -10,6 +11,7 @@ from ..domain import utc_now
 from ..infrastructure.persistence import (
     LegacySqlAlchemyArtifactOperations,
     LegacySqlAlchemyFormatOperations,
+    LegacySqlAlchemyGenerationOperations,
     LegacySqlAlchemyWorkflowOperations,
     LegacySqlAlchemyRunOperations,
     LegacySqlAlchemyReferenceOperations,
@@ -35,6 +37,11 @@ def get_artifact_application() -> ArtifactApplication:
 @lru_cache(maxsize=1)
 def get_format_application() -> FormatApplication:
     return FormatApplication(LegacySqlAlchemyFormatOperations())
+
+
+@lru_cache(maxsize=1)
+def get_generation_application() -> GenerationApplication:
+    return GenerationApplication(LegacySqlAlchemyGenerationOperations())
 
 
 @lru_cache(maxsize=1)
