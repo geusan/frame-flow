@@ -11,7 +11,6 @@ from app.format_extraction import FormatSource, GeminiFormatExtractor
 from app.providers_openai import OpenAIProviderConfig
 from app.providers import ProviderSubmission, model_id_for_alias
 from app.experiments import resolve_model
-from app.domain import ExperimentRunRequest
 from app.providers_generation import GoogleGenerationServices, InputMedia
 
 
@@ -71,28 +70,6 @@ def test_structured_text_uses_schema_and_exact_registered_model():
     assert client.models.last["config"].seed == 9
 
 
-def test_google_skill_executor_uses_registered_skill_as_system_prompt():
-    class FakeText:
-        def __init__(self):
-            self.last = None
-
-        def generate_text(self, **kwargs):
-            self.last = kwargs
-            return "generated prompt", "google_skill_request"
-
-    text = FakeText()
-    service = GoogleGenerationServices(text=text, image=object(), video=object(), tts=object())
-    payload = ExperimentRunRequest(
-        canvas_id="canvas", node_id="skill", node_key="skill.execute", prompt="비 오는 골목",
-        model_alias="google.text.quality", parameters={"skill_id": "nottalggak-prompt-machine"}, inputs=[],
-    )
-    result = service.execute(payload, [])
-    assert result.output["title"] == "Generated master prompt"
-    assert result.schema_id == "prompt.master.v1"
-    assert "# NOTTALGGAK Prompt Machine" in text.last["system_prompt"]
-    assert text.last["rendered_prompt"] == "비 오는 골목"
-
-
 def test_character_generator_uses_connected_image_as_canonical_reference():
     class FakeCharacterImage:
         def __init__(self):
@@ -105,12 +82,15 @@ def test_character_generator_uses_connected_image_as_canonical_reference():
 
     image = FakeCharacterImage()
     service = GoogleGenerationServices(text=object(), image=image, video=object(), tts=object())
-    request = ExperimentRunRequest(
-        canvas_id="canvas", node_id="character", node_key="character.generate",
-        prompt="A black-haired anime cat-eared athlete", model_alias="google.image.fast",
-        parameters={"shot_count": 4}, inputs=[],
+    result = service.generate_character(
+        logical_model="google.image.fast",
+        synopsis="A black-haired anime cat-eared athlete",
+        name="Mori",
+        shot_count=4,
+        aspect_ratio="9:16",
+        seed=None,
+        reference_images=[InputMedia("base-image", "Image", b"canonical-base", "image/png")],
     )
-    result = service.execute(request, [InputMedia("base-image", "Image", b"canonical-base", "image/png")])
     assert len(result.images) == 4
     assert [image.role for image in result.images] == ["baseline", "closeup", "daily_life", "work_scene"]
     assert all(call["reference_images"][0] == (b"canonical-base", "image/png") for call in image.calls)

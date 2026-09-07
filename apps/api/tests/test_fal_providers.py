@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from app.domain import ExperimentRunRequest
 from app.providers_fal import FalGenerationServices, FalProviderConfig
 
 
@@ -42,23 +41,15 @@ class FakeFalClient:
 def test_flux2_lora_provider_submits_weights_trigger_and_scale():
     client = FakeFalClient()
     service = FalGenerationServices(FalProviderConfig("fal-test-key"), client)
-    payload = ExperimentRunRequest(
-        canvas_id="canvas",
-        node_id="lora",
-        node_key="lora.image.generate",
+    result = service.generate_lora_image(
         prompt="working at a cafe in warm morning light",
-        model_alias="fal.image.flux2-lora",
-        parameters={
-            "lora_url": "https://weights.example/mori.safetensors",
-            "lora_scale": 0.85,
-            "trigger_word": "mori_catgirl_v1",
-            "aspect_ratio": "9:16",
-            "resolution": "2K",
-        },
-        inputs=[],
+        lora_url="https://weights.example/mori.safetensors",
+        lora_scale=0.85,
+        trigger_word="mori_catgirl_v1",
+        aspect_ratio="9:16",
+        resolution="2K",
     )
-    result = service.execute(payload, [])
-    assert result.content == b"generated-png"
+    assert result.data == b"generated-png"
     assert result.provider_request_id == "fal_request_1"
     request = client.submitted["json"]
     assert request["prompt"].startswith("mori_catgirl_v1,")

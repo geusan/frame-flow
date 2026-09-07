@@ -7,10 +7,6 @@ from typing import Any
 
 import httpx
 
-from .domain import ExperimentRunRequest
-from .providers_generation import InputMedia, LiveGenerationResult
-
-
 FAL_LIVE_REVISION = "fal-live.v1"
 FAL_FLUX2_LORA_MODEL = "fal-ai/flux-2/lora"
 FAL_FLUX2_TRAINER_MODEL = "fal-ai/flux-2-trainer-v2"
@@ -112,31 +108,6 @@ class FalGenerationServices:
         image_response.raise_for_status()
         content_type = str(image_response.headers.get("content-type") or (images[0] if images else {}).get("content_type") or "image/png").split(";", 1)[0]
         return FalGeneratedImage(bytes(image_response.content), content_type, request_id)
-
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult:
-        if payload.node_key != "lora.image.generate":
-            raise ValueError(f"fal provider does not support Canvas node: {payload.node_key}")
-        generated = self.generate_lora_image(
-            prompt=payload.prompt,
-            lora_url=str(payload.parameters.get("lora_url") or ""),
-            lora_scale=float(payload.parameters.get("lora_scale") or 0.9),
-            trigger_word=str(payload.parameters.get("trigger_word") or ""),
-            aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-            resolution=str(payload.parameters.get("resolution") or "2K"),
-            guidance_scale=float(payload.parameters.get("guidance_scale") or 2.5),
-            inference_steps=int(payload.parameters.get("inference_steps") or 28),
-            timeout_seconds=int(payload.parameters.get("timeout_seconds") or 300),
-        )
-        return LiveGenerationResult(
-            {"kind": "image", "title": "LoRA generated image", "mimeType": generated.content_type},
-            "Image",
-            "fal.flux2.lora.v1",
-            generated.provider_request_id,
-            generated.data,
-            generated.content_type,
-            "lora-generated.png",
-            [item.artifact_id for item in inputs],
-        )
 
     def submit_lora_training(
         self,

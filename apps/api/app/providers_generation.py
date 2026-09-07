@@ -4,10 +4,9 @@ import io
 import os
 import re
 import wave
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
-from .domain import ExperimentRunRequest
+from .nodes.contracts import NodeInputMedia
 from .providers_google import (
     GeneratedBinary,
     GoogleImageProvider,
@@ -16,17 +15,9 @@ from .providers_google import (
     GoogleTtsProvider,
     GoogleVideoProvider,
 )
-from .project_skills import project_skill_system_prompt
 
 
 LIVE_GENERATION_REVISION = "google-live.v1"
-
-
-@dataclass(frozen=True)
-class GeneratedAsset:
-    data: bytes
-    content_type: str
-    filename: str
 
 
 @dataclass(frozen=True)
@@ -48,27 +39,7 @@ class CharacterGenerationResult:
     images: tuple[CharacterImageAsset, ...]
 
 
-@dataclass(frozen=True)
-class LiveGenerationResult:
-    output: dict[str, object]
-    artifact_type: str
-    schema_id: str | None
-    provider_request_id: str
-    content: bytes
-    content_type: str
-    filename: str
-    input_artifact_ids: list[str]
-    additional_assets: tuple[GeneratedAsset, ...] = ()
-    metadata: dict[str, Any] = field(default_factory=dict)
-    cost_usd: float | None = None
-
-
-@dataclass(frozen=True)
-class InputMedia:
-    artifact_id: str
-    artifact_type: str
-    data: bytes
-    content_type: str
+InputMedia = NodeInputMedia
 
 
 CHARACTER_SHOTS: tuple[tuple[str, str], ...] = (
@@ -234,112 +205,6 @@ class GoogleGenerationServices:
             logical_model=logical_model,
         )
         return GeneratedBinary(_audio_to_wav(generated), "audio/wav", generated.exact_model_id, generated.provider_request_id)
-
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
-        logical_model = payload.model_alias if payload.model_alias.startswith("google.") else f"google.{payload.model_alias}"
-        input_ids = [item.artifact_id for item in inputs]
-        seed = payload.parameters.get("seed")
-        seed_value = int(seed) if seed is not None else None
-
-        if payload.node_key == "character.generate":
-            reference_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
-            name = str(payload.parameters.get("character_name") or "Generated character").strip() or "Generated character"
-            return self.generate_character(
-                logical_model=logical_model,
-                synopsis=payload.prompt,
-                name=name,
-                shot_count=int(payload.parameters.get("shot_count") or 6),
-                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                seed=seed_value,
-                reference_images=reference_inputs,
-            )
-
-        if payload.node_key in {"image.generate", "image.edit"}:
-            candidate_count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
-            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
-            generated_images = self.generate_images(
-                logical_model=logical_model,
-                prompt=payload.prompt,
-                candidate_count=candidate_count,
-                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                seed=seed_value,
-                reference_images=image_inputs,
-            )
-            generated = generated_images[0]
-            extension = ".png" if "png" in generated.mime_type else ".jpg"
-            editing = payload.node_key == "image.edit"
-            return LiveGenerationResult(
-                {"kind": "image", "title": "AI edited image" if editing else "Generated image", "mimeType": generated.mime_type},
-                "Image", "google.image.edit.v1" if editing else "google.image.v1", generated.provider_request_id, generated.data,
-                generated.mime_type, f"{'edited' if editing else 'generated'}{extension}", input_ids,
-                tuple(GeneratedAsset(item.data, item.mime_type, f"{'edited' if editing else 'generated'}-{index}{'.png' if 'png' in item.mime_type else '.jpg'}") for index, item in enumerate(generated_images[1:], start=2)),
-            )
-
-        if payload.node_key == "video.generate":
-            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:3]
-            video_inputs = [item for item in inputs if item.artifact_type in {"Video", "FinalVideo"}][:1]
-            generated_videos = self.generate_videos(
-                logical_model=logical_model,
-                prompt=payload.prompt,
-                duration_seconds=int(payload.parameters.get("duration_seconds") or 6),
-                candidate_count=int(payload.parameters.get("output_count") or 1),
-                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                resolution=str(payload.parameters.get("resolution") or "720p"),
-                seed=seed_value,
-                image_inputs=image_inputs,
-                video_inputs=video_inputs,
-            )
-            generated = generated_videos[0]
-            omni = logical_model == "google.video.omni"
-            return LiveGenerationResult(
-                {"kind": "video", "title": "Generated character video" if omni else "Generated video", "mimeType": generated.mime_type},
-                "Video", "google.video.omni.v1" if omni else "google.video.v1", generated.provider_request_id, generated.data,
-                generated.mime_type, "generated-character.mp4" if omni else "generated.mp4", input_ids,
-                tuple(GeneratedAsset(item.data, item.mime_type, f"generated-{index}.mp4") for index, item in enumerate(generated_videos[1:], start=2)),
-            )
-
-        if payload.node_key == "tts.generate":
-            generated = self.generate_speech(
-                logical_model=logical_model,
-                text=payload.prompt,
-                style_prompt=str(payload.parameters.get("style_prompt") or "Read naturally and clearly for a short-form video."),
-                voice_name=str(payload.parameters.get("voice_name") or "Kore"),
-                locale=str(payload.parameters.get("language") or "ko-KR"),
-            )
-            return LiveGenerationResult(
-                {"kind": "audio", "title": "Generated voiceover", "mimeType": "audio/wav"},
-                "Audio", "google.tts.v1", generated.provider_request_id, generated.data,
-                "audio/wav", "voiceover.wav", input_ids,
-            )
-
-        if payload.node_key in {"llm.assistant", "script.generate", "skill.execute"}:
-            if payload.node_key == "skill.execute":
-                system_prompt = project_skill_system_prompt(
-                    str(payload.parameters.get("skill_id") or ""),
-                    str(payload.parameters.get("skill_version") or "") or None,
-                )
-            else:
-                system_prompt = (
-                    "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add commentary."
-                    if payload.node_key == "script.generate"
-                    else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
-                )
-            text, request_id = self.text.generate_text(
-                logical_model=logical_model,
-                system_prompt=system_prompt,
-                rendered_prompt=payload.prompt,
-                temperature=float(payload.parameters.get("temperature") or 0.4),
-                seed=seed_value,
-            )
-            artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
-            schema_id = "script.v1" if payload.node_key == "script.generate" else "prompt.master.v1" if payload.node_key == "skill.execute" else "google.text.v1"
-            title = "Generated script" if payload.node_key == "script.generate" else "Generated master prompt" if payload.node_key == "skill.execute" else "Generated text"
-            return LiveGenerationResult(
-                {"kind": "text", "title": title, "text": text}, artifact_type, schema_id,
-                request_id, text.encode(), "text/plain", "master-prompt.txt" if payload.node_key == "skill.execute" else "result.txt", input_ids,
-            )
-
-        raise ValueError(f"unsupported live Google generation node: {payload.node_key}")
 
 
 def _audio_to_wav(generated: GeneratedBinary) -> bytes:

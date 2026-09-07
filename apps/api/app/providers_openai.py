@@ -8,17 +8,13 @@ from typing import Any
 
 from openai import OpenAI
 
-from .domain import ExperimentRunRequest
 from .providers import OPENAI_MODEL_REGISTRY
 from .providers_generation import (
     CharacterGenerationResult,
     CharacterImageAsset,
-    GeneratedAsset,
     InputMedia,
-    LiveGenerationResult,
     character_shot_prompts,
 )
-from .project_skills import project_skill_system_prompt
 
 
 OPENAI_LIVE_REVISION = "openai-live.v1"
@@ -167,80 +163,6 @@ class OpenAIGenerationServices:
             raise RuntimeError("OpenAI Speech API returned no audio")
         request_id = f"openai_{hashlib.sha256((text + exact_model).encode()).hexdigest()[:20]}"
         return audio, request_id, exact_model
-
-    def execute(self, payload: ExperimentRunRequest, inputs: list[InputMedia]) -> LiveGenerationResult | CharacterGenerationResult:
-        logical_model = payload.model_alias
-        try:
-            exact_model = OPENAI_MODEL_REGISTRY[logical_model]
-        except KeyError as exc:
-            raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
-        input_ids = [item.artifact_id for item in inputs]
-
-        if payload.node_key == "character.generate":
-            references = [item for item in inputs if item.artifact_type == "Image"][:3]
-            name = str(payload.parameters.get("character_name") or "Generated character").strip() or "Generated character"
-            return self.generate_character(
-                logical_model=logical_model,
-                synopsis=payload.prompt,
-                name=name,
-                shot_count=int(payload.parameters.get("shot_count") or 6),
-                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                quality=str(payload.parameters.get("quality") or "medium"),
-                reference_images=references,
-            )
-
-        if payload.node_key in {"llm.assistant", "script.generate", "skill.execute"}:
-            if payload.node_key == "skill.execute":
-                instructions = project_skill_system_prompt(
-                    str(payload.parameters.get("skill_id") or ""),
-                    str(payload.parameters.get("skill_version") or "") or None,
-                )
-            else:
-                instructions = (
-                    "Write only the final narration script for a short-form video. Preserve factual meaning, use natural spoken language, and do not add meta commentary."
-                    if payload.node_key == "script.generate"
-                    else "Transform the user's prompt as requested. Return only the useful final text without meta commentary."
-                )
-            text, request_id = self.generate_text(logical_model=logical_model, prompt=payload.prompt, instructions=instructions)
-            artifact_type = "Script" if payload.node_key == "script.generate" else "Text"
-            skill_execution = payload.node_key == "skill.execute"
-            return LiveGenerationResult(
-                {"kind": "text", "title": "Generated script" if artifact_type == "Script" else "Generated master prompt" if skill_execution else "Generated text", "text": text},
-                artifact_type, "script.v1" if artifact_type == "Script" else "prompt.master.v1" if skill_execution else "openai.text.v1",
-                request_id, text.encode(), "text/plain", "master-prompt.txt" if skill_execution else "result.txt", input_ids,
-            )
-
-        if payload.node_key in {"image.generate", "image.edit"}:
-            count = max(1, min(4, int(payload.parameters.get("output_count") or 1)))
-            image_inputs = [item for item in inputs if item.artifact_type == "Image"][:4]
-            images, request_id = self.generate_images(
-                logical_model=logical_model,
-                prompt=payload.prompt,
-                count=count,
-                aspect_ratio=str(payload.parameters.get("aspect_ratio") or "9:16"),
-                quality=str(payload.parameters.get("quality") or "medium"),
-                reference_images=image_inputs,
-            )
-            editing = payload.node_key == "image.edit"
-            return LiveGenerationResult(
-                {"kind": "image", "title": "AI edited image" if editing else "Generated image", "mimeType": "image/png"},
-                "Image", "openai.image.edit.v1" if editing else "openai.image.v1", request_id, images[0], "image/png", "edited.png" if editing else "generated.png", input_ids,
-                tuple(GeneratedAsset(data, "image/png", f"{'edited' if editing else 'generated'}-{index}.png") for index, data in enumerate(images[1:], start=2)),
-            )
-
-        if payload.node_key == "tts.generate":
-            audio, request_id, _ = self.generate_speech(
-                logical_model=logical_model,
-                text=payload.prompt,
-                voice_name=str(payload.parameters.get("voice_name") or "coral"),
-                style_prompt=str(payload.parameters.get("style_prompt") or "Speak naturally and clearly for a short-form video."),
-            )
-            return LiveGenerationResult(
-                {"kind": "audio", "title": "Generated voiceover", "mimeType": "audio/wav"},
-                "Audio", "openai.tts.v1", request_id, audio, "audio/wav", "voiceover.wav", input_ids,
-            )
-
-        raise ValueError(f"OpenAI provider does not support Canvas node: {payload.node_key}")
 
 
 def _image_size(aspect_ratio: str) -> str:
