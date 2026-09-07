@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy.orm import Session
 
 from ..domain import ExperimentRunRequest
 from .port_types import port_type_registry
@@ -283,7 +282,6 @@ class NodeCharacterLoraRuntime(Protocol):
 
 @dataclass(frozen=True)
 class NodeExecutionContext:
-    db: Session
     payload: ExperimentRunRequest
     definition: NodeDefinition
     request_hash: str

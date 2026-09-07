@@ -12,16 +12,20 @@ from ...canvas_operations import (
     _edit_videos,
     _of_type,
     _probe,
-    _read_artifacts,
     _run,
     _video_stream,
     _write_artifact,
 )
-from ...database import ArtifactRecord
 from ...image_story_video import _motion_filter, _subtitle_ass, output_dimensions, parse_srt_cues
-from ...service import create_artifact
-from ...storage import artifact_content_url, get_storage, storage_location
-from ..contracts import NodeExecutionContext, NodeExecutionResult
+from ...storage import artifact_content_url
+from ..contracts import (
+    NodeArtifactContent,
+    NodeArtifactRef,
+    NodeArtifactSnapshot,
+    NodeArtifactWrite,
+    NodeExecutionContext,
+    NodeExecutionResult,
+)
 from .text_support import input_lineage
 
 
@@ -43,6 +47,23 @@ VIDEO_COMPOSE_REVISION = "video-compose.v1"
 VIDEO_TYPES = {"Video", "FinalVideo", "ProxyVideo"}
 
 
+def _read_artifacts(
+    context: NodeExecutionContext,
+    typed_inputs: list[dict[str, Any]],
+) -> list[NodeArtifactContent]:
+    return context.require_artifact_store().read_inputs(typed_inputs)
+
+
+def create_artifact(
+    context: NodeExecutionContext,
+    artifact_type: str,
+    **kwargs: Any,
+) -> NodeArtifactRef:
+    return context.require_artifact_store().create(
+        NodeArtifactWrite(artifact_type=artifact_type, **kwargs)
+    )
+
+
 def _json_artifact(artifact: ArtifactData, *, schema: str, label: str) -> dict[str, Any]:
     try:
         payload = json.loads(artifact.data)
@@ -55,7 +76,7 @@ def _json_artifact(artifact: ArtifactData, *, schema: str, label: str) -> dict[s
 
 def _result(
     context: NodeExecutionContext,
-    artifact: ArtifactRecord,
+    artifact: NodeArtifactRef,
     *,
     output: dict[str, object],
     input_ids: list[str],
@@ -78,15 +99,15 @@ def _result(
     )
 
 
-def _source_image(context: NodeExecutionContext, source: dict[str, Any]) -> tuple[ArtifactRecord, bytes, str]:
-    artifact = context.db.get(ArtifactRecord, str(source.get("artifact_id") or ""))
-    if not artifact or artifact.type != "Image":
+def _source_image(context: NodeExecutionContext, source: dict[str, Any]) -> tuple[NodeArtifactSnapshot, bytes, str]:
+    artifact = context.require_artifact_store().read(
+        str(source.get("artifact_id") or "")
+    )
+    if artifact.record.type != "Image":
         raise ValueError("Frame Apply source Image is unavailable")
-    if source.get("sha256") and artifact.sha256 != source["sha256"]:
+    if source.get("sha256") and artifact.record.sha256 != source["sha256"]:
         raise ValueError("Frame Apply source Image no longer matches the motion snapshot")
-    bucket, key = storage_location(artifact.uri, artifact.metadata_json)
-    content_type = str((artifact.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream")
-    return artifact, get_storage().get_bytes(bucket=bucket, key=key), content_type
+    return artifact.record, artifact.data, artifact.content_type
 
 
 def _image_suffix(content_type: str) -> str:
@@ -227,7 +248,7 @@ class ImageMotionExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != IMAGE_MOTION_REVISION:
             raise RuntimeError("Image Motion executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         images = _of_type(artifacts, "Image")
         if not images:
             raise ValueError("Image Motion requires one connected Image Artifact")
@@ -257,7 +278,7 @@ class ImageMotionExecutor:
         content = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=IMAGE_MOTION_SCHEMA,
             input_artifact_ids=input_ids,
@@ -276,7 +297,7 @@ class ImageMotionExecutor:
             content_type="application/json",
             filename="image-motion.json",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -319,7 +340,7 @@ class MediaFrameLayoutExecutor:
         }
         content = json.dumps(layout, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=MEDIA_FRAME_SCHEMA,
             input_artifact_ids=[],
@@ -337,7 +358,7 @@ class MediaFrameLayoutExecutor:
             content_type="application/json",
             filename="media-frame.json",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -377,7 +398,7 @@ class VideoFrameApplyExecutor:
         revision = context.definition.execution.revision
         if revision not in {FRAME_APPLY_REVISION, FRAME_APPLY_V2_REVISION}:
             raise RuntimeError("Frame Apply executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         plans = _of_type(artifacts, "MediaMotion")
         if not plans:
             raise ValueError("Frame Apply requires one connected MediaMotion Artifact")
@@ -403,7 +424,7 @@ class VideoFrameApplyExecutor:
             input_ids.insert(1, frame_artifact.record.id)
             input_roles[frame_artifact.record.id] = "media_frame"
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=output_schema,
             input_artifact_ids=input_ids,
@@ -424,7 +445,7 @@ class VideoFrameApplyExecutor:
             content_type="video/mp4",
             filename="framed-motion.mp4",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -444,14 +465,14 @@ class VideoConcatenateExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != VIDEO_CONCATENATE_REVISION:
             raise RuntimeError("Video Concatenate executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         videos = _of_type(artifacts, *VIDEO_TYPES)
         if not videos:
             raise ValueError("Video Concatenate requires at least one connected Video Artifact")
         content = _edit_videos(videos, {"resolution": "source", "aspect_ratio": "source", "transition": "hard_cut"})
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=VIDEO_CONCATENATE_SCHEMA,
             input_artifact_ids=input_ids,
@@ -470,7 +491,7 @@ class VideoConcatenateExecutor:
             content_type="video/mp4",
             filename="concatenated.mp4",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -490,7 +511,7 @@ class SubtitleLayoutExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != SUBTITLE_LAYOUT_REVISION:
             raise RuntimeError("Subtitle Layout executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         subtitles = _of_type(artifacts, "Subtitle")
         if not subtitles:
             raise ValueError("Subtitle Layout requires one connected Subtitle Artifact")
@@ -522,7 +543,7 @@ class SubtitleLayoutExecutor:
         content = json.dumps(layout, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=SUBTITLE_LAYOUT_SCHEMA,
             input_artifact_ids=input_ids,
@@ -540,7 +561,7 @@ class SubtitleLayoutExecutor:
             content_type="application/json",
             filename="subtitle-layout.json",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,
@@ -560,7 +581,7 @@ class VideoComposeExecutor:
     ) -> NodeExecutionResult:
         if context.definition.execution.revision != VIDEO_COMPOSE_REVISION:
             raise RuntimeError("Video Compose executor revision does not match its Node Definition")
-        artifacts = _read_artifacts(context.db, typed_inputs)
+        artifacts = _read_artifacts(context, typed_inputs)
         videos = _of_type(artifacts, *VIDEO_TYPES)
         layouts = _of_type(artifacts, "CaptionLayout")
         audios = _of_type(artifacts, "Audio")
@@ -569,12 +590,12 @@ class VideoComposeExecutor:
         video, layout_artifact, audio = videos[0], layouts[0], audios[0]
         layout = _json_artifact(layout_artifact, schema=SUBTITLE_LAYOUT_SCHEMA, label="Video Compose")
         subtitle_ref = dict(layout["subtitle"])
-        subtitle = context.db.get(ArtifactRecord, str(subtitle_ref.get("artifact_id") or ""))
-        if not subtitle or subtitle.type != "Subtitle" or subtitle.sha256 != subtitle_ref.get("sha256"):
+        subtitle_data = context.require_artifact_store().read(
+            str(subtitle_ref.get("artifact_id") or "")
+        )
+        subtitle = subtitle_data.record
+        if subtitle.type != "Subtitle" or subtitle.sha256 != subtitle_ref.get("sha256"):
             raise ValueError("Video Compose Subtitle snapshot is unavailable or changed")
-        bucket, key = storage_location(subtitle.uri, subtitle.metadata_json)
-        subtitle_content_type = str((subtitle.metadata_json.get("storage") or {}).get("content_type") or "application/x-subrip")
-        subtitle_data = ArtifactData(subtitle, get_storage().get_bytes(bucket=bucket, key=key), subtitle_content_type)
         content, media = compose_video(video, subtitle_data, audio, layout)
         input_ids = [video.record.id, layout_artifact.record.id, audio.record.id, subtitle.id]
         input_roles = {
@@ -584,7 +605,7 @@ class VideoComposeExecutor:
             subtitle.id: "subtitle_snapshot",
         }
         artifact = create_artifact(
-            context.db,
+            context,
             context.definition.artifact_contract.primary_type,
             schema_id=VIDEO_COMPOSE_SCHEMA,
             input_artifact_ids=input_ids,
@@ -604,7 +625,7 @@ class VideoComposeExecutor:
             content_type="video/mp4",
             filename="composed-final.mp4",
         )
-        context.db.flush()
+        context.require_artifact_store().flush()
         return _result(
             context,
             artifact,

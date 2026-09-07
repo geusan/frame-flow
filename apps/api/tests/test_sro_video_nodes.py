@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from app.canvas_operations import ArtifactData
 from app.domain import ExperimentRunRequest
 from app.nodes import node_registry
-from app.nodes.contracts import NodeExecutionContext
+from app.nodes.contracts import NodeArtifactContent, NodeArtifactSnapshot, NodeExecutionContext
 from app.nodes.executors import sro_video as executor_module
 from app.nodes.executors.sro_video import (
     FRAME_APPLY_SCHEMA,
@@ -35,9 +35,37 @@ def _record(artifact_id: str, artifact_type: str, sha256: str = "a" * 64):
     )
 
 
-def _context(definition, db) -> NodeExecutionContext:
+def _context(definition, db, *, content_by_id=None) -> NodeExecutionContext:
+    content_by_id = content_by_id or {}
+
+    class FakeArtifactStore:
+        def read(self, artifact_id):
+            record = db.get(None, artifact_id)
+            if record is None:
+                raise ValueError(f"input artifact does not exist: {artifact_id}")
+            data, content_type = content_by_id.get(
+                artifact_id,
+                (b"", "application/octet-stream"),
+            )
+            return NodeArtifactContent(
+                NodeArtifactSnapshot(
+                    id=record.id,
+                    type=record.type,
+                    schema_id=getattr(record, "schema_id", None),
+                    sha256=getattr(record, "sha256", ""),
+                ),
+                data,
+                content_type,
+            )
+
+        def flush(self):
+            if hasattr(db, "flush"):
+                db.flush()
+
+        def content_url(self, artifact_id):
+            return f"http://api/artifacts/{artifact_id}/content"
+
     return NodeExecutionContext(
-        db=db,
         payload=ExperimentRunRequest(
             canvas_id="canvas_sro",
             node_id="node_sro",
@@ -50,6 +78,7 @@ def _context(definition, db) -> NodeExecutionContext:
         definition=definition,
         request_hash="b" * 64,
         experiment_id="experiment_sro",
+        artifact_store=FakeArtifactStore(),
     )
 
 
@@ -62,7 +91,6 @@ def _capture_artifacts(monkeypatch):
         return artifact
 
     monkeypatch.setattr(executor_module, "create_artifact", create_artifact)
-    monkeypatch.setattr(executor_module, "artifact_content_url", lambda artifact_id: f"http://api/artifacts/{artifact_id}/content")
     return created
 
 
@@ -276,11 +304,13 @@ def test_subtitle_layout_and_final_compose_keep_layout_and_mux_responsibilities_
             return None
 
     monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: compose_inputs)
-    monkeypatch.setattr(executor_module, "storage_location", lambda *_: ("bucket", "subtitle.srt"))
-    monkeypatch.setattr(executor_module, "get_storage", lambda: SimpleNamespace(get_bytes=lambda **_: srt))
     monkeypatch.setattr(executor_module, "compose_video", lambda *args: (b"final", {"width": 1080, "height": 1920, "duration_ms": 1000}))
     compose_result = VideoComposeExecutor().execute(
-        _context(compose_definition, FakeDb()),
+        _context(
+            compose_definition,
+            FakeDb(),
+            content_by_id={subtitle.id: (srt, "application/x-subrip")},
+        ),
         {},
         [
             {"type": "Video", "artifact_ids": [video.id]},

@@ -431,7 +431,6 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
     started = time.perf_counter()
     try:
         context = NodeExecutionContext(
-            db=db,
             payload=payload,
             definition=definition,
             request_hash=digest,

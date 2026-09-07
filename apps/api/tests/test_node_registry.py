@@ -377,7 +377,6 @@ def test_lora_train_executor_returns_trained_character_contract():
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=object(),
         payload=payload,
         definition=definition,
         request_hash="digest",
@@ -554,7 +553,6 @@ def test_motion_control_executor_records_artifact_contract_and_lineage(monkeypat
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=object(),
         payload=payload,
         definition=definition,
         request_hash="abcd1234",
@@ -590,7 +588,6 @@ def test_motion_control_rejects_missing_or_invalid_motion_track():
         inputs=[],
     )
     context = NodeExecutionContext(
-        db=object(),
         payload=payload,
         definition=definition,
         request_hash="digest",
