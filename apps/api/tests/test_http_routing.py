@@ -1,6 +1,7 @@
 from fastapi.routing import APIRoute
 
 from app.api.routers.canvases import router as canvases_router
+from app.api.routers.runs import router as runs_router
 from app.api.routers.workflows import router as workflows_router
 from app.main import app
 
@@ -33,6 +34,27 @@ WORKFLOW_OPERATIONS = {
     ("POST", "/workflows/{workflow_id}/archive"),
     ("POST", "/workflows/{workflow_id}/activate"),
     ("GET", "/workflow-runs"),
+}
+
+RUN_OPERATIONS = {
+    ("POST", "/experiments"),
+    ("GET", "/experiments"),
+    ("POST", "/experiments/{experiment_id}/baseline"),
+    ("POST", "/canvas-runs"),
+    ("GET", "/canvas-runs/{run_id}"),
+    ("GET", "/canvas-runs/{run_id}/events"),
+    ("POST", "/canvas-runs/{run_id}/cancel"),
+    ("POST", "/canvas-runs/{run_id}/nodes/{canvas_node_id}/select"),
+    ("POST", "/canvas-runs/{run_id}/nodes/{canvas_node_id}/approve"),
+    ("POST", "/generation-runs"),
+    ("GET", "/runs/{run_id}"),
+    ("GET", "/runs"),
+    ("POST", "/runs/{run_id}/cancel"),
+    ("GET", "/runs/{run_id}/events"),
+    ("POST", "/node-runs/{node_run_id}/retry"),
+    ("POST", "/node-runs/{node_run_id}/regenerate"),
+    ("POST", "/node-runs/{node_run_id}/fork"),
+    ("POST", "/node-runs/{node_run_id}/select"),
 }
 
 
@@ -82,6 +104,23 @@ def test_workflow_router_is_registered_once_in_the_http_app() -> None:
     operations = _operations(app.routes)
 
     for method, path in WORKFLOW_OPERATIONS:
+        assert sum(
+            registered_method == method and registered_path == path
+            for registered_method, registered_path, _ in operations
+        ) == 1
+
+
+def test_run_endpoints_are_owned_by_the_run_router() -> None:
+    operations = _operations(runs_router.routes)
+
+    assert {(method, path) for method, path, _ in operations} == RUN_OPERATIONS
+    assert {module for _, _, module in operations} == {"app.api.routers.runs"}
+
+
+def test_run_router_is_registered_once_in_the_http_app() -> None:
+    operations = _operations(app.routes)
+
+    for method, path in RUN_OPERATIONS:
         assert sum(
             registered_method == method and registered_path == path
             for registered_method, registered_path, _ in operations
