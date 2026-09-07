@@ -1,4 +1,5 @@
 from .audit_log import SqlAlchemyAuditLog
+from .administration_operations import SqlAlchemyAdministrationOperations
 from .artifact_operations import LegacySqlAlchemyArtifactOperations
 from .canvas_repository import SqlAlchemyCanvasRepository
 from .format_operations import LegacySqlAlchemyFormatOperations
@@ -10,6 +11,7 @@ from .workflow_operations import LegacySqlAlchemyWorkflowOperations
 
 __all__ = [
     "SqlAlchemyAuditLog",
+    "SqlAlchemyAdministrationOperations",
     "LegacySqlAlchemyArtifactOperations",
     "LegacySqlAlchemyFormatOperations",
     "LegacySqlAlchemyGenerationOperations",

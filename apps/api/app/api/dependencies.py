@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from ..contexts.artifacts.application import ArtifactApplication
+from ..contexts.administration.application import AdministrationApplication
 from ..contexts.canvases.application import CanvasApplication
 from ..contexts.formats.application import FormatApplication
 from ..contexts.generation.application import GenerationApplication
@@ -16,6 +17,7 @@ from ..infrastructure.persistence import (
     LegacySqlAlchemyRunOperations,
     LegacySqlAlchemyReferenceOperations,
     SqlAlchemyCanvasUnitOfWork,
+    SqlAlchemyAdministrationOperations,
 )
 from ..service import new_id
 
@@ -27,6 +29,11 @@ def get_canvas_application() -> CanvasApplication:
         id_generator=new_id,
         clock=utc_now,
     )
+
+
+@lru_cache(maxsize=1)
+def get_administration_application() -> AdministrationApplication:
+    return AdministrationApplication(SqlAlchemyAdministrationOperations())
 
 
 @lru_cache(maxsize=1)
