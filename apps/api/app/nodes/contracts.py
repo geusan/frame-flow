@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -323,10 +323,16 @@ class NodeExecutionContext:
     model_alias: str
     request_hash: str
     experiment_id: str
+    progress_callback: Callable[[int, str], None] | None = None
     artifact_store: NodeArtifactStore | None = None
     provider_settings: NodeProviderSettings | None = None
     media_runtime: NodeMediaRuntime | None = None
     character_lora_runtime: NodeCharacterLoraRuntime | None = None
+
+    def report_progress(self, progress: int, message: str) -> None:
+        if self.progress_callback:
+            self.progress_callback(max(0, min(99, int(progress))), str(message)[:1000])
+
 
     def require_artifact_store(self) -> NodeArtifactStore:
         if self.artifact_store is None:

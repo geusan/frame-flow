@@ -415,6 +415,7 @@ export interface CanvasNodeRunRecord {
   duration_ms: number;
   cost_usd: number;
   error?: string;
+  logs: string[];
 }
 
 export interface CanvasRunRecord {

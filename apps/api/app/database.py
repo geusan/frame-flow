@@ -250,6 +250,7 @@ class CanvasNodeRunRecord(Timestamped, Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    logs: Mapped[list[str]] = mapped_column(JSON, default=list)
     run: Mapped[CanvasRunRecord] = relationship(back_populates="node_runs")
 
 

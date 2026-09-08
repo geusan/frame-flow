@@ -19,6 +19,7 @@ class CanvasWorkflowInput:
     dependencies: dict[str, list[str]]
     completed_node_ids: list[str]
     approval_node_ids: list[str]
+    single_attempt_node_ids: list[str] = field(default_factory=list)
     human_gate_modes: dict[str, HumanGateMode] = field(default_factory=dict)
 
 
@@ -38,7 +39,9 @@ class CanvasRunWorkflow:
             initial_interval=timedelta(seconds=2),
             maximum_interval=timedelta(minutes=1),
             maximum_attempts=3,
+            non_retryable_error_types=["NonRetryableNodeError"],
         )
+        single_attempt = RetryPolicy(maximum_attempts=1)
         gate_modes = payload.human_gate_modes or legacy_human_gate_modes(
             payload.node_keys,
             payload.approval_node_ids,
@@ -65,7 +68,7 @@ class CanvasRunWorkflow:
                         args=[payload.run_id, node_id],
                         start_to_close_timeout=timedelta(minutes=30),
                         heartbeat_timeout=timedelta(minutes=1),
-                        retry_policy=retry,
+                        retry_policy=single_attempt if node_id in payload.single_attempt_node_ids else retry,
                         cancellation_type=workflow.ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
                     ) for node_id in executable
                 ])
@@ -78,7 +81,7 @@ class CanvasRunWorkflow:
                     "mark_canvas_waiting",
                     args=[payload.run_id, node_id],
                     start_to_close_timeout=timedelta(seconds=30),
-                    retry_policy=retry,
+                    retry_policy=single_attempt if node_id in payload.single_attempt_node_ids else retry,
                 )
                 await workflow.wait_condition(lambda: self.selected_artifact_id is not None)
                 await workflow.execute_activity(

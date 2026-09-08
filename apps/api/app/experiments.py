@@ -5,7 +5,7 @@ import json
 import os
 import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -202,7 +202,11 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
     )
 
 
-def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunRecord:
+def run_experiment(
+    db: Session,
+    payload: ExperimentRunRequest,
+    progress_callback: Callable[[int, str], None] | None = None,
+) -> ExperimentRunRecord:
     payload = resolve_prompt_image_variables(payload)
     definition = node_registry.get(payload.node_key, payload.node_contract_version)
     payload = resolve_character_lora_parameters(db, payload, definition)
@@ -266,6 +270,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             model_alias=payload.model_alias,
             request_hash=digest,
             experiment_id=record.id,
+            progress_callback=progress_callback,
             artifact_store=SqlAlchemyNodeArtifactStore(db),
             provider_settings=SqlAlchemyNodeProviderSettings(db),
             media_runtime=SqlAlchemyNodeMediaRuntime(db),
@@ -295,6 +300,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
             raise ValueError("registered Node returned no output Artifacts")
         db.flush()
     except Exception as exc:
+        failure_retryable = getattr(exc, "retryable", None)
         db.rollback()
         record = db.get(ExperimentRunRecord, record.id) or record
         record.status = NodeStatus.FAILED
@@ -303,6 +309,7 @@ def run_experiment(db: Session, payload: ExperimentRunRequest) -> ExperimentRunR
         audit(db, "experiment.failed", record.id, {"error": record.error})
         db.commit()
         db.refresh(record)
+        setattr(record, "_failure_retryable", failure_retryable)
         return record
     record.status = NodeStatus.SUCCEEDED
     record.provider_request_id = result.provider_request_id

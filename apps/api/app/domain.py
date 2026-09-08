@@ -419,6 +419,7 @@ class CanvasNodeRunResponse(ApiRecord):
     duration_ms: int
     cost_usd: float
     error: str | None
+    logs: list[str] = Field(default_factory=list)
 
 
 class CanvasRunResponse(ApiRecord):

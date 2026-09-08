@@ -207,6 +207,7 @@ function rawNodeSnapshot(node: StudioFlowNode): Record<string, unknown> {
       output,
       last_request_hash: node.data.lastRequestHash ?? null,
       attempt_count: node.data.attemptCount ?? 0,
+      logs: node.data.logs ?? [],
     },
   };
 }
@@ -1395,7 +1396,11 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             lastRequestHash: server.request_hash ?? node.data.lastRequestHash,
             lastCostUsd: server.cost_usd,
             runProgress: server.progress,
-            logs: statusChanged ? [...(node.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Worker ${status}${server.error ? ` · ${server.error}` : ""}`] : node.data.logs,
+            logs: server.logs?.length
+              ? server.logs
+              : statusChanged
+                ? [...(node.data.logs ?? []), `${new Date().toLocaleTimeString("ko-KR")} · Worker ${status}${server.error ? ` · ${server.error}` : ""}`]
+                : node.data.logs,
           },
         };
       });
@@ -1826,6 +1831,10 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             })}
             <div className="inspector-section-title"><span>Runtime</span><CircleGauge size={14} /></div>
             <div className="runtime-grid"><div><small>Last duration</small><strong>{selectedNode.data.duration ?? "—"}</strong></div><div><small>Est. cost</small><strong>{selectedNode.data.cost ?? (selectedDefinition?.execution.kind === "provider" ? "Provider billed" : "$0.00")}</strong></div><div><small>Attempts</small><strong>{selectedNode.data.attemptCount ?? 0}</strong></div><div><small>Output</small><strong>{selectedNode.data.outputType ?? "—"}</strong></div></div>
+            {!!selectedNode.data.logs?.length && <div className="node-execution-logs" aria-label="Node execution logs">
+              <header><span>Execution logs</span><small>{selectedNode.data.logs.length} events</small></header>
+              {selectedNode.data.logs.slice(-8).map((entry, index) => <p key={`${index}-${entry}`}>{entry}</p>)}
+            </div>}
             {showExperimentHistory && <div className="experiment-history">
               <div className="experiment-history-head"><span><ListRestart size={13} /> Experiment history</span><small>{visibleExperimentHistory.length} runs</small></div>
               {experimentHistoryNodeId === selectedNodeId && experimentHistoryError && <p className="experiment-history-state error">{experimentHistoryError}</p>}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import inspect
 from datetime import datetime, timezone
 from typing import Any
 
@@ -16,6 +17,10 @@ from .nodes import node_registry
 from .nodes.human_gates import HumanGateMode, human_gate_mode
 from .nodes.legacy_run_adapter import legacy_canvas_run_parameters
 from .service import new_id
+
+
+class NonRetryableNodeError(RuntimeError):
+    """A deterministic provider/config failure that Temporal must not retry."""
 
 
 def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
@@ -49,6 +54,7 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
             duration_ms=node.duration_ms,
             cost_usd=node.cost_usd,
             error=node.error,
+            logs=node.logs or [],
         ) for node in run.node_runs],
     )
 
@@ -135,6 +141,7 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
             attempt_count=0,
             output_artifact_ids=list(data.get("outputArtifactIds") or []),
             output_payload=dict(data.get("output") or {}),
+            logs=[],
         ))
     db.commit()
     db.refresh(run)
@@ -157,10 +164,26 @@ def execute_canvas_node(run_id: str, canvas_node_id: str) -> dict[str, Any]:
         node.progress = 5
         node.attempt_count += 1
         node.error = None
+        node.logs = [*(node.logs or []), "Worker started"]
         run.status = NodeStatus.RUNNING
         db.commit()
         experiment_payload = _experiment_payload(db, run, node, data)
-        experiment = run_experiment(db, experiment_payload)
+
+        def report_progress(progress: int, message: str) -> None:
+            db.refresh(run)
+            if run.status == NodeStatus.CANCELED:
+                raise RuntimeError("Canvas run was canceled")
+            node.progress = max(node.progress, progress)
+            if not node.logs or node.logs[-1] != message:
+                node.logs = [*(node.logs or []), message][-200:]
+            run.progress = _run_progress(run)
+            db.commit()
+
+        experiment = (
+            run_experiment(db, experiment_payload, progress_callback=report_progress)
+            if "progress_callback" in inspect.signature(run_experiment).parameters
+            else run_experiment(db, experiment_payload)
+        )
         db.refresh(run)
         db.refresh(node)
         if run.status == NodeStatus.CANCELED:
@@ -171,8 +194,11 @@ def execute_canvas_node(run_id: str, canvas_node_id: str) -> dict[str, Any]:
             node.status = NodeStatus.FAILED
             node.progress = 0
             node.error = experiment.error or "Canvas node execution failed"
+            node.logs = [*(node.logs or []), node.error][-200:]
             run.status = NodeStatus.FAILED
             db.commit()
+            if getattr(experiment, "_failure_retryable", None) is False:
+                raise NonRetryableNodeError(node.error)
             raise RuntimeError(node.error)
         node.status = NodeStatus.SUCCEEDED
         node.progress = 100
@@ -182,6 +208,10 @@ def execute_canvas_node(run_id: str, canvas_node_id: str) -> dict[str, Any]:
         node.output_payload = dict(experiment.output_payload or {})
         node.duration_ms = experiment.duration_ms
         node.cost_usd = experiment.cost_usd
+        node.logs = [
+            *(node.logs or []),
+            "Reused cached upstream result" if experiment.cache_hit else "Completed",
+        ][-200:]
         run.progress = _run_progress(run)
         db.commit()
         return {"node_run_id": node.id, "artifact_ids": node.output_artifact_ids, "cache_hit": experiment.cache_hit}
@@ -484,8 +514,7 @@ def canvas_dependencies(run: CanvasRunRecord) -> dict[str, list[str]]:
 def _run_progress(run: CanvasRunRecord) -> int:
     if not run.node_runs:
         return 0
-    complete = sum(node.status in {NodeStatus.SUCCEEDED, NodeStatus.FAILED, NodeStatus.CANCELED} for node in run.node_runs)
-    return round(complete / len(run.node_runs) * 100)
+    return round(sum(max(0, min(100, node.progress)) for node in run.node_runs) / len(run.node_runs))
 
 
 def _assert_acyclic(node_ids: list[str], edges: list[dict[str, Any]]) -> None:
