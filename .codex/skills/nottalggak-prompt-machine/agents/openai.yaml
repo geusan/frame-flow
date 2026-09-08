@@ -1,0 +1,4 @@
+interface:
+  display_name: "NOTTALGGAK Prompt Machine"
+  short_description: "Production-grade image and video prompt synthesis"
+  default_prompt: "Use $nottalggak-prompt-machine to turn this visual idea into an executable master prompt."
