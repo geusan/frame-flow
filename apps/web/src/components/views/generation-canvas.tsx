@@ -463,12 +463,14 @@ function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experi
 }
 
 function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): CanvasOutput {
-  const kind: CanvasOutput["kind"] = artifact.type === "Image" ? "image" : artifact.type === "Video" ? "video" : artifact.type === "Audio" ? "audio" : "text";
+  const kind: CanvasOutput["kind"] = artifact.type === "Image" ? "image" : artifact.type === "Video" ? "video" : artifact.type === "Audio" ? "audio" : artifact.type === "Model3D" ? "json" : "text";
   return {
     kind,
     title: filename,
-    url: kind === "text" ? undefined : artifact.url,
-    text: kind === "text" ? filename : `${(artifact.size_bytes / 1_000_000).toFixed(1)} MB`,
+    url: ["image", "video", "audio"].includes(kind) ? artifact.url : undefined,
+    text: kind === "json"
+      ? JSON.stringify({ schema_version: "model.gltf.v1", artifact_id: artifact.artifact_id, size_bytes: artifact.size_bytes })
+      : kind === "text" ? filename : `${(artifact.size_bytes / 1_000_000).toFixed(1)} MB`,
     mimeType: artifact.content_type,
   };
 }
@@ -716,7 +718,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   useEffect(() => {
     let active = true;
     Promise.all([
-      frameflowApi.listAllArtifacts(["Image", "Video", "FinalVideo", "Audio"]),
+      frameflowApi.listAllArtifacts(["Image", "Video", "FinalVideo", "Audio", "Model3D"]),
       frameflowApi.listCharacters(),
     ]).then(([assets, characters]) => {
       if (!active) return;
@@ -1101,6 +1103,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     try {
       const artifact = await frameflowApi.uploadArtifact(file);
       const output = uploadedArtifactOutput(file.name || artifact.filename, artifact);
+      const assetDefinition = nodeDefinitions
+        .filter((definition) => definition.type_key === "asset.select")
+        .sort((left, right) => right.contract_version - left.contract_version)[0];
       setNodes((current) => {
         const invalidated = invalidateDescendants(current, edgesRef.current, nodeId);
         const updated = invalidated.map((node) => node.id === nodeId ? {
@@ -1117,6 +1122,11 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             output,
             outputType: artifact.type as PortType,
             outputArtifactIds: [artifact.artifact_id],
+            contractVersion: assetDefinition?.contract_version ?? 1,
+            definitionDigest: assetDefinition?.definition_digest,
+            config: { artifact_id: artifact.artifact_id, artifact_type: artifact.type },
+            model: assetDefinition?.execution.model_alias ?? "local.artifact-source",
+            provider: "local",
           },
         } : node);
         return refreshReadyStatuses(updated, edgesRef.current);
@@ -1129,7 +1139,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "FAILED" as NodeStatus, preview: undefined, logs: [...(node.data.logs ?? []), message] } } : node));
       notify(message, "error");
     }
-  }, [markUnsaved, notify, setNodes]);
+  }, [markUnsaved, nodeDefinitions, notify, setNodes]);
 
   const importNodeAssetUrl = useCallback(async (nodeId: string, sourceUrl: string) => {
     setNodes((current) => current.map((node) => node.id === nodeId ? {
@@ -1175,9 +1185,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       const invalidated = invalidateDescendants(current, edgesRef.current, nodeId);
       const updated = invalidated.map((node) => {
         if (node.id !== nodeId) return node;
-        if (!artifact) return { ...node, data: { ...node.data, status: "READY" as NodeStatus, configText: "", output: undefined, preview: undefined, outputArtifactIds: undefined, outputType: "ReferenceAsset" as PortType } };
+        if (!artifact) return { ...node, data: { ...node.data, status: "READY" as NodeStatus, configText: "", config: { ...(node.data.config ?? {}), artifact_id: "", artifact_type: "ReferenceAsset" }, output: undefined, preview: undefined, outputArtifactIds: undefined, outputType: "ReferenceAsset" as PortType } };
         const { outputType, output } = storedAssetOutput(artifact);
-        return { ...node, data: { ...node.data, status: "SUCCEEDED" as NodeStatus, configText: artifact.id, preview: artifact.filename, outputType, outputArtifactIds: [artifact.id], output } };
+        return { ...node, data: { ...node.data, status: "SUCCEEDED" as NodeStatus, configText: artifact.id, config: { ...(node.data.config ?? {}), artifact_id: artifact.id, artifact_type: outputType }, preview: artifact.filename, outputType, outputArtifactIds: [artifact.id], output } };
       });
       return refreshReadyStatuses(updated, edgesRef.current);
     });

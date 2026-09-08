@@ -98,7 +98,7 @@ export interface ProviderAuthMethod {
 }
 
 export interface ProviderSetting {
-  provider: "openai" | "xai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "r2";
+  provider: "openai" | "xai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "tripo" | "r2";
   label: string;
   description: string;
   enabled: boolean;
@@ -482,7 +482,7 @@ export interface CreateExperimentInput {
 
 export interface UploadedArtifact {
   artifact_id: string;
-  type: "Image" | "Video" | "Audio" | "Text";
+  type: "Image" | "Video" | "Audio" | "Text" | "Model3D";
   content_type: string;
   size_bytes: number;
   filename: string;
@@ -494,7 +494,7 @@ export interface UploadedArtifact {
 export interface ArtifactListItem {
   id: string;
   created_at: string;
-  type: "Image" | "Video" | "Audio" | "Text" | "FinalVideo" | "ReferenceAnalysis" | "ReferenceAudioMix" | "ReferenceTranscript" | "ReferenceSubtitle" | "ReferenceVocals" | "ReferenceAccompaniment";
+  type: "Image" | "Video" | "Audio" | "Text" | "Model3D" | "CharacterReference" | "CharacterReferenceSet" | "Character3D" | "Character3DValidated" | "CharacterRigged" | "MotionSourceVideo" | "MotionRaw" | "MotionClean" | "AnimatedCharacter" | "BlendFile" | "MetadataJSON" | "VideoPreview" | "FinalVideo" | "ReferenceAnalysis" | "ReferenceAudioMix" | "ReferenceTranscript" | "ReferenceSubtitle" | "ReferenceVocals" | "ReferenceAccompaniment";
   content_type: string;
   size_bytes: number;
   filename: string;
@@ -657,7 +657,7 @@ const EMPTY_CANVAS_DOCUMENT: CanvasDocumentV1 = {
 };
 
 export const frameflowApi = {
-  health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
+  health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; tripo_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
   listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
   listNodePortTypes: () => request<NodePortTypeRegistryRecord>("/node-port-types"),
   listSkills: (includeDisabled = false) => request<ProjectSkillRecord[]>(`/skills${includeDisabled ? "?include_disabled=true" : ""}`),

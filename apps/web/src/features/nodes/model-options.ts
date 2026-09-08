@@ -9,7 +9,7 @@ export interface NodeModelOption {
   configurationKnown: boolean;
 }
 
-const providerLabels: Record<string, string> = { google: "Google", openai: "OpenAI", xai: "xAI", fal: "fal.ai", chatgpt: "ChatGPT", claude: "Claude" };
+const providerLabels: Record<string, string> = { google: "Google", openai: "OpenAI", xai: "xAI", fal: "fal.ai", tripo: "Tripo", chatgpt: "ChatGPT", claude: "Claude" };
 
 export function providerForModelAlias(alias?: string): ProviderName | undefined {
   return alias?.split(".", 1)[0] || undefined;

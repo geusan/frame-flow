@@ -8,6 +8,7 @@ import {
   AudioWaveform,
   BadgeCheck,
   Bot,
+  Box,
   Braces,
   ChevronDown,
   ChevronUp,
@@ -132,8 +133,8 @@ function AssetUploadControl({ nodeId, busy }: { nodeId: string; busy: boolean })
   return <div className="node-upload-control nodrag nopan">
     <label className="node-upload-drop">
       <Upload size={18} />
-      <span><strong>Choose a file</strong><small>Image, video or audio</small></span>
-      <input type="file" accept="image/*,video/*,audio/*" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) actions.uploadAsset(nodeId, file); }} />
+      <span><strong>Choose a file</strong><small>Image, video, audio or GLB</small></span>
+      <input type="file" accept="image/*,video/*,audio/*,.glb,model/gltf-binary" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) actions.uploadAsset(nodeId, file); }} />
     </label>
     <span className="node-upload-divider">or paste a video URL</span>
     <form className="node-url-import" onSubmit={(event) => { event.preventDefault(); submitUrl(url); }}>
@@ -167,16 +168,20 @@ export function isAudioAsset(asset: ArtifactListItem): boolean {
   return asset.type === "Audio";
 }
 
+export function isModel3DAsset(asset: ArtifactListItem): boolean {
+  return ["Model3D", "Character3D", "Character3DValidated", "CharacterRigged", "AnimatedCharacter"].includes(asset.type);
+}
+
 export function storedAssetOutput(asset: ArtifactListItem): { outputType: PortType; output: CanvasOutput } {
   const outputType = (asset.type === "FinalVideo" ? "Video" : asset.type) as PortType;
-  const kind: CanvasOutput["kind"] = outputType === "Image" ? "image" : outputType === "Video" ? "video" : outputType === "Text" ? "text" : "audio";
+  const kind: CanvasOutput["kind"] = outputType === "Image" ? "image" : outputType === "Video" ? "video" : outputType === "Text" ? "text" : isModel3DAsset(asset) ? "json" : "audio";
   return {
     outputType,
-    output: { kind, title: asset.filename, url: asset.url, mimeType: asset.content_type },
+    output: { kind, title: asset.filename, url: asset.url, mimeType: asset.content_type, ...(kind === "json" ? { text: JSON.stringify({ schema_version: "model.gltf.v1", artifact_id: asset.id }) } : {}) },
   };
 }
 
-type AssetPickerTab = "images" | "videos" | "audio";
+type AssetPickerTab = "images" | "videos" | "audio" | "models";
 
 function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; value: string; preferredTab?: AssetPickerTab }) {
   const actions = useContext(NodeActionsContext);
@@ -187,13 +192,14 @@ function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; v
   const imageCount = actions.assetOptions.filter((asset) => asset.type === "Image").length;
   const videoCount = actions.assetOptions.filter(isVideoAsset).length;
   const audioCount = actions.assetOptions.filter(isAudioAsset).length;
+  const modelCount = actions.assetOptions.filter(isModel3DAsset).length;
   const visibleAssets = actions.assetOptions.filter((asset) => {
-    const matchesType = tab === "images" ? asset.type === "Image" : tab === "videos" ? isVideoAsset(asset) : isAudioAsset(asset);
+    const matchesType = tab === "images" ? asset.type === "Image" : tab === "videos" ? isVideoAsset(asset) : tab === "audio" ? isAudioAsset(asset) : isModel3DAsset(asset);
     return matchesType && (!query.trim() || asset.filename.toLowerCase().includes(query.trim().toLowerCase()));
   });
 
   const openPicker = () => {
-    if (selected) setTab(isAudioAsset(selected) ? "audio" : isVideoAsset(selected) ? "videos" : "images");
+    if (selected) setTab(isModel3DAsset(selected) ? "models" : isAudioAsset(selected) ? "audio" : isVideoAsset(selected) ? "videos" : "images");
     else if (preferredTab) setTab(preferredTab);
     else if (!imageCount && videoCount) setTab("videos");
     else if (!imageCount && !videoCount && audioCount) setTab("audio");
@@ -202,16 +208,18 @@ function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; v
   return <Popover open={open} onOpenChange={(nextOpen) => { if (nextOpen) openPicker(); setOpen(nextOpen); }}>
     <div className="node-asset-picker nodrag nopan">
     <PopoverTrigger asChild><button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button">
-      <span className={`node-asset-trigger-thumb ${selected && isAudioAsset(selected) ? "audio" : selected && isVideoAsset(selected) ? "video" : "image"}`}>
+      <span className={`node-asset-trigger-thumb ${selected && isModel3DAsset(selected) ? "model" : selected && isAudioAsset(selected) ? "audio" : selected && isVideoAsset(selected) ? "video" : "image"}`}>
         {selected
-          ? isAudioAsset(selected)
+          ? isModel3DAsset(selected)
+            ? <Box size={18} />
+            : isAudioAsset(selected)
             ? <Headphones size={17} />
             : isVideoAsset(selected)
             ? <VideoPlayer src={selected.url} mimeType={selected.content_type} title={selected.filename} controls={false} />
             : <i style={{ backgroundImage: `url(${selected.url})` }} />
           : <FolderOpen size={16} />}
       </span>
-      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isAudioAsset(selected) ? "Audio" : isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos · ${audioCount} audio`}</small></span>
+      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isModel3DAsset(selected) ? "3D model" : isAudioAsset(selected) ? "Audio" : isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos · ${audioCount} audio · ${modelCount} models`}</small></span>
       <ChevronDown size={14} />
     </button></PopoverTrigger>
     </div>
@@ -222,12 +230,13 @@ function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; v
         <button type="button" className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}><ImageIcon size={12} /> Images <span>{imageCount}</span></button>
         <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}><Film size={12} /> Videos <span>{videoCount}</span></button>
         <button type="button" className={tab === "audio" ? "active" : ""} onClick={() => setTab("audio")}><Headphones size={12} /> Audio <span>{audioCount}</span></button>
+        <button type="button" className={tab === "models" ? "active" : ""} onClick={() => setTab("models")}><Box size={12} /> 3D <span>{modelCount}</span></button>
       </div>
       <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder={`Search ${tab}…`} /></label>
       <div className="node-asset-popover-grid nowheel">
         {visibleAssets.map((asset) => <button type="button" className={asset.id === value ? "selected" : ""} key={asset.id} onClick={() => { actions.selectAsset(nodeId, asset.id); setOpen(false); }} title={asset.filename}>
           <span className={`node-asset-popover-media ${isAudioAsset(asset) ? "audio" : ""}`}>
-            {isAudioAsset(asset) ? <Headphones size={22} /> : isVideoAsset(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
+            {isModel3DAsset(asset) ? <Box size={24} /> : isAudioAsset(asset) ? <Headphones size={22} /> : isVideoAsset(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
             {isVideoAsset(asset) && <Film size={13} />}
             {asset.id === value && <b><CircleCheck size={13} /></b>}
           </span>
