@@ -384,5 +384,8 @@ export function refreshReadyStatuses(nodes: StudioFlowNode[], edges: Edge[]): St
 }
 
 export function graphCost(nodes: StudioFlowNode[]): number {
-  return nodes.reduce((sum, node) => sum + Number(node.data.cost?.replace("$", "") || 0), 0);
+  return nodes.reduce((sum, node) => {
+    const usd = node.data.cost?.match(/^\$(\d+(?:\.\d+)?)/)?.[1];
+    return sum + (usd ? Number(usd) : 0);
+  }, 0);
 }
