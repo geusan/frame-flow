@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/image.motion.v2.schema.json",
+  "title": "ImageMotionPathV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source", "duration_seconds", "fps", "easing", "start", "end", "path"],
+  "properties": {
+    "schema_version": { "const": "image.motion.v2" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "sha256", "content_type"],
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "content_type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 30 },
+    "fps": { "enum": [24, 30] },
+    "easing": { "const": "linear" },
+    "start": { "$ref": "#/$defs/transform" },
+    "end": { "$ref": "#/$defs/transform" },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "control_1", "control_2"],
+      "properties": {
+        "type": { "enum": ["linear", "cubic_bezier"] },
+        "control_1": { "$ref": "#/$defs/point" },
+        "control_2": { "$ref": "#/$defs/point" }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scale", "x", "y"],
+      "properties": {
+        "scale": { "type": "number", "minimum": 1, "maximum": 2 },
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

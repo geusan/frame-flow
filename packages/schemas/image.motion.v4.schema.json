@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/image.motion.v4.schema.json",
+  "title": "FullSourceCameraMotionV4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "coordinate_space", "source", "duration_seconds", "fps", "start", "end", "path", "zoom"],
+  "properties": {
+    "schema_version": { "const": "image.motion.v4" },
+    "coordinate_space": { "const": "source_image_view_center" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_id", "sha256", "content_type"],
+      "properties": {
+        "artifact_id": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "content_type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 30 },
+    "fps": { "enum": [24, 30] },
+    "start": { "$ref": "#/$defs/transform" },
+    "end": { "$ref": "#/$defs/transform" },
+    "path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "end_progress", "control_1", "control_2"],
+      "properties": {
+        "type": { "enum": ["linear", "cubic_bezier"] },
+        "end_progress": { "type": "number", "minimum": 0.05, "maximum": 1 },
+        "control_1": { "$ref": "#/$defs/point" },
+        "control_2": { "$ref": "#/$defs/point" }
+      }
+    },
+    "zoom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["end_progress", "easing"],
+      "properties": {
+        "end_progress": { "type": "number", "minimum": 0.05, "maximum": 1 },
+        "easing": { "enum": ["linear", "ease_in", "ease_out", "ease_in_out"] }
+      }
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scale", "x", "y"],
+      "properties": {
+        "scale": { "type": "number", "minimum": 1, "maximum": 2 },
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

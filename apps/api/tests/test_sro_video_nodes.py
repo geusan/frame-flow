@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from types import SimpleNamespace
 
 from app.canvas_operations import ArtifactData
 from app.domain import ExperimentRunRequest
+from app.experiments import request_fingerprint
+from app.image_story_video import _motion_filter
 from app.nodes import node_registry
 from app.nodes.contracts import NodeArtifactContent, NodeArtifactSnapshot, NodeExecutionContext
 from app.nodes.executors import sro_video as executor_module
 from app.nodes.executors.sro_video import (
     FRAME_APPLY_SCHEMA,
     FRAME_APPLY_V2_SCHEMA,
+    FRAME_APPLY_V3_SCHEMA,
+    FRAME_APPLY_V4_SCHEMA,
+    FRAME_APPLY_V5_SCHEMA,
     IMAGE_MOTION_SCHEMA,
+    IMAGE_MOTION_V2_SCHEMA,
+    IMAGE_MOTION_V3_SCHEMA,
+    IMAGE_MOTION_V4_SCHEMA,
     MEDIA_FRAME_SCHEMA,
     SUBTITLE_LAYOUT_SCHEMA,
     VIDEO_COMPOSE_SCHEMA,
@@ -90,18 +99,32 @@ def _capture_artifacts(monkeypatch):
 
 def test_sro_story_pipeline_uses_a_shared_frame_artifact_without_mutating_v1():
     motion = node_registry.get("image.motion", 1)
+    motion_v2 = node_registry.get("image.motion", 2)
+    motion_v3 = node_registry.get("image.motion", 3)
+    motion_v4 = node_registry.get("image.motion", 4)
     frame_layout = node_registry.get("layout.media_frame", 1)
     frame_v1 = node_registry.get("video.frame_apply", 1)
     frame_v2 = node_registry.get("video.frame_apply", 2)
+    frame_v3 = node_registry.get("video.frame_apply", 3)
+    frame_v4 = node_registry.get("video.frame_apply", 4)
+    frame_v5 = node_registry.get("video.frame_apply", 5)
     concatenate = node_registry.get("video.concatenate", 1)
     captions = node_registry.get("subtitle.layout", 1)
     compose = node_registry.get("video.compose", 1)
-    assert all((motion, frame_layout, frame_v1, frame_v2, concatenate, captions, compose))
+    assert all((motion, motion_v2, motion_v3, motion_v4, frame_layout, frame_v1, frame_v2, frame_v3, frame_v4, frame_v5, concatenate, captions, compose))
     assert [(port.type, port.multiple) for port in motion.ports.inputs] == [("media.image.v1", False)]
     assert motion.ports.outputs[0].type == "data.media_motion.v1"
+    assert motion_v2.ports.outputs[0].type == "data.media_motion.v2"
+    assert motion_v3.ports.outputs[0].type == "data.media_motion.v3"
+    assert motion_v4.ports.outputs[0].type == "data.media_motion.v4"
+    assert motion_v2.config_schema["properties"]["path_type"]["enum"] == ["linear", "cubic_bezier"]
+    assert motion_v3.config_schema["properties"]["zoom_easing"]["enum"] == ["linear", "ease_in", "ease_out", "ease_in_out"]
     assert frame_layout.ports.outputs[0].type == "data.media_frame.v1"
     assert [port.type for port in frame_v1.ports.inputs] == ["data.media_motion.v1"]
     assert [port.type for port in frame_v2.ports.inputs] == ["data.media_motion.v1", "data.media_frame.v1"]
+    assert [port.type for port in frame_v3.ports.inputs] == ["data.media_motion.v2", "data.media_frame.v1"]
+    assert [port.type for port in frame_v4.ports.inputs] == ["data.media_motion.v3", "data.media_frame.v1"]
+    assert [port.type for port in frame_v5.ports.inputs] == ["data.media_motion.v4", "data.media_frame.v1"]
     assert frame_v2.config_schema["properties"] == {}
     assert frame_v2.ports.outputs[0].type == "media.video.v1"
     assert [(port.type, port.multiple) for port in concatenate.ports.inputs] == [("media.video.v1", True)]
@@ -133,6 +156,300 @@ def test_image_motion_executor_snapshots_one_image_and_start_end_transform(monke
     assert plan["start"] == {"scale": 1.0, "x": 0.5, "y": 0.5}
     assert plan["end"] == {"scale": 1.25, "x": 0.75, "y": 0.5}
     assert result.metadata["retryable"] is False
+
+
+def test_image_motion_v2_and_frame_apply_v3_snapshot_and_render_cubic_bezier_path(monkeypatch):
+    motion_definition = node_registry.get("image.motion", 2)
+    frame_definition = node_registry.get("video.frame_apply", 3)
+    image = _record("image_curve", "Image")
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [ArtifactData(image, b"image", "image/png")])
+    created = _capture_artifacts(monkeypatch)
+    db = SimpleNamespace(flush=lambda: None)
+    config = node_registry.resolve_config(motion_definition, {
+        "path_type": "cubic_bezier",
+        "start_x": 0.15,
+        "start_y": 0.2,
+        "control_1_x": 0.15,
+        "control_1_y": 0.8,
+        "control_2_x": 0.85,
+        "control_2_y": 0.2,
+        "end_x": 0.85,
+        "end_y": 0.8,
+    })
+    ImageMotionExecutor().execute(
+        _context(motion_definition, db),
+        config,
+        [{"type": "Image", "artifact_ids": [image.id]}],
+    )
+    plan = json.loads(created[0]["content"])
+    assert created[0]["schema_id"] == IMAGE_MOTION_V2_SCHEMA
+    assert plan["path"] == {
+        "type": "cubic_bezier",
+        "control_1": {"x": 0.15, "y": 0.8},
+        "control_2": {"x": 0.85, "y": 0.2},
+    }
+
+    motion_record = _record("motion_curve", "MediaMotion")
+    frame_record = _record("frame_shared", "MediaFrame", "f" * 64)
+    frame_layout = {
+        "schema_version": MEDIA_FRAME_SCHEMA,
+        "canvas": {"aspect_ratio": "9:16", "resolution": "1080p", "background_color": "#11100E"},
+        "frame": {"x": 0.04, "y": 0.12, "width": 0.92, "height": 0.64, "media_fit": "cover"},
+    }
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [
+        ArtifactData(motion_record, json.dumps(plan).encode(), "application/json"),
+        ArtifactData(frame_record, json.dumps(frame_layout).encode(), "application/json"),
+    ])
+    monkeypatch.setattr(executor_module, "_source_image", lambda *_: (image, b"image", "image/png"))
+    captured = []
+    monkeypatch.setattr(executor_module, "render_framed_motion", lambda image_bytes, content_type, motion, render_config: (captured.append((motion, render_config)) or b"curve-video", {"width": 1080, "height": 1920, "duration_ms": 10_000}))
+    VideoFrameApplyExecutor().execute(
+        _context(frame_definition, db),
+        {},
+        [
+            {"type": "MediaMotion", "artifact_ids": [motion_record.id]},
+            {"type": "MediaFrame", "artifact_ids": [frame_record.id]},
+        ],
+    )
+    assert created[1]["schema_id"] == FRAME_APPLY_V3_SCHEMA
+    assert captured[0][0]["path"]["type"] == "cubic_bezier"
+    assert captured[0][1]["frame_y"] == 0.12
+
+
+def test_image_motion_v3_and_frame_apply_v4_snapshot_independent_path_zoom_timing(monkeypatch):
+    motion_definition = node_registry.get("image.motion", 3)
+    frame_definition = node_registry.get("video.frame_apply", 4)
+    image = _record("image_keyframed", "Image")
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [ArtifactData(image, b"image", "image/png")])
+    created = _capture_artifacts(monkeypatch)
+    db = SimpleNamespace(flush=lambda: None)
+    config = node_registry.resolve_config(motion_definition, {
+        "path_type": "cubic_bezier",
+        "path_end_progress": 0.45,
+        "zoom_end_progress": 0.65,
+        "zoom_easing": "ease_in_out",
+        "start_x": 0.2,
+        "start_y": 0.25,
+        "control_1_x": 0.2,
+        "control_1_y": 0.7,
+        "control_2_x": 0.8,
+        "control_2_y": 0.3,
+        "end_x": 0.8,
+        "end_y": 0.75,
+    })
+    ImageMotionExecutor().execute(
+        _context(motion_definition, db),
+        config,
+        [{"type": "Image", "artifact_ids": [image.id]}],
+    )
+    plan = json.loads(created[0]["content"])
+    assert created[0]["schema_id"] == IMAGE_MOTION_V3_SCHEMA
+    assert plan["path"]["end_progress"] == 0.45
+    assert plan["zoom"] == {"end_progress": 0.65, "easing": "ease_in_out"}
+    assert "easing" not in plan
+
+    motion_record = _record("motion_keyframed", "MediaMotion")
+    frame_record = _record("frame_shared", "MediaFrame", "f" * 64)
+    frame_layout = {
+        "schema_version": MEDIA_FRAME_SCHEMA,
+        "canvas": {"aspect_ratio": "9:16", "resolution": "1080p", "background_color": "#11100E"},
+        "frame": {"x": 0, "y": 0.1, "width": 1, "height": 0.65, "media_fit": "cover"},
+    }
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [
+        ArtifactData(motion_record, json.dumps(plan).encode(), "application/json"),
+        ArtifactData(frame_record, json.dumps(frame_layout).encode(), "application/json"),
+    ])
+    monkeypatch.setattr(executor_module, "_source_image", lambda *_: (image, b"image", "image/png"))
+    captured = []
+    monkeypatch.setattr(executor_module, "render_framed_motion", lambda image_bytes, content_type, motion, render_config: (captured.append(motion) or b"held-video", {"width": 1080, "height": 1920, "duration_ms": 10_000}))
+    VideoFrameApplyExecutor().execute(
+        _context(frame_definition, db),
+        {},
+        [
+            {"type": "MediaMotion", "artifact_ids": [motion_record.id]},
+            {"type": "MediaFrame", "artifact_ids": [frame_record.id]},
+        ],
+    )
+    assert created[1]["schema_id"] == FRAME_APPLY_V4_SCHEMA
+    assert captured[0]["path"]["end_progress"] == 0.45
+    assert captured[0]["zoom"]["end_progress"] == 0.65
+
+
+def test_image_motion_v4_and_frame_apply_v5_use_full_source_view_center_coordinates(monkeypatch):
+    motion_definition = node_registry.get("image.motion", 4)
+    frame_definition = node_registry.get("video.frame_apply", 5)
+    image = _record("image_full_source", "Image")
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [ArtifactData(image, b"image", "image/png")])
+    created = _capture_artifacts(monkeypatch)
+    db = SimpleNamespace(flush=lambda: None)
+    config = node_registry.resolve_config(motion_definition, {
+        "path_type": "cubic_bezier",
+        "start_scale": 1.2,
+        "start_x": 0.5,
+        "start_y": 0.65,
+        "control_1_x": 0.5,
+        "control_1_y": 0.5,
+        "control_2_x": 0.5,
+        "control_2_y": 0.3,
+        "end_scale": 2,
+        "end_x": 0.5,
+        "end_y": 0.16,
+    })
+    ImageMotionExecutor().execute(
+        _context(motion_definition, db),
+        config,
+        [{"type": "Image", "artifact_ids": [image.id]}],
+    )
+    plan = json.loads(created[0]["content"])
+    assert created[0]["schema_id"] == IMAGE_MOTION_V4_SCHEMA
+    assert plan["coordinate_space"] == "source_image_view_center"
+    assert plan["start"] == {"scale": 1.2, "x": 0.5, "y": 0.65}
+    assert plan["end"] == {"scale": 2.0, "x": 0.5, "y": 0.16}
+
+    motion_record = _record("motion_full_source", "MediaMotion")
+    frame_record = _record("frame_shared", "MediaFrame", "f" * 64)
+    frame_layout = {
+        "schema_version": MEDIA_FRAME_SCHEMA,
+        "canvas": {"aspect_ratio": "9:16", "resolution": "1080p", "background_color": "#11100E"},
+        "frame": {"x": 0, "y": 0.1, "width": 1, "height": 0.65, "media_fit": "cover"},
+    }
+    monkeypatch.setattr(executor_module, "_read_artifacts", lambda *_: [
+        ArtifactData(motion_record, json.dumps(plan).encode(), "application/json"),
+        ArtifactData(frame_record, json.dumps(frame_layout).encode(), "application/json"),
+    ])
+    monkeypatch.setattr(executor_module, "_source_image", lambda *_: (image, b"image", "image/png"))
+    captured = []
+    monkeypatch.setattr(executor_module, "render_framed_motion", lambda image_bytes, content_type, motion, render_config: (captured.append(motion) or b"full-source-video", {"width": 1080, "height": 1920, "duration_ms": 10_000}))
+    VideoFrameApplyExecutor().execute(
+        _context(frame_definition, db),
+        {},
+        [
+            {"type": "MediaMotion", "artifact_ids": [motion_record.id]},
+            {"type": "MediaFrame", "artifact_ids": [frame_record.id]},
+        ],
+    )
+    assert created[1]["schema_id"] == FRAME_APPLY_V5_SCHEMA
+    assert captured[0]["coordinate_space"] == "source_image_view_center"
+
+
+def test_motion_filter_emits_cubic_bezier_focus_expressions_without_changing_linear_default():
+    curve = _motion_filter(
+        motion="custom", amount=0, frames=25, width=360, height=640, fps=24,
+        motion_start_scale=1.1, motion_end_scale=1.2,
+        motion_start_x=0.1, motion_start_y=0.2,
+        motion_control_1_x=0.2, motion_control_1_y=0.8,
+        motion_control_2_x=0.8, motion_control_2_y=0.2,
+        motion_end_x=0.9, motion_end_y=0.8,
+        motion_path_type="cubic_bezier",
+    )
+    linear = _motion_filter(
+        motion="custom", amount=0, frames=25, width=360, height=640, fps=24,
+        motion_start_x=0.1, motion_start_y=0.2, motion_end_x=0.9, motion_end_y=0.8,
+    )
+    assert "3*(1-(min(1,(on/24)/1.00000000)))" in curve
+    assert "(min(1,(on/24)/1.00000000))*0.20000000" in curve
+    assert "0.10000000+(0.80000000)*(min(1,(on/24)/1.00000000))" in linear
+    assert "3*(1-(min(1,(on/24)/1.00000000)))" not in linear
+
+
+def test_cubic_bezier_motion_filter_is_accepted_by_ffmpeg():
+    filter_graph = _motion_filter(
+        motion="custom", amount=0, frames=25, width=180, height=320, fps=24,
+        motion_start_scale=1.1, motion_end_scale=1.2,
+        motion_start_x=0.1, motion_start_y=0.2,
+        motion_control_1_x=0.2, motion_control_1_y=0.8,
+        motion_control_2_x=0.8, motion_control_2_y=0.2,
+        motion_end_x=0.9, motion_end_y=0.8,
+        motion_path_type="cubic_bezier",
+        motion_path_end_progress=0.45,
+        motion_zoom_end_progress=0.65,
+        motion_zoom_easing="ease_in_out",
+    )
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc2=size=640x640:rate=1",
+            "-vf", filter_graph, "-frames:v", "25", "-an", "-f", "null", "-",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=90,
+    )
+
+
+def test_full_source_center_motion_filter_traverses_without_pre_crop_and_is_accepted_by_ffmpeg():
+    filter_graph = _motion_filter(
+        motion="custom", amount=0, frames=25, width=180, height=200, fps=24,
+        motion_start_scale=1.2, motion_end_scale=2,
+        motion_start_x=0.5, motion_start_y=0.65,
+        motion_control_1_x=0.5, motion_control_1_y=0.5,
+        motion_control_2_x=0.5, motion_control_2_y=0.3,
+        motion_end_x=0.5, motion_end_y=0.16,
+        motion_path_type="cubic_bezier",
+        motion_path_end_progress=0.7,
+        motion_zoom_end_progress=0.7,
+        motion_zoom_easing="ease_in_out",
+        motion_coordinate_space="source_image_view_center",
+    )
+    assert "force_original_aspect_ratio=increase" in filter_graph
+    assert "scale=w='trunc(iw*" in filter_graph
+    assert "clip((" in filter_graph
+    assert "n/24" in filter_graph
+    assert "zoompan=" not in filter_graph
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-f", "lavfi", "-i", "testsrc2=size=360x640:rate=24",
+            "-vf", filter_graph, "-frames:v", "25", "-an", "-f", "null", "-",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=90,
+    )
+
+
+def test_bezier_path_changes_the_v2_motion_request_hash():
+    definition = node_registry.get("image.motion", 2)
+    linear_config = node_registry.resolve_config(definition, {})
+    linear = ExperimentRunRequest(
+        canvas_id="canvas_curve",
+        node_id="motion_curve",
+        node_key="image.motion",
+        node_contract_version=2,
+        model_alias=definition.execution.model_alias,
+        parameters=linear_config,
+        inputs=[{"type": "Image", "artifact_ids": ["image_1"]}],
+    )
+    curve = linear.model_copy(update={"parameters": {
+        **linear_config,
+        "path_type": "cubic_bezier",
+        "control_1_x": 0.2,
+        "control_1_y": 0.8,
+        "control_2_x": 0.8,
+        "control_2_y": 0.2,
+    }})
+    assert request_fingerprint(linear, "local.image-motion", "local.image-motion") != request_fingerprint(curve, "local.image-motion", "local.image-motion")
+
+
+def test_hold_and_zoom_timing_change_the_v3_motion_request_hash():
+    definition = node_registry.get("image.motion", 3)
+    base_config = node_registry.resolve_config(definition, {})
+    base = ExperimentRunRequest(
+        canvas_id="canvas_hold",
+        node_id="motion_hold",
+        node_key="image.motion",
+        node_contract_version=3,
+        model_alias=definition.execution.model_alias,
+        parameters=base_config,
+        inputs=[{"type": "Image", "artifact_ids": ["image_1"]}],
+    )
+    changed = base.model_copy(update={"parameters": {
+        **base_config,
+        "path_end_progress": 0.4,
+        "zoom_end_progress": 0.8,
+        "zoom_easing": "ease_out",
+    }})
+    assert request_fingerprint(base, "local.image-motion", "local.image-motion") != request_fingerprint(changed, "local.image-motion", "local.image-motion")
 
 
 def test_media_frame_executor_materializes_a_reusable_layout_artifact(monkeypatch):

@@ -963,7 +963,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
 
   const updateSelectedData = useCallback((dataPatch: Partial<StudioFlowNode["data"]>) => {
     if (!selectedNodeId) return;
-    const executionFields = new Set(["provider", "model", "resolution", "aspectRatio", "batchSize", "characterName", "shotCount", "durationSeconds", "loraUrl", "loraScale", "triggerWord", "transition", "targetDurationSeconds", "sourceLanguage", "separateMusic", "sceneThreshold", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize", "skillId"]);
+    const executionFields = new Set(["config", "provider", "model", "resolution", "aspectRatio", "batchSize", "characterName", "shotCount", "durationSeconds", "loraUrl", "loraScale", "triggerWord", "transition", "targetDurationSeconds", "sourceLanguage", "separateMusic", "sceneThreshold", "targetLanguage", "voiceName", "captionX", "captionY", "captionAlign", "captionFontSize", "skillId"]);
     const invalidatesOutput = Object.keys(dataPatch).some((key) => executionFields.has(key));
     setNodes((current) => {
       const updated = current.map((node) => node.id === selectedNodeId ? {
@@ -1668,13 +1668,13 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const drawingNode = drawingNodeId ? nodes.find((node) => node.id === drawingNodeId && node.data.key === "utility.drawing") : undefined;
   const paletteGroups = useMemo(() => {
     const query = paletteQuery.trim().toLowerCase();
-    const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities"] as const;
+    const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities", "Advanced"] as const;
     const templates = [...canvasElementTemplates, ...registryTemplates];
     return groups.map((group) => ({ group, items: templates.filter((template) => template.visible !== false && template.group === group && (!query || `${template.label} ${template.data.key} ${template.data.outputType ?? ""}`.toLowerCase().includes(query))) })).filter((section) => section.items.length);
   }, [paletteQuery, registryTemplates]);
   const pickerGroups = useMemo(() => {
     const query = pickerQuery.trim().toLowerCase();
-    const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities"] as const;
+    const groups = ["Quick", "References", "Image", "Video", "Audio", "Utilities", "Advanced"] as const;
     const templates = [...canvasElementTemplates, ...registryTemplates];
     return groups.map((group) => ({ group, items: templates.filter((template) => template.visible !== false && template.group === group && (!query || `${template.label} ${template.data.key} ${template.data.outputType ?? ""}`.toLowerCase().includes(query))) })).filter((section) => section.items.length);
   }, [pickerQuery, registryTemplates]);

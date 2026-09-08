@@ -5,9 +5,9 @@ Status: Implemented
 기존 `video.media_story@1`은 이미지 Motion, Frame, 장면 연결, 자막 배치와 음성 합성을 한 계약에서 처리한다. 과거 Canvas와 WorkflowVersion 실행을 위해 이 계약은 유지하지만, 신규 이미지 스토리는 아래의 독립 Node 계약을 사용한다.
 
 ```text
-Image ──> image.motion@1 ──> video.frame_apply@2 ──┐
-Image ──> image.motion@1 ──> video.frame_apply@2 ──┼─> video.concatenate@1 ──┐
-Image ──> image.motion@1 ──> video.frame_apply@2 ──┘                         │
+Image ──> image.motion@4 ──> video.frame_apply@5 ──┐
+Image ──> image.motion@4 ──> video.frame_apply@5 ──┼─> video.concatenate@1 ──┐
+Image ──> image.motion@4 ──> video.frame_apply@5 ──┘                         │
                                    ▲                                          ├─> video.compose@1 ──> FinalVideo
                  layout.media_frame@1 (shared)                                │
                                                                               │
@@ -19,9 +19,9 @@ Audio ────────────────────────�
 
 | 계약 | 한 가지 책임 | 입력 | 출력 |
 | --- | --- | --- | --- |
-| `image.motion@1` | 한 이미지의 시작·종료 카메라 Transform을 저장 | Image | MediaMotion |
+| `image.motion@4` | 원본 전체의 View 중심 Path, 독립 timing과 Hold View를 저장 | Image | MediaMotion |
 | `layout.media_frame@1` | 여러 장면이 공유하는 Canvas Frame을 불변 Layout Artifact로 저장 | 없음 | MediaFrame |
-| `video.frame_apply@2` | Motion을 연결된 공유 Frame에 Clip하고 Video Clip으로 렌더 | MediaMotion + MediaFrame | Video |
+| `video.frame_apply@5` | 원본을 선행 crop하지 않고 Full-source Motion을 공유 Frame에 렌더 | MediaMotion + MediaFrame | Video |
 | `video.concatenate@1` | 연결 순서의 Video Clip을 Hard Cut으로 연결 | Video × N | Video |
 | `subtitle.layout@1` | Timed Subtitle의 표시 영역과 기본 Style을 저장 | Subtitle | CaptionLayout |
 | `video.compose@1` | Video, CaptionLayout, Narration Audio를 최종 MP4로 결합 | Video + CaptionLayout + Audio | FinalVideo |
@@ -38,6 +38,18 @@ Audio ────────────────────────�
 - 보간 방식
 
 Custom Editor는 START/END 화면을 나란히 보여주며 선택된 키프레임의 확대율과 초점을 편집한다. 한 Image마다 별도 Node를 사용하므로 모든 장면이 서로 다른 Motion을 가질 수 있다.
+
+곡선 카메라 이동을 사용하는 신규 Draft는 `image.motion@2`와 `video.frame_apply@3`을 사용한다. `image.motion.v2`는 기존 시작·종료 Transform에 아래 경로 계약을 추가한다.
+
+- `path.type`: `linear` 또는 `cubic_bezier`
+- 정규화된 `control_1`, `control_2` 좌표
+- 시작·종료 Zoom과 선형 시간 진행률
+
+`image.motion@3`에서는 Linear와 Bézier가 별도 편집기가 아니라 같은 Path Editor의 보간 방식 선택이다. 고정된 이미지 위에 Start View와 Hold View를 테두리 사각형으로 표시하고, Bézier를 선택했을 때만 두 Control handle을 추가한다. Position과 Zoom은 각각 완료 progress를 가지며 Zoom에는 별도의 `linear`, `ease_in`, `ease_out`, `ease_in_out` 속도 곡선을 적용한다. 둘 중 늦은 완료 시점 이후부터 장면 끝까지 위치와 확대가 Hold View로 고정된다.
+
+Preview를 누르면 경로와 핸들을 숨기고, 연결된 MediaFrame의 실제 Canvas·Frame 사각형 안에서 `cover`, focus 좌표와 Zoom timing을 설정된 장면 길이로 재생한다. 완료 또는 Stop 시 진행률을 초기화하고 편집 화면으로 돌아온다. `video.frame_apply@4`는 UI와 같은 위치·Zoom 시간 함수를 FFmpeg `zoompan`에 적용한다. 기존 `image.motion@1,@2`와 `video.frame_apply@1,@2,@3`의 렌더 의미는 유지한다.
+
+`image.motion@4`는 Path의 S/H/Control point를 `source_image_view_center` 좌표로 저장한다. Editor의 포인터, View 테두리 중심과 미니맵 현재점이 모두 같은 좌표 의미를 가진다. `video.frame_apply@5`는 원본을 MediaFrame 화면비로 미리 중앙 crop하지 않고, cover-scale한 원본 전체에서 각 프레임의 View 중심과 Zoom으로 동적 crop한다. 따라서 세로 원본의 상단·하단도 View가 이미지 밖으로 나가지 않는 범위까지 탐색할 수 있다. 이전 `@3/@4` focus-ratio 경로는 과거 Artifact 실행을 위해 유지한다.
 
 ## Shared Media Frame과 Frame Apply
 
@@ -82,6 +94,7 @@ Audio ────────────────────────�
 
 - `video.media_story@1` WorkflowVersion과 Run Snapshot은 변경하지 않는다.
 - 기존 Draft는 자동으로 in-place 변환하지 않는다.
-- Draft에서 수동 교체할 때 하나의 `layout.media_frame@1`을 만들고, 각 기존 Image Edge마다 `image.motion@1`과 `video.frame_apply@2`를 만든다. 같은 MediaFrame 출력을 모든 Frame Apply에 연결한 뒤 결과를 하나의 `video.concatenate@1`에 순서대로 연결한다.
+- Draft에서 `image.motion@1,@2,@3`을 `@4`로 올릴 때는 각 Start/Hold/Control focus-ratio를 당시 Zoom과 MediaFrame·원본 화면비로 계산한 실제 View 중심 좌표로 변환해야 한다. Position/Zoom timing은 명시적으로 materialize하고, 연결된 Frame Apply는 `@5`로 함께 교체하며 기존 Motion/Video Artifact가 stale임을 경고한다.
+- Draft에서 수동 교체할 때 하나의 `layout.media_frame@1`을 만들고, 각 기존 Image Edge마다 `image.motion@4`와 `video.frame_apply@5`를 만든다. 같은 MediaFrame 출력을 모든 Frame Apply에 연결한 뒤 결과를 하나의 `video.concatenate@1`에 순서대로 연결한다.
 - 기존 Subtitle와 Audio Edge는 각각 `subtitle.layout@1`, `video.compose@1`로 연결한다.
 - 교체 결과는 새 Canvas revision으로 저장하고 새 WorkflowVersion Publish가 필요하다.

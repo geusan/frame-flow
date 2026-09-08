@@ -1,0 +1,43 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.motion",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Image motion path",
+    "description": "이미지 위에 선형 또는 cubic Bézier 카메라 경로를 그리고 재생 가능한 Motion Plan을 생성",
+    "category": "Image",
+    "icon": "motion",
+    "cost_label": "$0.00",
+    "keywords": ["image motion", "bezier", "curve", "path", "ken burns", "pan", "zoom"]
+  },
+  "ports": {
+    "inputs": [{ "key": "image", "type": "media.image.v1", "label": "Image", "required": true }],
+    "outputs": [{ "key": "motion", "type": "data.media_motion.v2", "label": "Image Motion Path" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["duration_seconds", "fps", "easing", "path_type", "start_scale", "start_x", "start_y", "control_1_x", "control_1_y", "control_2_x", "control_2_y", "end_scale", "end_x", "end_y"],
+    "properties": {
+      "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 30, "default": 10, "title": "Scene duration", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "fps": { "type": "integer", "enum": [24, 30], "default": 24, "title": "FPS", "x-workflow-input": { "enabled": true, "type": "integer" } },
+      "easing": { "type": "string", "enum": ["linear"], "default": "linear", "title": "Time interpolation" },
+      "path_type": { "type": "string", "enum": ["linear", "cubic_bezier"], "default": "linear", "title": "Camera path" },
+      "start_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1, "title": "Start scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start focus X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start focus Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_1_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Bezier control 1 X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_1_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.35, "title": "Bezier control 1 Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_2_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Bezier control 2 X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_2_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.65, "title": "Bezier control 2 Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1.12, "title": "End scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "End focus X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "End focus Y", "x-workflow-input": { "enabled": true, "type": "number" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "image-motion", "revision": "image-motion.v2", "provider": "local", "model_alias": "local.image-motion" },
+  "editor": { "kind": "custom", "ref": "image-motion" },
+  "artifact_contract": { "primary_type": "MediaMotion", "schema_id": "image.motion.v2", "input_roles": { "media.image.v1": "source_image" }, "output_role": "motion_plan" }
+}

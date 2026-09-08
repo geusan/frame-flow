@@ -29,12 +29,24 @@ from .media_tools import (
 
 IMAGE_MOTION_SCHEMA = "image.motion.v1"
 IMAGE_MOTION_REVISION = "image-motion.v1"
+IMAGE_MOTION_V2_SCHEMA = "image.motion.v2"
+IMAGE_MOTION_V2_REVISION = "image-motion.v2"
+IMAGE_MOTION_V3_SCHEMA = "image.motion.v3"
+IMAGE_MOTION_V3_REVISION = "image-motion.v3"
+IMAGE_MOTION_V4_SCHEMA = "image.motion.v4"
+IMAGE_MOTION_V4_REVISION = "image-motion.v4"
 MEDIA_FRAME_SCHEMA = "layout.media_frame.v1"
 MEDIA_FRAME_REVISION = "media-frame-layout.v1"
 FRAME_APPLY_SCHEMA = "video.frame_applied.v1"
 FRAME_APPLY_REVISION = "video-frame-apply.v1"
 FRAME_APPLY_V2_SCHEMA = "video.frame_applied.v2"
 FRAME_APPLY_V2_REVISION = "video-frame-apply.v2"
+FRAME_APPLY_V3_SCHEMA = "video.frame_applied.v3"
+FRAME_APPLY_V3_REVISION = "video-frame-apply.v3"
+FRAME_APPLY_V4_SCHEMA = "video.frame_applied.v4"
+FRAME_APPLY_V4_REVISION = "video-frame-apply.v4"
+FRAME_APPLY_V5_SCHEMA = "video.frame_applied.v5"
+FRAME_APPLY_V5_REVISION = "video-frame-apply.v5"
 VIDEO_CONCATENATE_SCHEMA = "video.concatenated.v1"
 VIDEO_CONCATENATE_REVISION = "video-concatenate.v1"
 SUBTITLE_LAYOUT_SCHEMA = "subtitle.layout.v1"
@@ -141,6 +153,10 @@ def render_framed_motion(
     frames = max(1, round(duration * fps))
     start = dict(motion["start"])
     end = dict(motion["end"])
+    path = dict(motion.get("path") or {})
+    zoom = dict(motion.get("zoom") or {})
+    control_1 = dict(path.get("control_1") or {})
+    control_2 = dict(path.get("control_2") or {})
     filter_graph = _motion_filter(
         motion="custom",
         amount=0,
@@ -155,6 +171,15 @@ def render_framed_motion(
         motion_start_y=float(start["y"]),
         motion_end_x=float(end["x"]),
         motion_end_y=float(end["y"]),
+        motion_path_type=str(path.get("type") or "linear"),
+        motion_control_1_x=float(control_1.get("x", start["x"])),
+        motion_control_1_y=float(control_1.get("y", start["y"])),
+        motion_control_2_x=float(control_2.get("x", end["x"])),
+        motion_control_2_y=float(control_2.get("y", end["y"])),
+        motion_path_end_progress=float(path.get("end_progress", 1)),
+        motion_zoom_end_progress=float(zoom.get("end_progress", 1)),
+        motion_zoom_easing=str(zoom.get("easing") or "linear"),
+        motion_coordinate_space=str(motion.get("coordinate_space") or "pre_cropped_focus"),
         background_color=str(config["background_color"]),
         still_image=True,
     )
@@ -167,7 +192,7 @@ def render_framed_motion(
         output = directory / "framed-motion.mp4"
         source.write_bytes(image)
         _run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-i", str(source),
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-loop", "1", "-framerate", str(fps), "-i", str(source),
             "-vf", filter_graph, "-frames:v", str(frames), "-an",
             "-c:v", "libx264", "-profile:v", "high", "-preset", "veryfast", "-crf", "18",
             "-pix_fmt", "yuv420p", "-video_track_timescale", str(fps * 1000), "-movflags", "+faststart", str(output),
@@ -244,7 +269,8 @@ class ImageMotionExecutor:
         resolved_node_config: dict[str, Any],
         typed_inputs: list[dict[str, Any]],
     ) -> NodeExecutionResult:
-        if context.definition.execution.revision != IMAGE_MOTION_REVISION:
+        revision = context.definition.execution.revision
+        if revision not in {IMAGE_MOTION_REVISION, IMAGE_MOTION_V2_REVISION, IMAGE_MOTION_V3_REVISION, IMAGE_MOTION_V4_REVISION}:
             raise RuntimeError("Image Motion executor revision does not match its Node Definition")
         artifacts = _read_artifacts(context, typed_inputs)
         images = _of_type(artifacts, "Image")
@@ -252,8 +278,17 @@ class ImageMotionExecutor:
             raise ValueError("Image Motion requires one connected Image Artifact")
         image = images[0]
         config = resolved_node_config
-        plan = {
-            "schema_version": IMAGE_MOTION_SCHEMA,
+        schema = (
+            IMAGE_MOTION_V4_SCHEMA
+            if revision == IMAGE_MOTION_V4_REVISION
+            else IMAGE_MOTION_V3_SCHEMA
+            if revision == IMAGE_MOTION_V3_REVISION
+            else IMAGE_MOTION_V2_SCHEMA
+            if revision == IMAGE_MOTION_V2_REVISION
+            else IMAGE_MOTION_SCHEMA
+        )
+        plan: dict[str, Any] = {
+            "schema_version": schema,
             "source": {
                 "artifact_id": image.record.id,
                 "sha256": image.record.sha256,
@@ -261,7 +296,6 @@ class ImageMotionExecutor:
             },
             "duration_seconds": float(config["duration_seconds"]),
             "fps": int(config["fps"]),
-            "easing": str(config["easing"]),
             "start": {
                 "scale": float(config["start_scale"]),
                 "x": float(config["start_x"]),
@@ -273,18 +307,40 @@ class ImageMotionExecutor:
                 "y": float(config["end_y"]),
             },
         }
+        if revision == IMAGE_MOTION_V4_REVISION:
+            plan["coordinate_space"] = "source_image_view_center"
+        if revision in {IMAGE_MOTION_REVISION, IMAGE_MOTION_V2_REVISION}:
+            plan["easing"] = str(config["easing"])
+        if revision in {IMAGE_MOTION_V2_REVISION, IMAGE_MOTION_V3_REVISION, IMAGE_MOTION_V4_REVISION}:
+            plan["path"] = {
+                "type": str(config["path_type"]),
+                "control_1": {
+                    "x": float(config["control_1_x"]),
+                    "y": float(config["control_1_y"]),
+                },
+                "control_2": {
+                    "x": float(config["control_2_x"]),
+                    "y": float(config["control_2_y"]),
+                },
+            }
+        if revision in {IMAGE_MOTION_V3_REVISION, IMAGE_MOTION_V4_REVISION}:
+            plan["path"]["end_progress"] = float(config["path_end_progress"])
+            plan["zoom"] = {
+                "end_progress": float(config["zoom_end_progress"]),
+                "easing": str(config["zoom_easing"]),
+            }
         content = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
         input_ids, input_roles = input_lineage(context, typed_inputs)
         artifact = create_artifact(
             context,
             context.definition.artifact_contract.primary_type,
-            schema_id=IMAGE_MOTION_SCHEMA,
+            schema_id=schema,
             input_artifact_ids=input_ids,
             input_artifact_roles=input_roles,
             metadata={
                 "experiment_id": context.experiment_id,
                 "request_hash": context.request_hash,
-                "execution_mode": IMAGE_MOTION_REVISION,
+                "execution_mode": revision,
                 "immutable": True,
                 "source": "image_motion",
                 "normalized_config": config,
@@ -302,7 +358,7 @@ class ImageMotionExecutor:
             output={"kind": "json", "title": "Image motion plan", "text": json.dumps(plan, ensure_ascii=False, indent=2)},
             input_ids=input_ids,
             input_roles=input_roles,
-            revision=IMAGE_MOTION_REVISION,
+            revision=revision,
         )
 
 
@@ -394,26 +450,43 @@ class VideoFrameApplyExecutor:
         typed_inputs: list[dict[str, Any]],
     ) -> NodeExecutionResult:
         revision = context.definition.execution.revision
-        if revision not in {FRAME_APPLY_REVISION, FRAME_APPLY_V2_REVISION}:
+        if revision not in {FRAME_APPLY_REVISION, FRAME_APPLY_V2_REVISION, FRAME_APPLY_V3_REVISION, FRAME_APPLY_V4_REVISION, FRAME_APPLY_V5_REVISION}:
             raise RuntimeError("Frame Apply executor revision does not match its Node Definition")
         artifacts = _read_artifacts(context, typed_inputs)
         plans = _of_type(artifacts, "MediaMotion")
         if not plans:
             raise ValueError("Frame Apply requires one connected MediaMotion Artifact")
         plan_artifact = plans[0]
-        plan = _json_artifact(plan_artifact, schema=IMAGE_MOTION_SCHEMA, label="Frame Apply")
+        plan_schema = (
+            IMAGE_MOTION_V4_SCHEMA
+            if revision == FRAME_APPLY_V5_REVISION
+            else IMAGE_MOTION_V3_SCHEMA
+            if revision == FRAME_APPLY_V4_REVISION
+            else IMAGE_MOTION_V2_SCHEMA
+            if revision == FRAME_APPLY_V3_REVISION
+            else IMAGE_MOTION_SCHEMA
+        )
+        plan = _json_artifact(plan_artifact, schema=plan_schema, label="Frame Apply")
         frame_artifact = None
         frame_layout = None
         render_config = resolved_node_config
         output_schema = FRAME_APPLY_SCHEMA
-        if revision == FRAME_APPLY_V2_REVISION:
+        if revision in {FRAME_APPLY_V2_REVISION, FRAME_APPLY_V3_REVISION, FRAME_APPLY_V4_REVISION, FRAME_APPLY_V5_REVISION}:
             frames = _of_type(artifacts, "MediaFrame")
             if not frames:
-                raise ValueError("Frame Apply v2 requires one connected MediaFrame Artifact")
+                raise ValueError("Frame Apply requires one connected MediaFrame Artifact")
             frame_artifact = frames[0]
             frame_layout = _json_artifact(frame_artifact, schema=MEDIA_FRAME_SCHEMA, label="Frame Apply")
             render_config = _frame_render_config(frame_layout)
-            output_schema = FRAME_APPLY_V2_SCHEMA
+            output_schema = (
+                FRAME_APPLY_V5_SCHEMA
+                if revision == FRAME_APPLY_V5_REVISION
+                else FRAME_APPLY_V4_SCHEMA
+                if revision == FRAME_APPLY_V4_REVISION
+                else FRAME_APPLY_V3_SCHEMA
+                if revision == FRAME_APPLY_V3_REVISION
+                else FRAME_APPLY_V2_SCHEMA
+            )
         source, image, content_type = _source_image(context, dict(plan["source"]))
         rendered, media = render_framed_motion(image, content_type, plan, render_config)
         input_ids = [plan_artifact.record.id, source.id]

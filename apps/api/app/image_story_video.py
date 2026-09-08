@@ -355,10 +355,21 @@ def _motion_filter(
     motion_start_y: float = 0.5,
     motion_end_x: float = 0.5,
     motion_end_y: float = 0.5,
+    motion_path_type: str = "linear",
+    motion_control_1_x: float | None = None,
+    motion_control_1_y: float | None = None,
+    motion_control_2_x: float | None = None,
+    motion_control_2_y: float | None = None,
+    motion_path_end_progress: float = 1.0,
+    motion_zoom_end_progress: float = 1.0,
+    motion_zoom_easing: str = "linear",
+    motion_coordinate_space: str = "pre_cropped_focus",
     background_color: str = "#000000",
     still_image: bool = True,
 ) -> str:
-    progress = f"on/{max(1, frames - 1)}"
+    if motion_coordinate_space not in {"pre_cropped_focus", "source_image_view_center"}:
+        raise ValueError("Motion coordinate space is invalid")
+    progress = f"{'n' if motion_coordinate_space == 'source_image_view_center' else 'on'}/{max(1, frames - 1)}"
     resolved = _resolved_motion(
         motion,
         amount,
@@ -375,16 +386,86 @@ def _motion_filter(
     start_y = float(resolved["start_y"])
     end_x = float(resolved["end_x"])
     end_y = float(resolved["end_y"])
-    zoom = f"{start_scale:.8f}+({end_scale - start_scale:.8f})*{progress}"
-    focus_x = f"{start_x:.8f}+({end_x - start_x:.8f})*{progress}"
-    focus_y = f"{start_y:.8f}+({end_y - start_y:.8f})*{progress}"
+    if not 0.05 <= motion_path_end_progress <= 1:
+        raise ValueError("Motion path end progress must be between 0.05 and 1")
+    if not 0.05 <= motion_zoom_end_progress <= 1:
+        raise ValueError("Motion zoom end progress must be between 0.05 and 1")
+    path_progress = f"min(1,({progress})/{motion_path_end_progress:.8f})"
+    zoom_progress = f"min(1,({progress})/{motion_zoom_end_progress:.8f})"
+    if motion_zoom_easing == "linear":
+        eased_zoom_progress = zoom_progress
+    elif motion_zoom_easing == "ease_in":
+        eased_zoom_progress = f"({zoom_progress})*({zoom_progress})"
+    elif motion_zoom_easing == "ease_out":
+        eased_zoom_progress = f"1-(1-({zoom_progress}))*(1-({zoom_progress}))"
+    elif motion_zoom_easing == "ease_in_out":
+        eased_zoom_progress = f"({zoom_progress})*({zoom_progress})*(3-2*({zoom_progress}))"
+    else:
+        raise ValueError("Motion zoom easing must be linear, ease_in, ease_out or ease_in_out")
+    zoom = f"{start_scale:.8f}+({end_scale - start_scale:.8f})*({eased_zoom_progress})"
+    if motion_path_type == "linear":
+        focus_x = f"{start_x:.8f}+({end_x - start_x:.8f})*({path_progress})"
+        focus_y = f"{start_y:.8f}+({end_y - start_y:.8f})*({path_progress})"
+        path_has_motion = (start_x, start_y) != (end_x, end_y)
+    elif motion_path_type == "cubic_bezier":
+        control_1_x = start_x if motion_control_1_x is None else float(motion_control_1_x)
+        control_1_y = start_y if motion_control_1_y is None else float(motion_control_1_y)
+        control_2_x = end_x if motion_control_2_x is None else float(motion_control_2_x)
+        control_2_y = end_y if motion_control_2_y is None else float(motion_control_2_y)
+        controls = (control_1_x, control_1_y, control_2_x, control_2_y)
+        if any(value < 0 or value > 1 for value in controls):
+            raise ValueError("Bezier motion control points must stay inside the image")
+        time = f"({path_progress})"
+        inverse = f"(1-{time})"
+
+        def cubic(start: float, control_1: float, control_2: float, end: float) -> str:
+            return (
+                f"{inverse}*{inverse}*{inverse}*{start:.8f}"
+                f"+3*{inverse}*{inverse}*{time}*{control_1:.8f}"
+                f"+3*{inverse}*{time}*{time}*{control_2:.8f}"
+                f"+{time}*{time}*{time}*{end:.8f}"
+            )
+
+        focus_x = cubic(start_x, control_1_x, control_2_x, end_x)
+        focus_y = cubic(start_y, control_1_y, control_2_y, end_y)
+        path_has_motion = any(
+            point != (start_x, start_y)
+            for point in (
+                (control_1_x, control_1_y),
+                (control_2_x, control_2_y),
+                (end_x, end_y),
+            )
+        )
+    else:
+        raise ValueError("Motion path type must be linear or cubic_bezier")
     x = f"(iw-iw/zoom)*({focus_x})"
     y = f"(ih-ih/zoom)*({focus_y})"
     zoom_max = max(start_scale, end_scale)
     # zoompan quantizes offsets to the input chroma grid. A 2x 4:4:4 working
     # raster turns each integer work-pixel step into a half output-pixel step.
-    has_motion = (start_scale, start_x, start_y) != (end_scale, end_x, end_y)
+    has_motion = start_scale != end_scale or path_has_motion
     work_scale = MOTION_WORK_SCALE if has_motion else 1
+    if motion_coordinate_space == "source_image_view_center":
+        if media_fit == "cover":
+            fit_filter = f"scale={width}:{height}:force_original_aspect_ratio=increase:force_divisible_by=2:flags=lanczos"
+        elif media_fit == "contain":
+            background = background_color.removeprefix("#")
+            fit_filter = (
+                f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,"
+                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=0x{background}"
+            )
+        else:
+            raise ValueError("Media Story fit must be cover or contain")
+        scaled_width = f"trunc(iw*({zoom})/2)*2"
+        scaled_height = f"trunc(ih*({zoom})/2)*2"
+        crop_x = f"clip(({focus_x})*iw-ow/2,0,iw-ow)"
+        crop_y = f"clip(({focus_y})*ih-oh/2,0,ih-oh)"
+        return (
+            f"{fit_filter},format=yuv444p,"
+            f"scale=w='{scaled_width}':h='{scaled_height}':eval=frame:flags=lanczos,"
+            f"crop={width}:{height}:x='{crop_x}':y='{crop_y}',"
+            f"fps={fps},setsar=1,format=yuv420p"
+        )
     pre_width = math.ceil(width * zoom_max * work_scale / 2) * 2
     pre_height = math.ceil(height * zoom_max * work_scale / 2) * 2
     if media_fit == "cover":

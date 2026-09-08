@@ -1,0 +1,45 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.motion",
+  "contract_version": 4,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Full-source image motion",
+    "description": "원본 이미지 전체 좌표에서 View 중심, Linear/Bézier 경로, Zoom timing과 Hold를 정의",
+    "category": "Image",
+    "icon": "motion",
+    "cost_label": "$0.00",
+    "keywords": ["image motion", "full source", "view center", "bezier", "keyframe", "hold", "zoom"]
+  },
+  "ports": {
+    "inputs": [{ "key": "image", "type": "media.image.v1", "label": "Image", "required": true }],
+    "outputs": [{ "key": "motion", "type": "data.media_motion.v4", "label": "Full-source Camera Motion" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["duration_seconds", "fps", "path_type", "path_end_progress", "zoom_end_progress", "zoom_easing", "start_scale", "start_x", "start_y", "control_1_x", "control_1_y", "control_2_x", "control_2_y", "end_scale", "end_x", "end_y"],
+    "properties": {
+      "duration_seconds": { "type": "number", "minimum": 0.5, "maximum": 30, "default": 10, "title": "Scene duration", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "fps": { "type": "integer", "enum": [24, 30], "default": 24, "title": "FPS", "x-workflow-input": { "enabled": true, "type": "integer" } },
+      "path_type": { "type": "string", "enum": ["linear", "cubic_bezier"], "default": "linear", "title": "Camera path" },
+      "path_end_progress": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.7, "title": "Position completes at", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "zoom_end_progress": { "type": "number", "minimum": 0.05, "maximum": 1, "default": 0.7, "title": "Zoom completes at", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "zoom_easing": { "type": "string", "enum": ["linear", "ease_in", "ease_out", "ease_in_out"], "default": "ease_in_out", "title": "Zoom speed curve", "x-workflow-input": { "enabled": true, "type": "enum" } },
+      "start_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1, "title": "Start scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start View center X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "start_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Start View center Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_1_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.4, "title": "Bezier View center control 1 X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_1_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.35, "title": "Bezier View center control 1 Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_2_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.6, "title": "Bezier View center control 2 X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "control_2_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.65, "title": "Bezier View center control 2 Y", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_scale": { "type": "number", "minimum": 1, "maximum": 2, "default": 1.12, "title": "Hold scale", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_x": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Hold View center X", "x-workflow-input": { "enabled": true, "type": "number" } },
+      "end_y": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Hold View center Y", "x-workflow-input": { "enabled": true, "type": "number" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "local", "executor": "image-motion", "revision": "image-motion.v4", "provider": "local", "model_alias": "local.image-motion" },
+  "editor": { "kind": "custom", "ref": "image-motion" },
+  "artifact_contract": { "primary_type": "MediaMotion", "schema_id": "image.motion.v4", "input_roles": { "media.image.v1": "source_image" }, "output_role": "motion_plan" }
+}
