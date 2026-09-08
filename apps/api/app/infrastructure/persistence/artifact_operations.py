@@ -13,6 +13,7 @@ from ...character_lora import (
     refresh_character_lora_training,
     start_character_lora_training as submit_character_lora_training,
 )
+from ...character_motion.validation import inspect_glb
 from ...contexts.artifacts.application import (
     CaptureFrameCommand,
     ImportArtifactUrlCommand,
@@ -668,8 +669,13 @@ class LegacySqlAlchemyArtifactOperations:
             content_type = (
                 mimetypes.guess_type(command.filename)[0] or content_type
             ).lower()
+        is_glb = command.filename.lower().endswith(".glb") or content_type == "model/gltf-binary"
+        if is_glb:
+            content_type = "model/gltf-binary"
         artifact_type = (
-            "Image"
+            "Model3D"
+            if is_glb
+            else "Image"
             if content_type.startswith("image/")
             else "Video"
             if content_type.startswith("video/")
@@ -681,7 +687,7 @@ class LegacySqlAlchemyArtifactOperations:
         )
         if not artifact_type:
             raise ArtifactUnsupportedMediaError(
-                "only image, video, audio, and text files can be added to the Canvas"
+                "only image, video, audio, text, and binary glTF (.glb) files can be added to the Canvas"
             )
         if not command.content:
             raise ArtifactValidationError("uploaded file is empty")
@@ -689,6 +695,17 @@ class LegacySqlAlchemyArtifactOperations:
             raise ArtifactPayloadTooLargeError(
                 "uploaded file exceeds the 250 MB Canvas limit"
             )
+        if artifact_type == "Model3D":
+            try:
+                model_validation = inspect_glb(command.content)
+            except ValueError as exc:
+                raise ArtifactValidationError(str(exc)) from exc
+            if not model_validation["valid"]:
+                raise ArtifactValidationError(
+                    "uploaded GLB does not contain a usable mesh"
+                )
+        else:
+            model_validation = None
         with self._session_factory() as db:
             artifact = create_artifact(
                 db,
@@ -700,6 +717,7 @@ class LegacySqlAlchemyArtifactOperations:
                     "source": "canvas_upload",
                     "filename": command.filename,
                     "immutable": True,
+                    **({"validation": model_validation} if model_validation else {}),
                 },
             )
             db.flush()

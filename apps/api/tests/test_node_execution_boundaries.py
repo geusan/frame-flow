@@ -23,6 +23,7 @@ def test_provider_executors_use_artifact_port_instead_of_database_session() -> N
         "rich_caption_sro.py",
         "sro_video.py",
         "lora_train.py",
+        "character_motion.py",
     ):
         source = (executor_root / filename).read_text()
         assert "context.db" not in source, filename
@@ -41,6 +42,10 @@ def test_provider_executors_use_artifact_port_instead_of_database_session() -> N
 
     lora_source = (executor_root / "lora_train.py").read_text()
     assert "require_character_lora_runtime" in lora_source
+
+    character_motion_source = (executor_root / "character_motion.py").read_text()
+    assert "require_character_motion_runtime" in character_motion_source
+
 
 def test_node_executors_do_not_import_persistence_frameworks() -> None:
     executor_root = Path(__file__).parents[1] / "app" / "nodes" / "executors"

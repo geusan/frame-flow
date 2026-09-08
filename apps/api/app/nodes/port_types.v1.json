@@ -3,6 +3,8 @@
   "types": [
     { "id": "artifact.character.v1", "label": "Character", "legacy_type": "Character" },
     { "id": "artifact.character_lora.v1", "label": "Character LoRA", "legacy_type": "Character" },
+    { "id": "artifact.character_reference.v1", "label": "Character reference", "legacy_type": "CharacterReference" },
+    { "id": "artifact.character_reference_set.v1", "label": "Character multiview reference", "legacy_type": "CharacterReferenceSet" },
     { "id": "data.any.v1", "label": "Any", "legacy_type": "Any" },
     { "id": "data.audio_profile.v1", "label": "Audio profile", "legacy_type": "AudioProfile" },
     { "id": "data.caption_layout.v1", "label": "Caption layout", "legacy_type": "CaptionLayout" },
@@ -12,7 +14,11 @@
     { "id": "data.format_profile.v1", "label": "Format profile", "legacy_type": "FormatProfile" },
     { "id": "data.format_variant.v1", "label": "Format variant", "legacy_type": "FormatVariant" },
     { "id": "data.generation_spec.v1", "label": "Generation specification", "legacy_type": "GenerationSpec" },
+    { "id": "data.humanoid_motion_clean.v1", "label": "Clean humanoid motion", "legacy_type": "MotionClean" },
+    { "id": "data.humanoid_motion_raw.v1", "label": "Raw humanoid motion", "legacy_type": "MotionRaw" },
     { "id": "data.json.v1", "label": "JSON", "legacy_type": "Any" },
+    { "id": "data.blend_file.v1", "label": "Blender animation file", "legacy_type": "BlendFile" },
+    { "id": "data.metadata_json.v1", "label": "Metadata JSON", "legacy_type": "MetadataJSON" },
     { "id": "data.motion_track.v1", "label": "MotionTrack", "legacy_type": "MotionTrack" },
     { "id": "data.media_motion.v1", "label": "Media motion", "legacy_type": "MediaMotion" },
     { "id": "data.media_motion.v2", "label": "Bezier media motion", "legacy_type": "MediaMotion" },
@@ -34,8 +40,14 @@
     { "id": "media.audio.v1", "label": "Audio", "legacy_type": "Audio" },
     { "id": "media.image.v1", "label": "Image", "legacy_type": "Image" },
     { "id": "media.image_list.v1", "label": "Image list", "legacy_type": "ImageList" },
+    { "id": "media.motion_source_video.v1", "label": "Motion source video", "legacy_type": "MotionSourceVideo" },
     { "id": "media.video.v1", "label": "Video", "legacy_type": "Video" },
     { "id": "media.video_clip_list.v1", "label": "Video clip list", "legacy_type": "VideoClipList" },
+    { "id": "model.character_3d.v1", "label": "3D character", "legacy_type": "Character3D" },
+    { "id": "model.character_3d_validated.v1", "label": "Validated 3D character", "legacy_type": "Character3DValidated" },
+    { "id": "model.character_animated.v1", "label": "Animated character", "legacy_type": "AnimatedCharacter" },
+    { "id": "model.character_rigged.v1", "label": "Rigged character", "legacy_type": "CharacterRigged" },
+    { "id": "model.source_3d.v1", "label": "Uploaded 3D model", "legacy_type": "Model3D", "compatible_with": ["model.character_3d.v1"] },
     { "id": "prompt.text.v1", "label": "Prompt", "legacy_type": "Prompt" }
   ]
 }

@@ -139,10 +139,10 @@ def legacy_node_config(data: dict[str, Any], type_key: str) -> dict[str, Any]:
 
 def logical_model_alias(data: dict[str, Any], default_alias: str, provider: str) -> str:
     value = str(data.get("model") or default_alias)
-    if value.startswith(("google.", "openai.", "fal.", "xai.", "local.", "reference-analysis.")):
+    if value.startswith(("google.", "openai.", "fal.", "tripo.", "xai.", "local.", "reference-analysis.")):
         return value
     selected_provider = str(data.get("provider") or provider or "google")
-    return f"{selected_provider}.{value}" if selected_provider in {"google", "openai", "fal", "xai"} else value
+    return f"{selected_provider}.{value}" if selected_provider in {"google", "openai", "fal", "tripo", "xai"} else value
 
 
 def _legacy_data_extensions(data: dict[str, Any], type_key: str) -> dict[str, Any]:

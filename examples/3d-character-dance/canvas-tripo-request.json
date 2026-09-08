@@ -1,0 +1,255 @@
+{
+  "name": "3D Character Dance · Tripo Preview",
+  "nodes": [
+    {
+      "id": "character-source",
+      "type": "studio",
+      "position": { "x": 0, "y": 80 },
+      "data": {
+        "key": "character.select",
+        "contractVersion": 1,
+        "label": "LoRA Character",
+        "description": "Reusable Frameflow Character bundle",
+        "configText": "REPLACE_WITH_CHARACTER_ARTIFACT_ID",
+        "outputArtifactIds": ["REPLACE_WITH_CHARACTER_ARTIFACT_ID"],
+        "outputType": "Character",
+        "model": "local.character-source",
+        "provider": "local",
+        "executable": false,
+        "status": "SUCCEEDED"
+      }
+    },
+    {
+      "id": "character-reference-set",
+      "type": "studio",
+      "position": { "x": 300, "y": 80 },
+      "data": {
+        "key": "character.reference.multiview",
+        "contractVersion": 1,
+        "label": "Character Multiview Reference",
+        "description": "Validate four role-keyed character views",
+        "model": "local.character-reference-set",
+        "provider": "local",
+        "config": {
+          "front_role": "front_full",
+          "left_role": "profile",
+          "back_role": "back_three_quarter",
+          "right_role": "three_quarter_full",
+          "minimum_views": 4,
+          "minimum_width": 512,
+          "minimum_height": 512
+        }
+      }
+    },
+    {
+      "id": "image-to-3d",
+      "type": "studio",
+      "position": { "x": 600, "y": 80 },
+      "data": {
+        "key": "character.image_to_3d",
+        "contractVersion": 2,
+        "label": "Image to 3D · Tripo P1",
+        "description": "Generate an animation-oriented textured GLB",
+        "model": "tripo.3d.p1",
+        "provider": "tripo",
+        "config": {
+          "model_alias": "tripo.3d.p1",
+          "face_limit": 20000,
+          "texture": true,
+          "pbr": true,
+          "texture_quality": "detailed",
+          "export_uv": true,
+          "smart_low_poly": true,
+          "seed": 0,
+          "timeout_seconds": 1200
+        }
+      }
+    },
+    {
+      "id": "model-validation",
+      "type": "studio",
+      "position": { "x": 900, "y": 80 },
+      "data": {
+        "key": "character.model.validate",
+        "contractVersion": 1,
+        "label": "3D Asset Validation",
+        "description": "Validate Tripo GLB animation readiness",
+        "model": "local.character-3d-validation",
+        "provider": "local",
+        "config": {
+          "maximum_vertices": 500000,
+          "require_embedded_textures": true,
+          "require_humanoid_proportions": false
+        }
+      }
+    },
+    {
+      "id": "auto-rig",
+      "type": "studio",
+      "position": { "x": 1200, "y": 80 },
+      "data": {
+        "key": "character.auto_rig",
+        "contractVersion": 2,
+        "label": "Auto Rig · Tripo",
+        "description": "Rig Check and Mixamo-compatible biped rig",
+        "model": "tripo.rig.biped",
+        "provider": "tripo",
+        "config": {
+          "rig_type": "biped",
+          "rig_profile": "mixamo",
+          "run_rig_check": true,
+          "timeout_seconds": 1200
+        }
+      }
+    },
+    {
+      "id": "dance-source",
+      "type": "studio",
+      "position": { "x": 300, "y": 440 },
+      "data": {
+        "key": "asset.select",
+        "contractVersion": 2,
+        "label": "Reference Dance Video",
+        "description": "Uploaded dance MP4",
+        "configText": "REPLACE_WITH_DANCE_VIDEO_ARTIFACT_ID",
+        "config": {
+          "artifact_id": "REPLACE_WITH_DANCE_VIDEO_ARTIFACT_ID",
+          "artifact_type": "Video"
+        },
+        "outputArtifactIds": ["REPLACE_WITH_DANCE_VIDEO_ARTIFACT_ID"],
+        "outputType": "Video",
+        "model": "local.artifact-source",
+        "provider": "local",
+        "executable": false,
+        "status": "SUCCEEDED"
+      }
+    },
+    {
+      "id": "motion-video",
+      "type": "studio",
+      "position": { "x": 600, "y": 440 },
+      "data": {
+        "key": "motion.video.validate",
+        "contractVersion": 1,
+        "label": "Motion Video Input",
+        "description": "Validate the dance source",
+        "model": "local.motion-video-validation",
+        "provider": "local",
+        "config": {
+          "maximum_duration_seconds": 120,
+          "minimum_fps": 12,
+          "minimum_width": 256,
+          "minimum_height": 256
+        }
+      }
+    },
+    {
+      "id": "motion-extract",
+      "type": "studio",
+      "position": { "x": 900, "y": 440 },
+      "data": {
+        "key": "motion.humanoid.extract",
+        "contractVersion": 1,
+        "label": "Humanoid Motion Extraction",
+        "description": "MediaPipe to canonical motion",
+        "model": "local.mediapipe-humanoid",
+        "provider": "local",
+        "config": {
+          "provider": "mediapipe",
+          "fps": 15,
+          "max_width": 640,
+          "confidence_threshold": 0.5,
+          "include_hands": false,
+          "include_face": false
+        }
+      }
+    },
+    {
+      "id": "motion-clean",
+      "type": "studio",
+      "position": { "x": 1200, "y": 440 },
+      "data": {
+        "key": "motion.humanoid.cleanup",
+        "contractVersion": 1,
+        "label": "Motion Cleanup",
+        "description": "Repair and smooth canonical motion",
+        "model": "local.humanoid-motion-cleanup",
+        "provider": "local",
+        "config": {
+          "smoothing": 0.25,
+          "confidence_threshold": 0.5,
+          "invalid_frame_policy": "interpolate",
+          "joint_limits": true,
+          "root_stabilization": true,
+          "foot_lock": true
+        }
+      }
+    },
+    {
+      "id": "retarget",
+      "type": "studio",
+      "position": { "x": 1500, "y": 260 },
+      "data": {
+        "key": "motion.humanoid.retarget",
+        "contractVersion": 1,
+        "label": "Motion Retarget",
+        "description": "Bake canonical motion onto the Mixamo-compatible rig",
+        "model": "local.blender-retarget",
+        "provider": "local",
+        "config": {
+          "rig_profile": "mixamo",
+          "bone_map_json": "",
+          "root_motion": true,
+          "scale_mode": "preserve",
+          "fps": 30,
+          "timeout_seconds": 900
+        }
+      }
+    },
+    {
+      "id": "preview",
+      "type": "studio",
+      "position": { "x": 1800, "y": 260 },
+      "data": {
+        "key": "video.blender_render",
+        "contractVersion": 1,
+        "label": "Blender Toon Preview",
+        "description": "Render a short toon animation preview",
+        "model": "local.blender-render",
+        "provider": "local",
+        "config": {
+          "resolution": "preview",
+          "width": 1080,
+          "height": 1920,
+          "fps": 30,
+          "render_style": "toon",
+          "camera_preset": "full_body",
+          "background": "#181A20",
+          "samples": 8,
+          "quality": "preview",
+          "timeout_seconds": 1800
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "character-reference", "source": "character-source", "target": "character-reference-set", "sourceHandle": "character", "targetHandle": "character" },
+    { "id": "reference-generate", "source": "character-reference-set", "target": "image-to-3d", "sourceHandle": "character_reference_set", "targetHandle": "character_reference_set" },
+    { "id": "generate-validation", "source": "image-to-3d", "target": "model-validation", "sourceHandle": "asset_3d", "targetHandle": "asset_3d" },
+    { "id": "validation-rig", "source": "model-validation", "target": "auto-rig", "sourceHandle": "validated_3d_asset", "targetHandle": "asset_3d" },
+    { "id": "dance-video", "source": "dance-source", "target": "motion-video", "sourceHandle": "artifact", "targetHandle": "video" },
+    { "id": "video-extract", "source": "motion-video", "target": "motion-extract", "sourceHandle": "motion_source_video", "targetHandle": "motion_source_video" },
+    { "id": "extract-clean", "source": "motion-extract", "target": "motion-clean", "sourceHandle": "raw_motion", "targetHandle": "raw_motion" },
+    { "id": "rig-retarget", "source": "auto-rig", "target": "retarget", "sourceHandle": "rigged_3d_asset", "targetHandle": "rigged_3d_asset" },
+    { "id": "clean-retarget", "source": "motion-clean", "target": "retarget", "sourceHandle": "clean_motion", "targetHandle": "clean_motion" },
+    { "id": "retarget-preview", "source": "retarget", "target": "preview", "sourceHandle": "animated_character", "targetHandle": "animated_character" }
+  ],
+  "draft_contract": {
+    "schema_version": "workflow.contract.draft.v1",
+    "inputs": [],
+    "bindings": [],
+    "outputs": [
+      { "key": "preview_video", "label": "Tripo character animation preview", "node_id": "preview", "port_type": "media.video.v1", "primary": true }
+    ]
+  }
+}

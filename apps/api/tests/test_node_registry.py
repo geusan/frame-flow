@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import canvas_activities
-from app.canvas_runs import canvas_run_parameters
+from app import canvas_activities, canvas_temporal
+from app.canvas_runs import canvas_run_parameters, canvas_single_attempt_node_ids
 from app.domain import ExperimentRunRequest
 from app.experiments import request_fingerprint, resolve_model
 from app.motion_control_video import MOTION_CONTROL_VIDEO_REVISION, RenderedMotionControlVideo, parse_motion_track, render_motion_control_video
@@ -210,6 +210,42 @@ def test_canvas_run_parameters_use_registry_for_stored_snapshots_and_legacy_adap
     assert legacy_parameters == {"resolution": "4K", "aspect_ratio": "1:1", "provider": "openai"}
 
 
+def test_tripo_nodes_are_snapshotted_as_single_attempt_temporal_activities():
+    nodes = [
+        {"id": "manual-image", "data": {"key": "character.image_to_3d", "contractVersion": 1}},
+        {"id": "tripo-image", "data": {"key": "character.image_to_3d", "contractVersion": 2}},
+        {"id": "tripo-rig", "data": {"key": "character.auto_rig", "contractVersion": 2}},
+        {"id": "render", "data": {"key": "video.blender_render", "contractVersion": 1}},
+    ]
+
+    assert canvas_single_attempt_node_ids(nodes) == ["tripo-image", "tripo-rig"]
+
+
+def test_canvas_temporal_uses_one_activity_attempt_for_tripo(monkeypatch):
+    calls = []
+
+    async def execute_activity(name, *args, **kwargs):
+        calls.append((name, kwargs.get("retry_policy")))
+        return None
+
+    monkeypatch.setattr(canvas_temporal.workflow, "execute_activity", execute_activity)
+    payload = canvas_temporal.CanvasWorkflowInput(
+        run_id="run_tripo_single_attempt",
+        node_ids=["tripo-image"],
+        node_keys={"tripo-image": "character.image_to_3d"},
+        dependencies={"tripo-image": []},
+        completed_node_ids=[],
+        approval_node_ids=[],
+        single_attempt_node_ids=["tripo-image"],
+    )
+
+    result = asyncio.run(canvas_temporal.CanvasRunWorkflow().run(payload))
+
+    execute = next(policy for name, policy in calls if name == "execute_canvas_node")
+    assert execute.maximum_attempts == 1
+    assert result["status"] == "SUCCEEDED"
+
+
 def test_canvas_run_module_does_not_reintroduce_manual_parameter_flattening():
     canvas_runs_source = (Path(__file__).parents[1] / "app" / "canvas_runs.py").read_text()
     assert "parameters.setdefault(" not in canvas_runs_source
@@ -272,7 +308,7 @@ def test_node_definition_api_exposes_active_contracts_only(client):
 
 
 def test_port_type_registry_covers_legacy_canvas_contracts():
-    assert len(port_type_registry.ids) == 36
+    assert len(port_type_registry.ids) == 48
     assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
     assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
     assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"
@@ -288,6 +324,9 @@ def test_port_type_registry_covers_legacy_canvas_contracts():
     assert port_type_registry.get("data.media_motion.v4").legacy_type == "MediaMotion"
     assert port_type_registry.get("data.media_frame.v1").legacy_type == "MediaFrame"
     assert port_type_registry.get("data.reference_asset.v1").legacy_type == "ReferenceAsset"
+    assert port_type_registry.get("data.humanoid_motion_raw.v1").legacy_type == "MotionRaw"
+    assert port_type_registry.get("artifact.character_reference_set.v1").legacy_type == "CharacterReferenceSet"
+    assert port_type_registry.get("model.character_rigged.v1").legacy_type == "CharacterRigged"
 
 
 def test_port_type_registry_is_exposed_for_web_connection_validation(client):

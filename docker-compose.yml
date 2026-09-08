@@ -58,6 +58,16 @@ services:
       timeout: 3s
       retries: 12
 
+  blender-worker:
+    image: frame-flow-blender-worker:local
+    build:
+      context: .
+      dockerfile: apps/blender-worker/Dockerfile
+    restart: unless-stopped
+    environment:
+      BLENDER_EXECUTABLE: blender
+      BLENDER_SERVICE_MAX_REQUEST_BYTES: ${BLENDER_SERVICE_MAX_REQUEST_BYTES:-786432000}
+
   api:
     image: frame-flow-api:local
     build:
@@ -69,6 +79,8 @@ services:
       minio:
         condition: service_healthy
       temporal:
+        condition: service_healthy
+      blender-worker:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://frameflow:frameflow@postgres:5432/frameflow
@@ -113,6 +125,9 @@ services:
       CLAUDE_CODE_EXECUTABLE: claude
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       FAL_KEY: ${FAL_KEY:-}
+      TRIPO_API_KEY: ${TRIPO_API_KEY:-}
+      TRIPO_BASE_URL: ${TRIPO_BASE_URL:-https://openapi.tripo3d.ai/v3}
+      TRIPO_POLL_INTERVAL_SECONDS: ${TRIPO_POLL_INTERVAL_SECONDS:-2}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
@@ -122,6 +137,9 @@ services:
       R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
       HOLISTIC_LANDMARKER_MODEL_PATH: /home/frameflow/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
+      BLENDER_EXECUTION_PROVIDER: http
+      BLENDER_SERVICE_URL: http://blender-worker:8090
+      MOTION_EXTRACTION_EXECUTION_MODE: local
     ports: ["${FRAMEFLOW_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
@@ -130,6 +148,10 @@ services:
       retries: 24
       start_period: 10s
     volumes:
+      - ./apps/api/app:/app/app:ro
+      - ./apps/api/alembic.ini:/app/alembic.ini:ro
+      - ./apps/api/migrations:/app/migrations:ro
+      - ./packages/schemas:/app/packages/schemas:ro
       - demucs_cache:/home/frameflow/.cache
       - mediapipe_cache:/home/frameflow/.cache/mediapipe
       - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/home/frameflow/.codex
@@ -147,6 +169,8 @@ services:
       temporal:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      blender-worker:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql+psycopg://frameflow:frameflow@postgres:5432/frameflow
@@ -191,6 +215,9 @@ services:
       CLAUDE_CODE_EXECUTABLE: claude
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       FAL_KEY: ${FAL_KEY:-}
+      TRIPO_API_KEY: ${TRIPO_API_KEY:-}
+      TRIPO_BASE_URL: ${TRIPO_BASE_URL:-https://openapi.tripo3d.ai/v3}
+      TRIPO_POLL_INTERVAL_SECONDS: ${TRIPO_POLL_INTERVAL_SECONDS:-2}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_TRAINING_BUCKET: ${R2_TRAINING_BUCKET:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
@@ -200,7 +227,12 @@ services:
       R2_PRESIGNED_URL_TTL_SECONDS: ${R2_PRESIGNED_URL_TTL_SECONDS:-3600}
       HOLISTIC_LANDMARKER_MODEL_PATH: /home/frameflow/.cache/mediapipe/holistic_landmarker.task
       HOLISTIC_LANDMARKER_MODEL_URL: https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task
+      BLENDER_EXECUTION_PROVIDER: http
+      BLENDER_SERVICE_URL: http://blender-worker:8090
+      MOTION_EXTRACTION_EXECUTION_MODE: local
     volumes:
+      - ./apps/api/app:/app/app:ro
+      - ./packages/schemas:/app/packages/schemas:ro
       - demucs_cache:/home/frameflow/.cache
       - mediapipe_cache:/home/frameflow/.cache/mediapipe
       - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/home/frameflow/.codex

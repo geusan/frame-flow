@@ -1,0 +1,327 @@
+[
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.reference.validate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Character 3D Input",
+      "description": "Validate and freeze a LoRA-generated character image for the 3D pipeline",
+      "category": "Image",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["character", "lora", "reference", "3d input", "validation"]
+    },
+    "ports": {
+      "inputs": [{ "key": "image", "type": "media.image.v1", "label": "Character Image", "required": true }],
+      "outputs": [{ "key": "character_reference", "type": "artifact.character_reference.v1", "label": "Character Reference" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_width", "minimum_height", "allow_alpha", "character_id", "character_name", "source_model", "prompt"],
+      "properties": {
+        "minimum_width": { "type": "integer", "minimum": 64, "maximum": 8192, "default": 512, "title": "Minimum width", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "minimum_height": { "type": "integer", "minimum": 64, "maximum": 8192, "default": 512, "title": "Minimum height", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "allow_alpha": { "type": "boolean", "default": true, "title": "Allow transparency", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "character_id": { "type": "string", "maxLength": 128, "default": "", "title": "Character ID", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "character_name": { "type": "string", "maxLength": 160, "default": "", "title": "Character name", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "source_model": { "type": "string", "maxLength": 255, "default": "", "title": "Source model" },
+        "prompt": { "type": "string", "maxLength": 32000, "default": "", "title": "Source prompt", "x-workflow-input": { "enabled": true, "type": "prompt" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "character-reference-validation", "revision": "character-reference-validation.v1", "provider": "local", "model_alias": "local.character-reference-validation" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "CharacterReference", "schema_id": "character.reference.v1", "input_roles": { "media.image.v1": "source_character_image" }, "output_role": "character_reference" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.image_to_3d",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Image to 3D",
+      "description": "Convert a validated character image to canonical GLB through a replaceable provider",
+      "category": "Advanced",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["image to 3d", "glb", "mesh", "texture", "character"]
+    },
+    "ports": {
+      "inputs": [{ "key": "character_reference", "type": "artifact.character_reference.v1", "label": "Character Reference", "required": true }],
+      "outputs": [{ "key": "asset_3d", "type": "model.character_3d.v1", "label": "3D Character GLB" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "quality", "seed", "manual_3d_artifact_id"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["manual"], "default": "manual", "title": "Provider", "description": "V1 accepts a manually uploaded GLB behind the provider contract." },
+        "quality": { "type": "string", "enum": ["draft", "standard", "high"], "default": "standard", "title": "Quality", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647, "default": 0, "title": "Seed", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "manual_3d_artifact_id": { "type": "string", "maxLength": 128, "default": "", "title": "Manual GLB Artifact ID", "description": "Upload a GLB and paste its Artifact ID for the V1 provider.", "x-workflow-input": { "enabled": true, "type": "artifact" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "character-image-to-3d", "revision": "image-to-3d-provider.v1", "provider": "local", "model_alias": "local.image-to-3d-manual" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "Character3D", "schema_id": "character.3d.glb.v1", "input_roles": { "artifact.character_reference.v1": "character_reference" }, "output_role": "generated_3d_asset" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.model.validate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "3D Asset Validation",
+      "description": "Inspect GLB mesh, materials, textures, skeleton, bounds, and animation readiness",
+      "category": "Advanced",
+      "icon": "qc",
+      "cost_label": "$0.00",
+      "keywords": ["glb", "validation", "mesh", "skeleton", "topology"]
+    },
+    "ports": {
+      "inputs": [{ "key": "asset_3d", "type": "model.character_3d.v1", "label": "3D Character", "required": true }],
+      "outputs": [
+        { "key": "validated_3d_asset", "type": "model.character_3d_validated.v1", "label": "Validated 3D Character" },
+        { "key": "validation", "type": "data.metadata_json.v1", "label": "Validation Report" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_vertices", "require_embedded_textures", "require_humanoid_proportions"],
+      "properties": {
+        "maximum_vertices": { "type": "integer", "minimum": 1000, "maximum": 10000000, "default": 500000, "title": "Maximum vertices", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "require_embedded_textures": { "type": "boolean", "default": true, "title": "Require embedded textures", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "require_humanoid_proportions": { "type": "boolean", "default": false, "title": "Require humanoid proportions", "x-workflow-input": { "enabled": true, "type": "boolean" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "character-model-validation", "revision": "character-3d-validation.v1", "provider": "local", "model_alias": "local.character-3d-validation" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "Character3DValidated", "schema_id": "character.3d.validated.v1", "input_roles": { "model.character_3d.v1": "generated_3d_asset" }, "output_role": "validated_3d_asset" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.auto_rig",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Auto Rig",
+      "description": "Create or accept a humanoid rig through a replaceable rigging provider",
+      "category": "Advanced",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["auto rig", "armature", "humanoid", "skeleton"]
+    },
+    "ports": {
+      "inputs": [{ "key": "asset_3d", "type": "model.character_3d_validated.v1", "label": "Validated 3D Character", "required": true }],
+      "outputs": [
+        { "key": "rigged_3d_asset", "type": "model.character_rigged.v1", "label": "Rigged Character" },
+        { "key": "skeleton_metadata", "type": "data.metadata_json.v1", "label": "Skeleton Metadata" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "rig_profile", "manual_rigged_artifact_id"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["passthrough", "manual"], "default": "passthrough", "title": "Provider", "description": "Pass through an already-rigged GLB or use a manual rig override in V1." },
+        "rig_profile": { "type": "string", "enum": ["semantic", "mixamo"], "default": "semantic", "title": "Rig profile", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "manual_rigged_artifact_id": { "type": "string", "maxLength": 128, "default": "", "title": "Manual rigged GLB Artifact ID", "x-workflow-input": { "enabled": true, "type": "artifact" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "provider", "executor": "character-auto-rig", "revision": "character-auto-rig-provider.v1", "provider": "local", "model_alias": "local.character-auto-rig" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "CharacterRigged", "schema_id": "character.rigged.glb.v1", "input_roles": { "model.character_3d_validated.v1": "validated_3d_asset" }, "output_role": "rigged_3d_asset" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "motion.video.validate",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Motion Video Input",
+      "description": "Validate and freeze a reference dance video for motion extraction",
+      "category": "References",
+      "icon": "video",
+      "cost_label": "$0.00",
+      "keywords": ["dance", "motion", "video", "ffprobe", "input"]
+    },
+    "ports": {
+      "inputs": [{ "key": "video", "type": "media.video.v1", "label": "Dance Video", "required": true }],
+      "outputs": [{ "key": "motion_source_video", "type": "media.motion_source_video.v1", "label": "Motion Source Video" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maximum_duration_seconds", "minimum_fps", "minimum_width", "minimum_height"],
+      "properties": {
+        "maximum_duration_seconds": { "type": "number", "minimum": 1, "maximum": 600, "default": 120, "title": "Maximum duration", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "minimum_fps": { "type": "number", "minimum": 1, "maximum": 60, "default": 12, "title": "Minimum FPS", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "minimum_width": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 256, "title": "Minimum width" },
+        "minimum_height": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 256, "title": "Minimum height" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "motion-video-validation", "revision": "motion-video-validation.v1", "provider": "local", "model_alias": "local.motion-video-validation" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "MotionSourceVideo", "schema_id": "motion.source_video.v1", "input_roles": { "media.video.v1": "reference_dance_video" }, "output_role": "motion_source_video" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "motion.humanoid.extract",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Humanoid Motion Extraction",
+      "description": "Extract provider landmarks and normalize them to reusable root motion and bone quaternions",
+      "category": "References",
+      "icon": "motion",
+      "cost_label": "$0.00",
+      "keywords": ["mediapipe", "motion capture", "quaternion", "humanoid", "dance"]
+    },
+    "ports": {
+      "inputs": [{ "key": "motion_source_video", "type": "media.motion_source_video.v1", "label": "Motion Source Video", "required": true }],
+      "outputs": [
+        { "key": "raw_motion", "type": "data.humanoid_motion_raw.v1", "label": "Raw Humanoid Motion" },
+        { "key": "motion_metadata", "type": "data.metadata_json.v1", "label": "Motion Metadata" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "fps", "max_width", "confidence_threshold", "include_hands", "include_face"],
+      "properties": {
+        "provider": { "type": "string", "enum": ["mediapipe"], "default": "mediapipe", "title": "Provider" },
+        "fps": { "type": "number", "minimum": 1, "maximum": 30, "default": 15, "title": "Extraction FPS", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "max_width": { "type": "integer", "minimum": 256, "maximum": 1920, "default": 640, "title": "Analysis width" },
+        "confidence_threshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Confidence threshold", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "include_hands": { "type": "boolean", "default": false, "title": "Include hand metadata", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "include_face": { "type": "boolean", "default": false, "title": "Include face metadata", "x-workflow-input": { "enabled": true, "type": "boolean" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "humanoid-motion-extraction", "revision": "humanoid-motion-extraction.v1", "provider": "local", "model_alias": "local.mediapipe-humanoid" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "MotionRaw", "schema_id": "humanoid.motion.v1", "input_roles": { "media.motion_source_video.v1": "motion_source_video" }, "output_role": "raw_humanoid_motion" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "motion.humanoid.cleanup",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Motion Cleanup",
+      "description": "Deterministically repair, smooth, limit, stabilize, and foot-lock canonical humanoid motion",
+      "category": "Advanced",
+      "icon": "motion",
+      "cost_label": "$0.00",
+      "keywords": ["motion cleanup", "smoothing", "foot lock", "interpolation", "joint limits"]
+    },
+    "ports": {
+      "inputs": [{ "key": "raw_motion", "type": "data.humanoid_motion_raw.v1", "label": "Raw Humanoid Motion", "required": true }],
+      "outputs": [{ "key": "clean_motion", "type": "data.humanoid_motion_clean.v1", "label": "Clean Humanoid Motion" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["smoothing", "confidence_threshold", "invalid_frame_policy", "joint_limits", "root_stabilization", "foot_lock"],
+      "properties": {
+        "smoothing": { "type": "number", "minimum": 0, "maximum": 0.95, "default": 0.25, "title": "Smoothing", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "confidence_threshold": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5, "title": "Confidence threshold", "x-workflow-input": { "enabled": true, "type": "number" } },
+        "invalid_frame_policy": { "type": "string", "enum": ["interpolate", "hold", "error"], "default": "interpolate", "title": "Invalid frames", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "joint_limits": { "type": "boolean", "default": true, "title": "Joint limits", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "root_stabilization": { "type": "boolean", "default": true, "title": "Root stabilization", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "foot_lock": { "type": "boolean", "default": true, "title": "Foot locking", "x-workflow-input": { "enabled": true, "type": "boolean" } }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "humanoid-motion-cleanup", "revision": "humanoid-motion-cleanup.v1", "provider": "local", "model_alias": "local.humanoid-motion-cleanup" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "MotionClean", "schema_id": "humanoid.motion.clean.v1", "input_roles": { "data.humanoid_motion_raw.v1": "raw_humanoid_motion" }, "output_role": "clean_humanoid_motion" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "motion.humanoid.retarget",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Motion Retarget",
+      "description": "Bake canonical humanoid motion onto a mapped target rig in headless Blender",
+      "category": "Advanced",
+      "icon": "motion",
+      "cost_label": "$0.00",
+      "keywords": ["blender", "retarget", "rig", "animation", "bone map"]
+    },
+    "ports": {
+      "inputs": [
+        { "key": "rigged_3d_asset", "type": "model.character_rigged.v1", "label": "Rigged Character", "required": true },
+        { "key": "clean_motion", "type": "data.humanoid_motion_clean.v1", "label": "Clean Humanoid Motion", "required": true }
+      ],
+      "outputs": [
+        { "key": "animated_character", "type": "model.character_animated.v1", "label": "Animated Character" },
+        { "key": "animation_file", "type": "data.blend_file.v1", "label": "Blender Animation" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rig_profile", "bone_map_json", "root_motion", "scale_mode", "fps", "timeout_seconds"],
+      "properties": {
+        "rig_profile": { "type": "string", "enum": ["semantic", "mixamo", "custom"], "default": "semantic", "title": "Rig profile", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "bone_map_json": { "type": "string", "maxLength": 16000, "default": "", "title": "Custom bone map JSON", "description": "Used only when rig_profile is custom." },
+        "root_motion": { "type": "boolean", "default": true, "title": "Apply root motion", "x-workflow-input": { "enabled": true, "type": "boolean" } },
+        "scale_mode": { "type": "string", "enum": ["preserve", "hips_height", "none"], "default": "preserve", "title": "Root scale", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "fps": { "type": "integer", "enum": [24, 30, 60], "default": 30, "title": "Bake FPS", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "timeout_seconds": { "type": "integer", "minimum": 30, "maximum": 3600, "default": 900, "title": "Worker timeout" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "humanoid-motion-retarget", "revision": "blender-retarget.v1", "provider": "local", "model_alias": "local.blender-retarget" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "AnimatedCharacter", "schema_id": "character.animated.glb.v1", "input_roles": { "model.character_rigged.v1": "rigged_character", "data.humanoid_motion_clean.v1": "clean_humanoid_motion" }, "output_role": "animated_character" }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "video.blender_render",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Blender Render",
+      "description": "Render an animated character with independent camera, light, quality, and toon/flat/realistic style",
+      "category": "Video",
+      "icon": "render",
+      "cost_label": "$0.00",
+      "keywords": ["blender", "render", "toon", "anime", "preview", "mp4"]
+    },
+    "ports": {
+      "inputs": [{ "key": "animated_character", "type": "model.character_animated.v1", "label": "Animated Character", "required": true }],
+      "outputs": [{ "key": "video", "type": "media.video.v1", "label": "Rendered Video" }]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution", "width", "height", "fps", "render_style", "camera_preset", "background", "samples", "quality", "timeout_seconds"],
+      "properties": {
+        "resolution": { "type": "string", "enum": ["preview", "portrait_1080", "square_1080", "custom"], "default": "preview", "title": "Resolution", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "width": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 1080, "title": "Custom width", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "height": { "type": "integer", "minimum": 64, "maximum": 4096, "default": 1920, "title": "Custom height", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "fps": { "type": "integer", "enum": [24, 30, 60], "default": 30, "title": "FPS", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "render_style": { "type": "string", "enum": ["realistic", "toon", "flat"], "default": "toon", "title": "Render style", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "camera_preset": { "type": "string", "enum": ["full_body", "portrait"], "default": "full_body", "title": "Camera preset", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "background": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$", "default": "#181A20", "title": "Background", "x-workflow-input": { "enabled": true, "type": "string" } },
+        "samples": { "type": "integer", "minimum": 1, "maximum": 256, "default": 16, "title": "Render samples", "x-workflow-input": { "enabled": true, "type": "integer" } },
+        "quality": { "type": "string", "enum": ["preview", "final"], "default": "preview", "title": "Output quality", "x-workflow-input": { "enabled": true, "type": "enum" } },
+        "timeout_seconds": { "type": "integer", "minimum": 30, "maximum": 7200, "default": 1800, "title": "Worker timeout" }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": { "kind": "local", "executor": "video-blender-render", "revision": "blender-render.v1", "provider": "local", "model_alias": "local.blender-render" },
+    "editor": { "kind": "generic" },
+    "artifact_contract": { "primary_type": "FinalVideo", "schema_id": "video.blender_final.v1", "input_roles": { "model.character_animated.v1": "animated_character" }, "output_role": "rendered_video" }
+  }
+]

@@ -15,6 +15,20 @@ from .contract_capabilities import (
     TimelineCapabilityExecutor,
     VideoTranslateCapabilityExecutor,
 )
+from .character_motion import (
+    AutoRigExecutor,
+    BlenderRenderExecutor,
+    Character3DValidationExecutor,
+    CharacterMultiviewReferenceExecutor,
+    CharacterReferenceValidationExecutor,
+    HumanoidMotionCleanupExecutor,
+    HumanoidMotionExtractionExecutor,
+    HumanoidMotionRetargetExecutor,
+    ImageTo3DExecutor,
+    MotionVideoValidationExecutor,
+    TripoAutoRigExecutor,
+    TripoImageTo3DExecutor,
+)
 from .legacy import LegacyCompatibilityExecutor
 from .image_generation import ImageGenerationCapabilityExecutor
 from .image_story_video import ImageStoryVideoExecutor
@@ -54,6 +68,18 @@ __all__ = [
     "SubtitleAlignCapabilityExecutor",
     "TimelineCapabilityExecutor",
     "VideoTranslateCapabilityExecutor",
+    "AutoRigExecutor",
+    "BlenderRenderExecutor",
+    "Character3DValidationExecutor",
+    "CharacterMultiviewReferenceExecutor",
+    "CharacterReferenceValidationExecutor",
+    "HumanoidMotionCleanupExecutor",
+    "HumanoidMotionExtractionExecutor",
+    "HumanoidMotionRetargetExecutor",
+    "ImageTo3DExecutor",
+    "MotionVideoValidationExecutor",
+    "TripoAutoRigExecutor",
+    "TripoImageTo3DExecutor",
     "LegacyCompatibilityExecutor",
     "ImageGenerationCapabilityExecutor",
     "ImageStoryVideoExecutor",

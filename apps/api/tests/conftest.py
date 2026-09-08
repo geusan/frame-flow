@@ -30,6 +30,10 @@ ISOLATED_ENV_KEYS = (
     "OPENAI_PROJECT_ID",
     "XAI_API_KEY",
     "FAL_KEY",
+    "TRIPO_API_KEY",
+    "TRIPO_BASE_URL",
+    "TRIPO_POLL_INTERVAL_SECONDS",
+    "TRIPO_ALLOWED_DOWNLOAD_HOSTS",
 )
 for env_key in ISOLATED_ENV_KEYS:
     os.environ.pop(env_key, None)

@@ -16,6 +16,7 @@ from .nodes import node_registry
 from .infrastructure.node_execution import (
     SqlAlchemyNodeArtifactStore,
     SqlAlchemyNodeCharacterLoraRuntime,
+    SqlAlchemyNodeCharacterMotionRuntime,
     SqlAlchemyNodeMediaRuntime,
     SqlAlchemyNodeProviderSettings,
 )
@@ -117,7 +118,7 @@ def resolve_model(model_alias: str, node_key: str, contract_version: int = 1) ->
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         resolved = definition.execution.model_alias
         return resolved, model_id_for_alias(resolved) or definition.execution.revision
-    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "chatgpt.", "claude.", "xai.")) else f"google.{model_alias}"
+    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "tripo.", "chatgpt.", "claude.", "xai.")) else f"google.{model_alias}"
     exact = model_id_for_alias(normalized)
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")
@@ -219,7 +220,7 @@ def run_experiment(
     if payload.model_alias != model_alias:
         payload = payload.model_copy(update={"model_alias": model_alias})
     requested_provider = str(payload.parameters.get("provider") or "").strip().lower()
-    if requested_provider and model_alias.startswith(("google.", "openai.", "fal.", "xai.")) and not model_alias.startswith(f"{requested_provider}."):
+    if requested_provider and model_alias.startswith(("google.", "openai.", "fal.", "tripo.", "xai.")) and not model_alias.startswith(f"{requested_provider}."):
         raise ValueError(f"selected provider {requested_provider} does not match model alias {model_alias}")
     validate_model_for_node(payload.node_key, model_alias, payload.node_contract_version)
     contract_parameters = {key: value for key, value in payload.parameters.items() if key != "provider"}
@@ -275,6 +276,7 @@ def run_experiment(
             provider_settings=SqlAlchemyNodeProviderSettings(db),
             media_runtime=SqlAlchemyNodeMediaRuntime(db),
             character_lora_runtime=SqlAlchemyNodeCharacterLoraRuntime(db),
+            character_motion_runtime=SqlAlchemyNodeCharacterMotionRuntime(db),
         ) if definition else None
         if context is None:
             raise ValueError(

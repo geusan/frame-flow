@@ -1,0 +1,273 @@
+[
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.reference.multiview",
+    "contract_version": 1,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Character Multiview Reference",
+      "description": "Select and validate front, side, and back views from an immutable Character bundle",
+      "category": "References",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["character sheet", "multiview", "front", "profile", "back", "3d reference"]
+    },
+    "ports": {
+      "inputs": [
+        { "key": "character", "type": "artifact.character.v1", "label": "Character", "required": true }
+      ],
+      "outputs": [
+        { "key": "character_reference_set", "type": "artifact.character_reference_set.v1", "label": "Character Reference Set" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["front_role", "left_role", "back_role", "right_role", "minimum_views", "minimum_width", "minimum_height"],
+      "properties": {
+        "front_role": {
+          "type": "string",
+          "enum": ["front_full", "three_quarter_full", "profile", "back_three_quarter"],
+          "default": "front_full",
+          "title": "Front view role"
+        },
+        "left_role": {
+          "type": "string",
+          "enum": ["", "profile", "three_quarter_full", "back_three_quarter"],
+          "default": "profile",
+          "title": "Left view role"
+        },
+        "back_role": {
+          "type": "string",
+          "enum": ["", "back_three_quarter", "profile", "three_quarter_full"],
+          "default": "back_three_quarter",
+          "title": "Back view role"
+        },
+        "right_role": {
+          "type": "string",
+          "enum": ["", "three_quarter_full", "profile", "back_three_quarter"],
+          "default": "three_quarter_full",
+          "title": "Right view role"
+        },
+        "minimum_views": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 4,
+          "default": 4,
+          "title": "Required view count"
+        },
+        "minimum_width": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 4096,
+          "default": 512,
+          "title": "Minimum width"
+        },
+        "minimum_height": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 4096,
+          "default": 512,
+          "title": "Minimum height"
+        }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": {
+      "kind": "local",
+      "executor": "character-multiview-reference",
+      "revision": "character-reference-set.v1",
+      "provider": "local",
+      "model_alias": "local.character-reference-set"
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "CharacterReferenceSet",
+      "schema_id": "character.reference_set.v1",
+      "input_roles": { "artifact.character.v1": "character_bundle" },
+      "output_role": "character_reference_set"
+    }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.image_to_3d",
+    "contract_version": 2,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Image to 3D · Tripo",
+      "description": "Generate a textured animation-oriented GLB through Tripo API v3; external Tripo credits apply",
+      "category": "Advanced",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["tripo", "multiview", "image to 3d", "glb", "p1", "h3.1"]
+    },
+    "ports": {
+      "inputs": [
+        { "key": "character_reference_set", "type": "artifact.character_reference_set.v1", "label": "Character Reference Set", "required": true }
+      ],
+      "outputs": [
+        { "key": "asset_3d", "type": "model.character_3d.v1", "label": "3D Character GLB" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_alias", "face_limit", "texture", "pbr", "texture_quality", "export_uv", "smart_low_poly", "seed", "timeout_seconds"],
+      "properties": {
+        "model_alias": {
+          "type": "string",
+          "enum": ["tripo.3d.p1", "tripo.3d.h3.1"],
+          "x-enum-labels": {
+            "tripo.3d.p1": "P1 · clean low-poly",
+            "tripo.3d.h3.1": "H3.1 · highest identity fidelity"
+          },
+          "default": "tripo.3d.p1",
+          "title": "Model",
+          "x-workflow-input": { "enabled": true, "type": "model_alias" }
+        },
+        "face_limit": {
+          "type": "integer",
+          "minimum": 48,
+          "maximum": 20000,
+          "default": 20000,
+          "title": "Face limit",
+          "description": "Kept animation-friendly even when H3.1 is selected.",
+          "x-workflow-input": { "enabled": true, "type": "integer" }
+        },
+        "texture": {
+          "type": "boolean",
+          "default": true,
+          "title": "Generate texture",
+          "x-workflow-input": { "enabled": true, "type": "boolean" }
+        },
+        "pbr": {
+          "type": "boolean",
+          "default": true,
+          "title": "PBR materials",
+          "x-workflow-input": { "enabled": true, "type": "boolean" }
+        },
+        "texture_quality": {
+          "type": "string",
+          "enum": ["standard", "detailed"],
+          "default": "detailed",
+          "title": "Texture quality",
+          "x-workflow-input": { "enabled": true, "type": "enum" }
+        },
+        "export_uv": {
+          "type": "boolean",
+          "default": true,
+          "title": "Export UV",
+          "x-workflow-input": { "enabled": true, "type": "boolean" }
+        },
+        "smart_low_poly": {
+          "type": "boolean",
+          "default": true,
+          "title": "H3.1 smart low-poly",
+          "description": "Applied only to H3.1; P1 already produces controlled low-poly output.",
+          "x-workflow-input": { "enabled": true, "type": "boolean" }
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647,
+          "default": 0,
+          "title": "Seed",
+          "x-workflow-input": { "enabled": true, "type": "integer" }
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600,
+          "default": 1200,
+          "title": "Provider timeout"
+        }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "schema" },
+    "execution": {
+      "kind": "provider",
+      "executor": "character-image-to-3d-tripo",
+      "revision": "tripo-multiview-image-to-3d.v1",
+      "provider": "tripo",
+      "model_alias": "tripo.3d.p1",
+      "model_families": ["tripo.3d."]
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "Character3D",
+      "schema_id": "character.3d.glb.v1",
+      "input_roles": { "artifact.character_reference_set.v1": "character_reference_set" },
+      "output_role": "generated_3d_asset"
+    }
+  },
+  {
+    "schema_version": "node.definition.v1",
+    "type_key": "character.auto_rig",
+    "contract_version": 2,
+    "lifecycle": "ACTIVE",
+    "display": {
+      "label": "Auto Rig · Tripo",
+      "description": "Run Tripo riggability validation and generate a Mixamo-compatible humanoid GLB; external Tripo credits apply",
+      "category": "Advanced",
+      "icon": "character",
+      "cost_label": "$0.00",
+      "keywords": ["tripo", "auto rig", "rig check", "mixamo", "humanoid", "glb"]
+    },
+    "ports": {
+      "inputs": [
+        { "key": "asset_3d", "type": "model.character_3d_validated.v1", "label": "Validated 3D Character", "required": true }
+      ],
+      "outputs": [
+        { "key": "rigged_3d_asset", "type": "model.character_rigged.v1", "label": "Rigged Character" },
+        { "key": "skeleton_metadata", "type": "data.metadata_json.v1", "label": "Skeleton Metadata" }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rig_type", "rig_profile", "run_rig_check", "timeout_seconds"],
+      "properties": {
+        "rig_type": {
+          "type": "string",
+          "enum": ["biped"],
+          "default": "biped",
+          "title": "Rig type"
+        },
+        "rig_profile": {
+          "type": "string",
+          "enum": ["mixamo"],
+          "default": "mixamo",
+          "title": "Bone naming",
+          "description": "Matches the existing Frameflow Mixamo bone-map profile."
+        },
+        "run_rig_check": {
+          "type": "boolean",
+          "default": true,
+          "title": "Run riggability check"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 3600,
+          "default": 1200,
+          "title": "Provider timeout"
+        }
+      }
+    },
+    "binding_policy": { "workflow_inputs": "none" },
+    "execution": {
+      "kind": "provider",
+      "executor": "character-auto-rig-tripo",
+      "revision": "tripo-auto-rig.v1",
+      "provider": "tripo",
+      "model_alias": "tripo.rig.biped"
+    },
+    "editor": { "kind": "generic" },
+    "artifact_contract": {
+      "primary_type": "CharacterRigged",
+      "schema_id": "character.rigged.glb.v1",
+      "input_roles": { "model.character_3d_validated.v1": "validated_3d_asset" },
+      "output_role": "rigged_3d_asset"
+    }
+  }
+]

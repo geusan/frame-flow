@@ -1,0 +1,21 @@
+{
+  "hips": "hips",
+  "spine": "spine",
+  "chest": "chest",
+  "neck": "neck",
+  "head": "head",
+  "leftShoulder": "leftShoulder",
+  "leftUpperArm": "leftUpperArm",
+  "leftLowerArm": "leftLowerArm",
+  "leftHand": "leftHand",
+  "rightShoulder": "rightShoulder",
+  "rightUpperArm": "rightUpperArm",
+  "rightLowerArm": "rightLowerArm",
+  "rightHand": "rightHand",
+  "leftUpperLeg": "leftUpperLeg",
+  "leftLowerLeg": "leftLowerLeg",
+  "leftFoot": "leftFoot",
+  "rightUpperLeg": "rightUpperLeg",
+  "rightLowerLeg": "rightLowerLeg",
+  "rightFoot": "rightFoot"
+}

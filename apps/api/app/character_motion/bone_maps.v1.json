@@ -1,0 +1,47 @@
+{
+  "schema_version": "humanoid.bone_maps.v1",
+  "profiles": {
+    "semantic": {
+      "hips": "hips",
+      "spine": "spine",
+      "chest": "chest",
+      "neck": "neck",
+      "head": "head",
+      "leftShoulder": "leftShoulder",
+      "leftUpperArm": "leftUpperArm",
+      "leftLowerArm": "leftLowerArm",
+      "leftHand": "leftHand",
+      "rightShoulder": "rightShoulder",
+      "rightUpperArm": "rightUpperArm",
+      "rightLowerArm": "rightLowerArm",
+      "rightHand": "rightHand",
+      "leftUpperLeg": "leftUpperLeg",
+      "leftLowerLeg": "leftLowerLeg",
+      "leftFoot": "leftFoot",
+      "rightUpperLeg": "rightUpperLeg",
+      "rightLowerLeg": "rightLowerLeg",
+      "rightFoot": "rightFoot"
+    },
+    "mixamo": {
+      "hips": "mixamorig:Hips",
+      "spine": "mixamorig:Spine",
+      "chest": "mixamorig:Spine2",
+      "neck": "mixamorig:Neck",
+      "head": "mixamorig:Head",
+      "leftShoulder": "mixamorig:LeftShoulder",
+      "leftUpperArm": "mixamorig:LeftArm",
+      "leftLowerArm": "mixamorig:LeftForeArm",
+      "leftHand": "mixamorig:LeftHand",
+      "rightShoulder": "mixamorig:RightShoulder",
+      "rightUpperArm": "mixamorig:RightArm",
+      "rightLowerArm": "mixamorig:RightForeArm",
+      "rightHand": "mixamorig:RightHand",
+      "leftUpperLeg": "mixamorig:LeftUpLeg",
+      "leftLowerLeg": "mixamorig:LeftLeg",
+      "leftFoot": "mixamorig:LeftFoot",
+      "rightUpperLeg": "mixamorig:RightUpLeg",
+      "rightLowerLeg": "mixamorig:RightLeg",
+      "rightFoot": "mixamorig:RightFoot"
+    }
+  }
+}

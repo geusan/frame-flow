@@ -74,12 +74,19 @@ FAL_MODEL_REGISTRY = {
     "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",
 }
 
+TRIPO_MODEL_REGISTRY = {
+    "tripo.3d.p1": "P1-20260311",
+    "tripo.3d.h3.1": "v3.1-20260211",
+    "tripo.rig.biped": "v1.0-20240301",
+}
+
 ALL_MODEL_REGISTRY = {
     **MODEL_REGISTRY,
     **OPENAI_MODEL_REGISTRY,
     **LOCAL_SUBSCRIPTION_MODEL_REGISTRY,
     **XAI_MODEL_REGISTRY,
     **FAL_MODEL_REGISTRY,
+    **TRIPO_MODEL_REGISTRY,
 }
 
 

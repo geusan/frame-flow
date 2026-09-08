@@ -38,6 +38,7 @@ def test_provider_settings_are_created_and_secrets_are_write_only(client: TestCl
         "Kling",
         "MiniMax",
         "fal.ai",
+        "Tripo",
         "Cloudflare R2",
     ]
     initial_openai = initial.json()[0]
@@ -283,6 +284,90 @@ def test_fal_provider_uses_server_side_api_key(client: TestClient, monkeypatch):
     assert api_key["env_var"] == "FAL_KEY"
     assert api_key["value"] == ""
     assert api_key["has_value"] is True
+
+
+def test_tripo_provider_uses_write_only_api_key_and_lists_models(client: TestClient, monkeypatch):
+    monkeypatch.delenv("TRIPO_API_KEY", raising=False)
+    monkeypatch.setattr(
+        provider_settings_module,
+        "validate_tripo_credentials",
+        lambda api_key, base_url: {"balance": 1234.0, "frozen": 25.0},
+    )
+
+    saved = client.put("/settings/providers/tripo", json={
+        "enabled": True,
+        "auth_method": "api_key",
+        "values": {
+            "api_key": "tripo-test-key",
+            "base_url": "https://openapi.tripo3d.ai/v3",
+            "poll_interval_seconds": "1.5",
+        },
+    })
+
+    assert saved.status_code == 200
+    payload = saved.json()
+    assert payload["label"] == "Tripo"
+    assert payload["configured"] is True
+    assert os.environ["TRIPO_API_KEY"] == "tripo-test-key"
+    api_key = next(field for field in payload["fields"] if field["key"] == "api_key")
+    assert api_key["value"] == ""
+    assert api_key["has_value"] is True
+    assert payload["connection"]["ready"] is True
+    assert "1234.0 credits" in payload["connection"]["message"]
+    assert client.get("/health").json()["tripo_configured"] is True
+    models = [model for model in client.get("/models").json() if model["provider"] == "Tripo"]
+    assert {model["logical_alias"] for model in models} == {
+        "tripo.3d.p1", "tripo.3d.h3.1", "tripo.rig.biped",
+    }
+    assert all(model["configured"] for model in models)
+
+
+def test_tripo_provider_rejects_invalid_key_before_applying_environment(client: TestClient, monkeypatch):
+    monkeypatch.delenv("TRIPO_API_KEY", raising=False)
+    with SessionLocal() as db:
+        record = db.get(ProviderSettingRecord, "provider_tripo")
+        if record:
+            db.delete(record)
+            db.commit()
+        ensure_provider_settings(db)
+    monkeypatch.setattr(
+        provider_settings_module,
+        "validate_tripo_credentials",
+        lambda api_key, base_url: (_ for _ in ()).throw(ValueError("Tripo authentication failed")),
+    )
+
+    response = client.put("/settings/providers/tripo", json={
+        "enabled": True,
+        "auth_method": "api_key",
+        "values": {"api_key": "invalid-key"},
+    })
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Tripo authentication failed"
+    assert "TRIPO_API_KEY" not in os.environ
+    listed = next(item for item in client.get("/settings/providers").json() if item["provider"] == "tripo")
+    assert listed["configured"] is False
+
+
+def test_unverified_database_tripo_secret_is_not_applied_to_worker_environment(client: TestClient, monkeypatch):
+    del client
+    monkeypatch.setenv("TRIPO_API_KEY", "stale-worker-key")
+    with SessionLocal() as db:
+        record = db.get(ProviderSettingRecord, "provider_tripo")
+        record.enabled = True
+        record.source = "database"
+        record.configuration = {
+            "_auth_method": "api_key",
+            "base_url": "https://openapi.tripo3d.ai/v3",
+        }
+        record.secrets = {"api_key": "unverified-key"}
+        db.commit()
+        provider_settings_module.apply_provider_settings_to_environment([record])
+        payload = provider_settings_payload(record)
+
+    assert "TRIPO_API_KEY" not in os.environ
+    assert payload["configured"] is False
+    assert payload["connection"]["state"] == "unverified"
 
 
 def test_r2_provider_applies_bucket_scoped_s3_credentials(client: TestClient, monkeypatch):

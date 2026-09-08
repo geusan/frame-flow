@@ -17,7 +17,9 @@
     ],
     "provider": [
       "agent.execute",
+      "character.auto_rig",
       "character.generate",
+      "character.image_to_3d",
       "image.generate",
       "llm.assistant",
       "lora.image.generate",
@@ -29,13 +31,20 @@
     ],
     "local": [
       "audio.extract",
+      "character.model.validate",
+      "character.reference.multiview",
+      "character.reference.validate",
       "generation.resolve",
       "image.motion",
       "layout.media_frame",
       "media.qc",
       "motion.control_video",
       "motion.extract",
+      "motion.humanoid.cleanup",
+      "motion.humanoid.extract",
+      "motion.humanoid.retarget",
       "motion.segment",
+      "motion.video.validate",
       "script.fit_duration",
       "shot.plan",
       "subtitle.align",
@@ -51,6 +60,7 @@
       "video.frame_apply",
       "video.retime",
       "video.render",
+      "video.blender_render",
       "video.split"
     ],
     "human_gate": [

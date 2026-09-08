@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/humanoid.motion.v1.schema.json",
+  "title": "Frameflow Canonical Humanoid Motion V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "coordinate_system", "fps", "duration_seconds", "skeleton", "source", "frames", "metadata"],
+  "properties": {
+    "schema_version": { "const": "humanoid.motion.v1" },
+    "coordinate_system": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handedness", "up_axis", "forward_axis", "units"],
+      "properties": {
+        "handedness": { "const": "right" },
+        "up_axis": { "const": "Y" },
+        "forward_axis": { "const": "Z" },
+        "units": { "const": "meters" }
+      }
+    },
+    "fps": { "type": "number", "exclusiveMinimum": 0, "maximum": 120 },
+    "duration_seconds": { "type": "number", "minimum": 0 },
+    "skeleton": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "rotation_space", "quaternion_order", "bones"],
+      "properties": {
+        "profile": { "const": "frameflow.humanoid.v1" },
+        "rotation_space": { "const": "parent" },
+        "quaternion_order": { "const": "xyzw" },
+        "bones": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/boneName" }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["provider", "revision"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 },
+        "landmark_schema": { "type": "string" },
+        "source_artifact_id": { "type": "string" }
+      }
+    },
+    "frames": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/frame" }
+    },
+    "metadata": { "type": "object", "additionalProperties": true }
+  },
+  "$defs": {
+    "boneName": {
+      "enum": [
+        "hips", "spine", "chest", "neck", "head",
+        "leftShoulder", "leftUpperArm", "leftLowerArm", "leftHand",
+        "rightShoulder", "rightUpperArm", "rightLowerArm", "rightHand",
+        "leftUpperLeg", "leftLowerLeg", "leftFoot",
+        "rightUpperLeg", "rightLowerLeg", "rightFoot"
+      ]
+    },
+    "vector3": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "items": false
+    },
+    "quaternion": {
+      "type": "array",
+      "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }, { "type": "number" }],
+      "items": false
+    },
+    "boneTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rotation", "confidence"],
+      "properties": {
+        "rotation": { "$ref": "#/$defs/quaternion" },
+        "translation": { "$ref": "#/$defs/vector3" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "confidence"],
+      "properties": {
+        "active": { "type": "boolean" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "time", "valid", "root", "bones", "contacts"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 },
+        "time": { "type": "number", "minimum": 0 },
+        "valid": { "type": "boolean" },
+        "root": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["position", "rotation", "confidence"],
+          "properties": {
+            "position": { "$ref": "#/$defs/vector3" },
+            "rotation": { "$ref": "#/$defs/quaternion" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "bones": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/boneName" },
+          "additionalProperties": { "$ref": "#/$defs/boneTransform" }
+        },
+        "contacts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["leftFoot", "rightFoot"],
+          "properties": {
+            "leftFoot": { "$ref": "#/$defs/contact" },
+            "rightFoot": { "$ref": "#/$defs/contact" }
+          }
+        },
+        "observations": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "left_foot_position": { "$ref": "#/$defs/vector3" },
+            "right_foot_position": { "$ref": "#/$defs/vector3" }
+          }
+        },
+        "hands": { "type": "object", "additionalProperties": true },
+        "face": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

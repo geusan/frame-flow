@@ -59,6 +59,22 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
     )
 
 
+def canvas_single_attempt_node_ids(nodes: list[dict[str, Any]]) -> list[str]:
+    """Resolve non-replayable provider Nodes from their frozen contract metadata."""
+    result: list[str] = []
+    for node in nodes:
+        data = dict(node.get("data") or {})
+        definition = node_registry.get(
+            str(data.get("key") or ""),
+            int(data.get("contractVersion") or 1),
+        )
+        if definition and definition.execution.provider == "tripo":
+            node_id = str(node.get("id") or "")
+            if node_id:
+                result.append(node_id)
+    return result
+
+
 def canvas_human_gate_modes(
     nodes: list[dict[str, Any]],
 ) -> dict[str, HumanGateMode]:

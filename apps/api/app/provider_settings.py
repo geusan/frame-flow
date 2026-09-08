@@ -216,6 +216,28 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
         default_auth_method="api_key",
         order=8,
     ),
+    "tripo": ProviderDefinition(
+        key="tripo",
+        label="Tripo",
+        description="Multiview Image-to-3D, riggability checks, and humanoid Auto Rig through Tripo API v3",
+        fields=(
+            _field(
+                "api_key",
+                "API key",
+                "TRIPO_API_KEY",
+                secret=True,
+                placeholder="tsk_…",
+                help_text="Create this in Tripo Console → API Keys. Paste the raw tsk_… value without the Bearer prefix.",
+            ),
+            _field("base_url", "Base URL", "TRIPO_BASE_URL", default="https://openapi.tripo3d.ai/v3", placeholder="https://openapi.tripo3d.ai/v3"),
+            _field("poll_interval_seconds", "Poll interval (seconds)", "TRIPO_POLL_INTERVAL_SECONDS", default="2", placeholder="2"),
+        ),
+        auth_methods=(
+            ProviderAuthMethod("api_key", "API key", "Use Tripo API credits for 3D generation and rigging.", required_fields=("api_key",)),
+        ),
+        default_auth_method="api_key",
+        order=9,
+    ),
     "r2": ProviderDefinition(
         key="r2",
         label="Cloudflare R2",
@@ -238,12 +260,16 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
             ),
         ),
         default_auth_method="s3_api",
-        order=9,
+        order=10,
     ),
 }
 
 
 AUTH_METHOD_CONFIG_KEY = "_auth_method"
+TRIPO_CREDENTIAL_STATUS_KEY = "_credential_status"
+TRIPO_BALANCE_KEY = "_balance"
+TRIPO_FROZEN_KEY = "_frozen"
+TRIPO_VALIDATED_AT_KEY = "_validated_at"
 GOOGLE_LEGACY_CONFIGURATION_KEYS = frozenset({"credentials_path"})
 GOOGLE_LEGACY_SECRET_KEYS = frozenset({"api_key"})
 GOOGLE_LEGACY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS")
@@ -288,11 +314,28 @@ def provider_is_configured(record: ProviderSettingRecord) -> bool:
     local_status = _local_connection_status(record, method, values)
     if local_status is not None:
         return bool(record.enabled and local_status.ready)
-    return bool(
+    configured = bool(
         record.enabled
         and not method.external
         and all(values.get(key, "").strip() for key in method.required_fields)
     )
+    if record.provider == "tripo" and record.source == "database":
+        return bool(configured and (record.configuration or {}).get(TRIPO_CREDENTIAL_STATUS_KEY) == "validated")
+    return configured
+
+
+def validate_tripo_credentials(api_key: str, base_url: str) -> dict[str, float]:
+    from .character_motion.tripo import TripoClient, TripoProviderError
+
+    client = None
+    try:
+        client = TripoClient(api_key=api_key, base_url=base_url)
+        return client.account_balance()
+    except TripoProviderError as exc:
+        raise ValueError(str(exc)) from exc
+    finally:
+        if client is not None:
+            client.close()
 
 
 def _normalize_google_service_account_record(record: ProviderSettingRecord) -> bool:
@@ -385,10 +428,11 @@ def apply_provider_settings_to_environment(records: list[ProviderSettingRecord])
                 os.environ.pop(env_var, None)
         auth_method = _auth_method_for(record, definition).key
         values = _record_values(record)
+        configured = provider_is_configured(record)
         for field in definition.fields:
             value = values.get(field.key, "").strip()
             applies_to_method = not field.auth_methods or auth_method in field.auth_methods
-            if record.enabled and applies_to_method and value:
+            if configured and applies_to_method and value:
                 os.environ[field.env_var] = value
             elif record.source == "database":
                 os.environ.pop(field.env_var, None)
@@ -410,21 +454,31 @@ def provider_settings_payload(record: ProviderSettingRecord) -> dict[str, Any]:
     auth_method = _auth_method_for(record, definition)
     values = _record_values(record)
     local_status = _local_connection_status(record, auth_method, values)
-    configured = bool(
-        record.enabled
-        and (
-            local_status.ready
-            if local_status is not None
-            else not auth_method.external and all(values.get(key, "").strip() for key in auth_method.required_fields)
-        )
-    )
+    configured = provider_is_configured(record)
+    connection = local_status.payload() if local_status is not None else None
+    if record.provider == "tripo":
+        configuration = record.configuration or {}
+        validated = configuration.get(TRIPO_CREDENTIAL_STATUS_KEY) == "validated"
+        balance = configuration.get(TRIPO_BALANCE_KEY)
+        connection = {
+            "ready": configured,
+            "state": "ready" if configured else "unverified" if record.enabled else "disabled",
+            "message": (
+                f"Tripo API authenticated · {balance} credits available"
+                + (" · top up before generation" if float(balance or 0) <= 0 else "")
+                if configured and balance is not None
+                else "Save a valid Tripo API key to verify it with /account/balance"
+                if record.enabled and not validated
+                else "Tripo provider is disabled"
+            ),
+        }
     return {
         "provider": record.provider,
         "label": definition.label,
         "description": definition.description,
         "enabled": record.enabled,
         "configured": configured,
-        "connection": local_status.payload() if local_status is not None else None,
+        "connection": connection,
         "auth_method": auth_method.key,
         "auth_methods": [
             {
@@ -494,6 +548,21 @@ def update_provider_settings(
             target.pop(key, None)
     for key in clear_fields:
         (secrets if fields[key].secret else configuration).pop(key, None)
+    if record.provider == "tripo":
+        for key in (TRIPO_CREDENTIAL_STATUS_KEY, TRIPO_BALANCE_KEY, TRIPO_FROZEN_KEY, TRIPO_VALIDATED_AT_KEY):
+            configuration.pop(key, None)
+        if enabled:
+            api_key = str(secrets.get("api_key") or "").strip()
+            if not api_key:
+                raise ValueError("Tripo API key is required when the provider is enabled")
+            balance = validate_tripo_credentials(
+                api_key,
+                str(configuration.get("base_url") or "https://openapi.tripo3d.ai/v3"),
+            )
+            configuration[TRIPO_CREDENTIAL_STATUS_KEY] = "validated"
+            configuration[TRIPO_BALANCE_KEY] = str(balance["balance"])
+            configuration[TRIPO_FROZEN_KEY] = str(balance["frozen"])
+            configuration[TRIPO_VALIDATED_AT_KEY] = utc_now().isoformat()
     record.enabled = enabled
     record.configuration = configuration
     record.secrets = secrets

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/character.reference_set.v1.schema.json",
+  "title": "Frameflow Character Multiview Reference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "character_id", "character_name", "views"],
+  "properties": {
+    "schema_version": { "const": "character.reference_set.v1" },
+    "character_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "character_name": { "type": "string", "maxLength": 255 },
+    "views": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["provider_role", "character_role", "artifact_id", "content_type", "width", "height", "has_alpha"],
+        "properties": {
+          "provider_role": { "enum": ["front", "left", "back", "right"] },
+          "character_role": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "artifact_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "content_type": { "enum": ["image/png", "image/jpeg", "image/jpg"] },
+          "width": { "type": "integer", "minimum": 1 },
+          "height": { "type": "integer", "minimum": 1 },
+          "has_alpha": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

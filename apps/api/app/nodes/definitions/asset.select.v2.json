@@ -1,0 +1,30 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "asset.select",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Assets",
+    "description": "Select an immutable Image, Video, Audio, or uploaded GLB Artifact",
+    "category": "References",
+    "icon": "assets",
+    "keywords": ["asset", "image", "video", "audio", "glb", "3d model"]
+  },
+  "ports": {
+    "inputs": [],
+    "outputs": [{ "key": "artifact", "type": "data.reference_asset.v1", "label": "Artifact" }]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["artifact_id", "artifact_type"],
+    "properties": {
+      "artifact_id": { "type": "string", "default": "", "title": "Artifact", "maxLength": 128, "x-workflow-input": { "enabled": true, "type": "artifact" } },
+      "artifact_type": { "type": "string", "enum": ["Image", "Video", "Audio", "Model3D", "ReferenceAsset"], "default": "ReferenceAsset", "title": "Artifact type", "x-workflow-input": { "enabled": true, "type": "enum" } }
+    }
+  },
+  "binding_policy": { "workflow_inputs": "schema" },
+  "execution": { "kind": "source", "executor": "legacy-compatibility", "revision": "artifact-source.v2", "provider": "local", "model_alias": "local.artifact-source" },
+  "editor": { "kind": "generic" },
+  "artifact_contract": { "primary_type": "ReferenceAsset", "schema_id": "artifact.reference.v2", "input_roles": {}, "output_role": "selected_artifact" }
+}

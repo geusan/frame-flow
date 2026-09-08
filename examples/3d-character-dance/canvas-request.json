@@ -1,0 +1,49 @@
+{
+  "name": "3D Character Dance",
+  "document": {
+    "schema_version": "canvas.document.v1",
+    "graph": {
+      "schema_version": "canvas.graph.v1",
+      "nodes": [
+        { "id": "rig-source", "type_key": "asset.select", "contract_version": 2, "definition_digest": "", "config": { "artifact_id": "REPLACE_WITH_RIGGED_GLB_ARTIFACT_ID", "artifact_type": "Model3D" }, "execution": { "model_alias": "local.artifact-source", "provider": "local" }, "ui": { "order": 0, "position": { "x": 0, "y": 80 }, "label": "Rigged character fixture", "description": "Uploaded known-good humanoid GLB", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "model-validation", "type_key": "character.model.validate", "contract_version": 1, "definition_digest": "", "config": { "maximum_vertices": 500000, "require_embedded_textures": true, "require_humanoid_proportions": false }, "execution": { "model_alias": "local.character-3d-validation", "provider": "local" }, "ui": { "order": 1, "position": { "x": 300, "y": 80 }, "label": "3D Asset Validation", "description": "Validate animation readiness", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "auto-rig", "type_key": "character.auto_rig", "contract_version": 1, "definition_digest": "", "config": { "provider": "passthrough", "rig_profile": "semantic", "manual_rigged_artifact_id": "" }, "execution": { "model_alias": "local.character-auto-rig", "provider": "local" }, "ui": { "order": 2, "position": { "x": 600, "y": 80 }, "label": "Auto Rig", "description": "Confirm the fixture rig", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "dance-source", "type_key": "asset.select", "contract_version": 2, "definition_digest": "", "config": { "artifact_id": "REPLACE_WITH_DANCE_VIDEO_ARTIFACT_ID", "artifact_type": "Video" }, "execution": { "model_alias": "local.artifact-source", "provider": "local" }, "ui": { "order": 3, "position": { "x": 0, "y": 420 }, "label": "Reference dance video", "description": "Uploaded short dance MP4", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "motion-video", "type_key": "motion.video.validate", "contract_version": 1, "definition_digest": "", "config": { "maximum_duration_seconds": 120, "minimum_fps": 12, "minimum_width": 256, "minimum_height": 256 }, "execution": { "model_alias": "local.motion-video-validation", "provider": "local" }, "ui": { "order": 4, "position": { "x": 300, "y": 420 }, "label": "Motion Video Input", "description": "Validate the reference clip", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "motion-extract", "type_key": "motion.humanoid.extract", "contract_version": 1, "definition_digest": "", "config": { "provider": "mediapipe", "fps": 15, "max_width": 640, "confidence_threshold": 0.5, "include_hands": false, "include_face": false }, "execution": { "model_alias": "local.mediapipe-humanoid", "provider": "local" }, "ui": { "order": 5, "position": { "x": 600, "y": 420 }, "label": "Humanoid Motion Extraction", "description": "MediaPipe to canonical rotations", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "motion-clean", "type_key": "motion.humanoid.cleanup", "contract_version": 1, "definition_digest": "", "config": { "smoothing": 0.25, "confidence_threshold": 0.5, "invalid_frame_policy": "interpolate", "joint_limits": true, "root_stabilization": true, "foot_lock": true }, "execution": { "model_alias": "local.humanoid-motion-cleanup", "provider": "local" }, "ui": { "order": 6, "position": { "x": 900, "y": 420 }, "label": "Motion Cleanup", "description": "Repair and smooth motion", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "retarget", "type_key": "motion.humanoid.retarget", "contract_version": 1, "definition_digest": "", "config": { "rig_profile": "semantic", "bone_map_json": "", "root_motion": true, "scale_mode": "preserve", "fps": 30, "timeout_seconds": 900 }, "execution": { "model_alias": "local.blender-retarget", "provider": "local" }, "ui": { "order": 7, "position": { "x": 1200, "y": 230 }, "label": "Motion Retarget", "description": "Bake canonical motion in Blender", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "preview", "type_key": "video.blender_render", "contract_version": 1, "definition_digest": "", "config": { "resolution": "preview", "width": 1080, "height": 1920, "fps": 30, "render_style": "toon", "camera_preset": "full_body", "background": "#181A20", "samples": 8, "quality": "preview", "timeout_seconds": 1800 }, "execution": { "model_alias": "local.blender-render", "provider": "local" }, "ui": { "order": 8, "position": { "x": 1500, "y": 120 }, "label": "Animation Preview", "description": "Fast toon preview", "react_flow": {} }, "editor": { "legacy_data": {} } },
+        { "id": "final", "type_key": "video.blender_render", "contract_version": 1, "definition_digest": "", "config": { "resolution": "portrait_1080", "width": 1080, "height": 1920, "fps": 30, "render_style": "toon", "camera_preset": "full_body", "background": "#181A20", "samples": 32, "quality": "final", "timeout_seconds": 7200 }, "execution": { "model_alias": "local.blender-render", "provider": "local" }, "ui": { "order": 9, "position": { "x": 1500, "y": 350 }, "label": "Final Blender Render", "description": "1080x1920 toon output", "react_flow": {} }, "editor": { "legacy_data": {} } }
+      ],
+      "elements": [],
+      "edges": [
+        { "id": "rig-validation", "source": "rig-source", "target": "model-validation", "source_port": "output", "target_port": "asset_3d", "ui": {} },
+        { "id": "validation-rig", "source": "model-validation", "target": "auto-rig", "source_port": "output", "target_port": "asset_3d", "ui": {} },
+        { "id": "dance-video", "source": "dance-source", "target": "motion-video", "source_port": "output", "target_port": "video", "ui": {} },
+        { "id": "video-extract", "source": "motion-video", "target": "motion-extract", "source_port": "output", "target_port": "motion_source_video", "ui": {} },
+        { "id": "extract-clean", "source": "motion-extract", "target": "motion-clean", "source_port": "output", "target_port": "raw_motion", "ui": {} },
+        { "id": "rig-retarget", "source": "auto-rig", "target": "retarget", "source_port": "output", "target_port": "rigged_3d_asset", "ui": {} },
+        { "id": "clean-retarget", "source": "motion-clean", "target": "retarget", "source_port": "output", "target_port": "clean_motion", "ui": {} },
+        { "id": "retarget-preview", "source": "retarget", "target": "preview", "source_port": "output", "target_port": "animated_character", "ui": {} },
+        { "id": "retarget-final", "source": "retarget", "target": "final", "source_port": "output", "target_port": "animated_character", "ui": {} }
+      ]
+    },
+    "runtime": {
+      "schema_version": "canvas.runtime.v1",
+      "nodes": {
+        "rig-source": { "status": "SUCCEEDED", "outputArtifactIds": ["REPLACE_WITH_RIGGED_GLB_ARTIFACT_ID"], "output": { "kind": "json", "title": "Rigged character fixture" } },
+        "dance-source": { "status": "SUCCEEDED", "outputArtifactIds": ["REPLACE_WITH_DANCE_VIDEO_ARTIFACT_ID"], "output": { "kind": "video", "title": "Reference dance video", "mimeType": "video/mp4" } }
+      }
+    }
+  },
+  "draft_contract": {
+    "schema_version": "workflow.contract.draft.v1",
+    "inputs": [],
+    "bindings": [],
+    "outputs": [
+      { "key": "preview_video", "label": "Animation preview", "node_id": "preview", "port_type": "media.video.v1", "primary": false },
+      { "key": "final_video", "label": "Final video", "node_id": "final", "port_type": "media.video.v1", "primary": true }
+    ]
+  }
+}

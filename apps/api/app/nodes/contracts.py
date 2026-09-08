@@ -316,6 +316,23 @@ class NodeCharacterLoraRuntime(Protocol):
     ) -> NodeCharacterLoraResult: ...
 
 
+class NodeCharacterMotionRuntime(Protocol):
+    def remember_task(
+        self,
+        request_hash: str,
+        experiment_id: str,
+        stage: str,
+        task_id: str,
+    ) -> None: ...
+
+    def resume_task(
+        self,
+        request_hash: str,
+        experiment_id: str,
+        allowed_stages: set[str],
+    ) -> tuple[str | None, str | None]: ...
+
+
 @dataclass(frozen=True)
 class NodeExecutionContext:
     definition: NodeDefinition
@@ -328,11 +345,11 @@ class NodeExecutionContext:
     provider_settings: NodeProviderSettings | None = None
     media_runtime: NodeMediaRuntime | None = None
     character_lora_runtime: NodeCharacterLoraRuntime | None = None
+    character_motion_runtime: NodeCharacterMotionRuntime | None = None
 
     def report_progress(self, progress: int, message: str) -> None:
         if self.progress_callback:
             self.progress_callback(max(0, min(99, int(progress))), str(message)[:1000])
-
 
     def require_artifact_store(self) -> NodeArtifactStore:
         if self.artifact_store is None:
@@ -353,6 +370,11 @@ class NodeExecutionContext:
         if self.character_lora_runtime is None:
             raise RuntimeError("Node Executor requires CharacterLoraRuntime")
         return self.character_lora_runtime
+
+    def require_character_motion_runtime(self) -> NodeCharacterMotionRuntime:
+        if self.character_motion_runtime is None:
+            raise RuntimeError("Node Executor requires CharacterMotionRuntime")
+        return self.character_motion_runtime
 
 @dataclass(frozen=True)
 class NodeExecutionResult:
