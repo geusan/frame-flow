@@ -1,0 +1,47 @@
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+}
+
+.gallery figure {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #17191d;
+}
+
+.gallery img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gallery figcaption {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 70%);
+  color: white;
+  font-size: var(--text-xs);
+}
+
+.compact {
+  height: 290px;
+  gap: 4px;
+  padding: 4px;
+}
+
+.compact figcaption {
+  font-size: var(--text-2xs);
+}

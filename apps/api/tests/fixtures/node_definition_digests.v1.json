@@ -70,5 +70,7 @@
   "video.render@2": "sha256:0a1555f7c67a6e2bc0b749e78d5c72a38925903cb02dda00af7745ad8d35633e",
   "video.retime@1": "sha256:5aa3dcae70d2f44838207dcf545de77652665b0a2f8e240a5b2a140196f2fb4f",
   "video.split@1": "sha256:ac36013813409fe08115bf30d07e9a1d1284d683fe6a681bb0642674cf2d9563",
-  "video.translate@1": "sha256:7019ff86daaa4b110317780e31e4b630d0eb3787159f3d28624331a8ff7e35e0"
+  "video.translate@1": "sha256:7019ff86daaa4b110317780e31e4b630d0eb3787159f3d28624331a8ff7e35e0",
+  "character.turnaround.generate@1": "sha256:9e97a320aefaa58cdfa55127acde1374b656d955b4b0b72e937f5ad66975b37c",
+  "character.image_to_3d@3": "sha256:d57fec88369ec6c3fb93355f5c8105dceaa54a244384a84fed564beb816928bf"
 }

@@ -53,6 +53,12 @@ class TripoBinaryResult:
     metadata: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class TripoMultiviewResult:
+    views: tuple[TripoUpload, ...]
+    task: TripoTaskResult
+
+
 class TripoClient:
     def __init__(
         self,
@@ -235,7 +241,10 @@ class TripoClient:
         deadline = time.monotonic() + timeout_seconds
         while True:
             try:
-                response = self.http.get(f"{self.base_url}/tasks/{task_id}", headers=self.auth_headers)
+                response = self.http.get(
+                    f"{self.base_url}/tasks/{task_id}",
+                    headers={**self.auth_headers, "Cache-Control": "no-cache"},
+                )
             except httpx.HTTPError as exc:
                 raise TripoProviderError(f"Tripo task status is unavailable: {exc}", retryable=True) from exc
             data = self._payload(response, f"polling {action}")
@@ -276,26 +285,75 @@ class TripoClient:
             raise TripoProviderError("Tripo returned an unsafe model download URL", retryable=False)
 
     def download_model(self, url: str) -> bytes:
+        return self._download_file(url, maximum=TRIPO_MODEL_MAX_BYTES, label="model")
+
+    def _download_file(self, url: str, *, maximum: int, label: str) -> bytes:
         current = url
         for _ in range(4):
             self._validate_download_url(current)
             try:
                 response = self.http.get(current, follow_redirects=False)
             except httpx.HTTPError as exc:
-                raise TripoProviderError(f"Tripo model download is unavailable: {exc}", retryable=True) from exc
+                raise TripoProviderError(f"Tripo {label} download is unavailable: {exc}", retryable=True) from exc
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location", "")
                 if not location:
-                    raise TripoProviderError("Tripo model download redirect is missing a location", retryable=True)
+                    raise TripoProviderError(f"Tripo {label} download redirect is missing a location", retryable=True)
                 current = urljoin(current, location)
                 continue
             if response.status_code >= 400:
-                raise self._error_for_status(response, "downloading the generated model")
+                raise self._error_for_status(response, f"downloading the generated {label}")
             content = response.content
-            if not content or len(content) > TRIPO_MODEL_MAX_BYTES:
-                raise TripoProviderError("Tripo returned an empty or oversized model", retryable=True)
+            if not content or len(content) > maximum:
+                raise TripoProviderError(f"Tripo returned an empty or oversized {label}", retryable=True)
             return content
-        raise TripoProviderError("Tripo model download exceeded the redirect limit", retryable=True)
+        raise TripoProviderError(f"Tripo {label} download exceeded the redirect limit", retryable=True)
+
+    def generate_multiview_images(
+        self,
+        source: TripoUpload,
+        *,
+        timeout_seconds: int,
+        resume_task_id: str | None = None,
+        on_task: Callable[[str, str], None] | None = None,
+        progress: Callable[[int, str], None] | None = None,
+    ) -> TripoMultiviewResult:
+        """One source image -> a coherent four-view set; pose is source-controlled.
+
+        This endpoint does not expose a model, seed, or pose selector. Do not
+        send invented parameters or treat the service as a trainable model.
+        """
+        task_id = resume_task_id
+        if not task_id:
+            token = self.upload_file(source)
+            if on_task:
+                on_task("multiview", "pending")
+            task_id = self.submit_task(
+                "/generation/image-to-multiview", {"input": token},
+                action="generating four-view images",
+            )
+            if on_task:
+                on_task("multiview", task_id)
+        task = self.wait_task(
+            task_id, action="four-view image generation", timeout_seconds=timeout_seconds,
+            progress=progress,
+        )
+        # Public v3 docs show flattened URLs; live tasks also return the
+        # versioned output under generate_multiview_image.
+        nested = task.output.get("generate_multiview_image")
+        output = nested if isinstance(nested, dict) else task.output
+        urls = [output.get(f"{role}_view_url") for role in TRIPO_VIEW_ORDER]
+        if any(not isinstance(url, str) or not url for url in urls):
+            raise TripoProviderError("Tripo multiview result must contain all four view URLs", retryable=False)
+        if len(set(urls)) != 4:
+            raise TripoProviderError("Tripo multiview result contains duplicate view URLs", retryable=False)
+        views = []
+        for role, url in zip(TRIPO_VIEW_ORDER, urls, strict=True):
+            data = self._download_file(str(url), maximum=TRIPO_IMAGE_MAX_BYTES, label=f"{role} image")
+            # The executor decodes and normalizes PNG/JPEG/WebP before storing
+            # images for the existing PNG/JPEG-only 3D upload capability.
+            views.append(TripoUpload(role, data, "application/octet-stream", f"{role}.png"))
+        return TripoMultiviewResult(tuple(views), task)
 
     def generate_multiview(
         self,

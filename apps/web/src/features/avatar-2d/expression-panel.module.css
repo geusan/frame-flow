@@ -1,0 +1,27 @@
+.panel { color: #606653; }
+.title { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.title > span { font-size: 10px; color: #a4ac99; }
+.title h2 { flex: 1; margin: 0; font-size: 13px; color: #30342c; }
+.panel button, .file { border: 1px solid #dedfd7; border-radius: 6px; background: #fafbf7; color: #737b66; font-size: 10px; padding: 7px 8px; cursor: pointer; }
+.panel button:disabled, .file:has(input:disabled) { opacity: .45; cursor: default; }
+.title button { display: flex; gap: 4px; align-items: center; border: 0; background: transparent; padding: 0; }
+.panel p { font-size: 10px; line-height: 1.65; color: #909785; margin: 10px 0; }
+.grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; }
+.grid button { padding: 0 0 6px; overflow: hidden; text-align: center; min-width: 0; }
+.grid .selected { border-color: #a591dc; color: #765dc0; box-shadow: 0 0 0 1px #b19cdd; background: #f5f1ff; }
+.grid button > span:last-child { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 3px; }
+.thumbnail { display: block; aspect-ratio: 1; background-size: 512% auto; background-position: 49.5% 9.5%; background-repeat: no-repeat; background-color: #faf8f4; margin-bottom: 6px; }
+.portrait { background-size: cover; background-position: center; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.actions button, .file { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.file, .import { position: relative; cursor: pointer; }
+.file input, .import input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+.editor { border-top: 1px solid #ecece5; border-bottom: 1px solid #ecece5; margin-top: 14px; padding: 12px 0; }
+.editor summary { font-size: 11px; cursor: pointer; color: #80728e; }
+.editor label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; margin-top: 12px; font-size: 10px; }
+.editor input:not([type=file]), .editor select { grid-column: 1/-1; min-width: 0; width: 100%; }
+.editor input:not([type=range],[type=file]), .editor select { padding: 7px; border: 1px solid #dedfd7; border-radius: 5px; background: #fcfcfa; font-size: 11px; }
+.editor input[type=range] { accent-color: #9986d6; height: 3px; margin: 6px 0; }
+.import { display: block; margin: 12px 0; font-size: 10px; color: #817293; }
+.restore { border: 0 !important; padding: 0 !important; background: transparent !important; text-decoration: underline; }
+.message { color: #80708b !important; background: #f7f4fc; border-radius: 6px; padding: 9px; }

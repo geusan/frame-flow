@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "avatar.shoulder_review.v1",
+  "title": "Manual left shoulder study observations",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "asset", "side", "observations"],
+  "properties": {
+    "schema_version": { "const": "avatar.shoulder_review.v1" },
+    "asset": { "const": "cat-2d-v1" },
+    "side": { "const": "left" },
+    "observations": {
+      "type": "array", "maxItems": 100,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "angle", "note", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "maxLength": 100 },
+          "angle": { "type": "number", "minimum": 0, "maximum": 160 },
+          "note": { "type": "string", "maxLength": 1000 },
+          "createdAt": { "type": "string" }
+        }
+      }
+    }
+  }
+}

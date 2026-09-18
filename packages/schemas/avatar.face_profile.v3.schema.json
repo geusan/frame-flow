@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Live Avatar detailed expressions and gaze authoring profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "mode",
+    "mesh",
+    "head_bone",
+    "front_axis",
+    "anchors",
+    "eye_radius",
+    "depth",
+    "gain",
+    "smoothing",
+    "mappings",
+    "gaze",
+    "expressions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "avatar.face_profile.v3"
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mode": {
+      "enum": [
+        "native",
+        "starter"
+      ]
+    },
+    "mesh": {
+      "type": "string"
+    },
+    "head_bone": {
+      "type": "string"
+    },
+    "front_axis": {
+      "enum": [
+        "+x",
+        "-x",
+        "+z",
+        "-z"
+      ]
+    },
+    "anchors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "leftEye": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rightEye": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mouth": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "mappings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "mouth_patch": {
+      "type": "boolean",
+      "default": true
+    },
+    "eye_radius": {
+      "type": "number",
+      "minimum": 0.15,
+      "maximum": 0.55
+    },
+    "depth": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 0.7
+    },
+    "gain": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 3
+    },
+    "smoothing": {
+      "type": "number",
+      "minimum": 0.02,
+      "maximum": 0.5
+    },
+    "gaze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "method",
+        "sensitivity",
+        "smoothing",
+        "deadzone",
+        "invert_x",
+        "invert_y",
+        "radius",
+        "range",
+        "max_angle",
+        "left_eye_bone",
+        "right_eye_bone"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "method": {
+          "enum": [
+            "surface",
+            "bones",
+            "morphs"
+          ]
+        },
+        "sensitivity": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 6
+        },
+        "smoothing": {
+          "type": "number",
+          "minimum": 0.02,
+          "maximum": 0.5
+        },
+        "deadzone": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.3
+        },
+        "invert_x": {
+          "type": "boolean"
+        },
+        "invert_y": {
+          "type": "boolean"
+        },
+        "radius": {
+          "type": "number",
+          "minimum": 0.15,
+          "maximum": 0.5
+        },
+        "range": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 0.15
+        },
+        "max_angle": {
+          "type": "number",
+          "minimum": 5,
+          "maximum": 40
+        },
+        "left_eye_bone": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "right_eye_bone": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "expressions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset",
+        "channels"
+      ],
+      "properties": {
+        "preset": {
+          "enum": [
+            "basic",
+            "extended"
+          ]
+        },
+        "channels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gain",
+              "deadzone",
+              "max"
+            ],
+            "properties": {
+              "gain": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3
+              },
+              "deadzone": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 0.5
+              },
+              "max": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          },
+          "propertyNames": {
+            "enum": [
+              "browDownLeft",
+              "browDownRight",
+              "browInnerUp",
+              "browOuterUpLeft",
+              "browOuterUpRight",
+              "cheekPuff",
+              "cheekSquintLeft",
+              "cheekSquintRight",
+              "eyeBlinkLeft",
+              "eyeBlinkRight",
+              "eyeSquintLeft",
+              "eyeSquintRight",
+              "eyeWideLeft",
+              "eyeWideRight",
+              "jawForward",
+              "jawLeft",
+              "jawOpen",
+              "jawRight",
+              "mouthClose",
+              "mouthDimpleLeft",
+              "mouthDimpleRight",
+              "mouthFrownLeft",
+              "mouthFrownRight",
+              "mouthFunnel",
+              "mouthLeft",
+              "mouthLowerDownLeft",
+              "mouthLowerDownRight",
+              "mouthPressLeft",
+              "mouthPressRight",
+              "mouthPucker",
+              "mouthRight",
+              "mouthRollLower",
+              "mouthRollUpper",
+              "mouthShrugLower",
+              "mouthShrugUpper",
+              "mouthSmileLeft",
+              "mouthSmileRight",
+              "mouthStretchLeft",
+              "mouthStretchRight",
+              "mouthUpperUpLeft",
+              "mouthUpperUpRight",
+              "noseSneerLeft",
+              "noseSneerRight",
+              "tongueOut"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

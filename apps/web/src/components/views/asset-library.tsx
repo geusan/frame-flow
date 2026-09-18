@@ -200,6 +200,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const [selected, setSelected] = useState<SceneSearchCandidate | null>(null);
   const [searching, setSearching] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [capturedFrame, setCapturedFrame] = useState<CapturedFrameArtifact | null>(null);
   const [currentTimestampMs, setCurrentTimestampMs] = useState(0);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
   const [playerSize, setPlayerSize] = useState<{ width: number; height: number } | null>(null);
@@ -248,6 +249,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const captureSelected = async () => {
     if (!result || !selected) return;
     setCapturing(true);
+    setCapturedFrame(null);
     setError(null);
     try {
       const captured = await frameflowApi.captureVideoFrame(asset.id, selected.timestamp_ms, {
@@ -261,7 +263,7 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
         provider_request_id: result.provider_request_id,
       });
       onCaptured(captured);
-      onClose();
+      setCapturedFrame(captured);
     } catch (captureError) {
       setError(captureError instanceof Error ? captureError.message : "Scene capture failed");
     } finally {
@@ -272,10 +274,12 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
   const captureCurrent = async () => {
     const timestampMs = Math.max(0, Math.round((videoRef.current?.getCurrentTime() ?? 0) * 1000));
     setCapturing(true);
+    setCapturedFrame(null);
     setError(null);
     try {
-      onCaptured(await frameflowApi.captureVideoFrame(asset.id, timestampMs));
-      onClose();
+      const captured = await frameflowApi.captureVideoFrame(asset.id, timestampMs);
+      onCaptured(captured);
+      setCapturedFrame(captured);
     } catch (captureError) {
       setError(captureError instanceof Error ? captureError.message : "Frame capture failed");
     } finally {
@@ -295,6 +299,11 @@ function SceneSearchDialog({ asset, onClose, onCaptured }: { asset: ArtifactList
           }} onTimeUpdate={(seconds) => setCurrentTimestampMs(Math.round(seconds * 1000))} />
         </div>
         <aside className="scene-search-panel">
+          {(capturing || capturedFrame) && <div className="asset-capture-notice" role="status" aria-atomic="true">
+            {capturing ? <><RefreshCw size={16} className="spin" /><span><strong>Saving frame…</strong></span></> : capturedFrame && <>
+              <CircleCheck size={16} /><span><strong>Frame saved · {formatPlaybackTimestamp(capturedFrame.timestamp_ms)}</strong><small>이미지로 저장했습니다. 계속 캡처할 수 있습니다.</small></span>
+            </>}
+          </div>}
           <section className="video-asset-description">
             <small>About this video</small>
             <h3>{asset.filename}</h3>

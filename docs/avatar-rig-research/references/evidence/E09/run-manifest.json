@@ -1,0 +1,61 @@
+{
+  "experiment": "E09",
+  "recorded_at": "2026-09-09T09:30:00.264506+00:00",
+  "head": "e18ed2d5d17fbb0612290796d827299ff2ff67b9",
+  "url": "http://localhost:3002/live-avatar/2d/shoulder/e09",
+  "baseline_url": "http://localhost:3000/live-avatar/2d/shoulder",
+  "viewport_css": {
+    "width": 2524,
+    "height": 1328,
+    "devicePixelRatio": 2
+  },
+  "svg_css": {
+    "width": 450,
+    "height": 420
+  },
+  "viewBoxes": {
+    "full": "495 95 365 475",
+    "close": "545 250 235 225"
+  },
+  "static_angles": [
+    0,
+    19.5731258304102,
+    45,
+    90,
+    135,
+    160
+  ],
+  "overlay": false,
+  "control_overlay_evidence": "90-controls.png",
+  "visual_verdict": "FAIL",
+  "geometry_verdict": "FAIL_SELF_INTERSECTIONS",
+  "motion_performance": "NOT_EVALUATED_STATIC_GATE_FAILED",
+  "preexisting_files_changed": [
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md"
+  ],
+  "sha256": {
+    "apps/web/src/features/avatar-2d/shoulder-contour-e09.ts": "8c44afe8c2bf7cdabd9afe05c4936d2003e2882c1d2c15e084bd140726cf200e",
+    "apps/web/src/features/avatar-2d/shoulder-contour-study.tsx": "9355f913995fd6a73f1e404816afcdcdcaef6ea5ea1974dc839e9b1b3aa1659b",
+    "apps/web/src/features/avatar-2d/shoulder-contour-study.module.css": "5749e9efe5e8e10c24c2e744ec1da321b51f4dab8233a7d2eec86d7a580ced6b",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/e09/page.tsx": "0964f52ea109dabf9dbfdf79439732ac09965252ecd9295429847407ac7e5a20",
+    "apps/web/scripts/test-shoulder-contour-e09.mjs": "dcf8ee4b24bcd3e3dfc4b53dd28a4300d566fd061fdb3a41d4cb5f5e0a7bfe13",
+    "docs/avatar-rig-research/references/experiments.md": "fd6ab4e562020f9baa3274864fc83c2a5b24aa4f8369a9165b4a1483432ed268",
+    "docs/avatar-rig-research/references/handoff.md": "2a2c0326178c4680655750b693124afa4e890e3a9c308600ac6dfa5e11781dbb",
+    "docs/avatar-rig-research/references/evidence/E09/90-full.png": "20acfff17218b929973974627f6b908c162321f88f7a9fbd347284e7b96e5b7d",
+    "docs/avatar-rig-research/references/evidence/E09/160-full.png": "c1cb4d230f213f6c65e66d7a260d0f5d5f0f1af2a4b52b7023f986fbbb4d0f7d",
+    "docs/avatar-rig-research/references/evidence/E09/static-metrics.json": "62eeedc02b3e29a45031a0508200dd851af459f6f85b9e7adad3354d971e24e9",
+    "docs/avatar-rig-research/references/evidence/E09/E08-90-art.png": "3ed366cbb8693015011c763a0e501b6d52cf7332d3a18e0fc32c731e83408a17",
+    "docs/avatar-rig-research/references/evidence/E09/E08-90-flat.png": "ab1e089406d3177bd1f3980f2891219e7b24128acebf3fd90b405e2f60cb4154",
+    "docs/avatar-rig-research/references/evidence/E09/135-full.png": "c17e3a3bf9e9f4058e69824866f0a4f415b527b3c3835d59a832d2751ed49a1d",
+    "docs/avatar-rig-research/references/evidence/E09/final-90-comparison.png": "7c206842f92062cd2351cb75ad22fb08292abdf008a962f4e21cac969c4e09d3",
+    "docs/avatar-rig-research/references/evidence/E09/0-full.png": "df7d2e0e91969e8c5e976dc8f32d00e6f1b392c7a66cba27aa9f87af2e2c5b20",
+    "docs/avatar-rig-research/references/evidence/E09/90-close.png": "408555331fcb386744c75a897378037818f4a0d81fcc6a157463b5c05f5f3562",
+    "docs/avatar-rig-research/references/evidence/E09/90-controls.png": "6917ffcfb4a8165ea5534cdd27f11014bda27ec0627ae7c5fc944c0cc69221ee",
+    "docs/avatar-rig-research/references/evidence/E09/baseline.json": "f3b82e4d4e05105dda1b8db7da5e14293c08fd363fe239ac6953298489854cd0",
+    "docs/avatar-rig-research/references/evidence/E09/rest-full.png": "e85621bb4a236a220e7f37db3af5ab6d4040eb2b6fa73fc2cb64971d5d340302",
+    "docs/avatar-rig-research/references/evidence/E09/45-full.png": "ef863b04256121ce15df0be9d42ae631fb981af37633569f68e9db61dc558384",
+    "docs/avatar-rig-research/references/evidence/E09/160-close.png": "e433bb593c41bac32bb932b3c7d2ab7779572e6a2644afb25f28423f8d475c04",
+    "docs/avatar-rig-research/references/evidence/E09/E08-source.tar.gz": "0a4a9e134880052ec3bf70a7845722ee6d267bd2a0aa9b44b8f3d3cf2c9bb520"
+  }
+}

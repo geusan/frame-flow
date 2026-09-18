@@ -27,7 +27,8 @@
       "script.generate",
       "skill.execute",
       "tts.generate",
-      "video.generate"
+      "video.generate",
+      "character.turnaround.generate"
     ],
     "local": [
       "audio.extract",

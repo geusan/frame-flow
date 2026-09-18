@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "avatar.puppet2d.v1",
+  "title": "2D avatar authoring profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "asset", "anchors"],
+  "properties": {
+    "schema_version": { "const": "avatar.puppet2d.v1" },
+    "asset": { "const": "cat-2d-v1" },
+    "anchors": {
+      "type": "object",
+      "required": ["root", "chest", "neck", "head", "rightShoulder", "rightElbow", "rightWrist", "leftShoulder", "leftElbow", "leftWrist", "rightHip", "rightKnee", "rightAnkle", "leftHip", "leftKnee", "leftAnkle"],
+      "propertyNames": { "enum": ["root", "chest", "neck", "head", "rightShoulder", "rightElbow", "rightWrist", "leftShoulder", "leftElbow", "leftWrist", "rightHip", "rightKnee", "rightAnkle", "leftHip", "leftKnee", "leftAnkle"] },
+      "additionalProperties": {
+        "type": "array",
+        "prefixItems": [{ "type": "number", "minimum": 0, "maximum": 1024 }, { "type": "number", "minimum": 0, "maximum": 1536 }],
+        "minItems": 2,
+        "maxItems": 2
+      }
+    }
+  }
+}

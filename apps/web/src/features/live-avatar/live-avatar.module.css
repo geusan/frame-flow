@@ -1,0 +1,58 @@
+.workspace { padding: 20px; height: calc(100vh - 64px); display: flex; flex-direction: column; gap: 16px; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.header small { color: #7064df; font-size: 11px; font-weight: 750; letter-spacing: .1em; }
+.header h1 { margin: 5px 0; font-size: 22px; }
+.header p { margin: 0; color: #73776d; font-size: 13px; }
+.header > div { display: flex; gap: 8px; flex-wrap: wrap; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; flex: 1; min-height: 0; }
+.preview { position: relative; overflow: hidden; border: 1px solid #d8ddce; border-radius: 14px; background: #edf0e8; min-height: 400px; }
+.stage { position: absolute; inset: 0 0 38px; }
+.stage canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+.stageTools { position: absolute; display: flex; flex-wrap: wrap; gap: 5px; top: 12px; left: 12px; }
+.stageTools button { background: rgb(255 255 255 / 88%); min-height: 30px; font-size: 12px; }
+.preview > footer { position: absolute; bottom: 0; padding: 11px; background: #f8faf3; border-top: 1px solid #d8ddce; width: 100%; color: #73776d; font-size: 11px; }
+.cameraPreview { position: absolute; left: 14px; bottom: 52px; width: 190px; height: 164px; border-radius: 10px; overflow: hidden; background: #232820; color: #e1e6d8; box-shadow: 0 4px 18px #0002; }
+.cameraPreview video { width: 100%; height: 140px; object-fit: cover; transform: scaleX(-1); }
+.cameraPreview > div { height: 136px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; font-size: 12px; }
+.cameraPreview small { position: absolute; bottom: 0; padding: 5px 7px; width: 100%; font-size: 10px; background: #20251d; }
+.hiddenVideo { position: absolute; visibility: hidden; }
+.pickPrompt { position: absolute; top: 60px; left: 12px; right: 12px; padding: 12px; border-radius: 8px; background: #6555dd; color: white; font-size: 13px; box-shadow: 0 5px 18px #0002; }
+.pickPrompt button { float: right; padding: 0 5px; font-weight: 700; }
+.settings { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-right: 3px; }
+.settings section { padding: 15px; border: 1px solid #dde1d7; border-radius: 10px; background: white; }
+.settings h2 { margin: 0 0 10px; font-size: 14px; }
+.settings p { font-size: 12px; line-height: 1.6; color: #7d8076; margin: 8px 0 12px; }
+.settings label { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; font-size: 12px; color: #606557; }
+.settings select { min-width: 0; width: 100%; padding: 8px; border: 1px solid #d9ded0; border-radius: 6px; background: #fbfcf8; font-size: 12px; }
+.settings input[type=range] { width: 100%; accent-color: #6b5cdd; }
+.settings input:disabled { opacity: .45; }
+.settings > a { padding: 10px; text-align: center; color: #6c60d8; font-size: 13px; }
+.notice { padding: 12px; border: 1px solid #dcd7f9; background: #f1effe; border-radius: 8px; color: #65569c; font-size: 12px; line-height: 1.6; }
+.notice progress { display: block; width: 100%; margin-top: 8px; }
+.anchors { display: flex; gap: 5px; }
+.anchors button { flex: 1; border: 1px solid #d2d9c7; background: #f5f8ef; padding: 8px 4px; border-radius: 6px; font-size: 11px; cursor: pointer; }
+.anchors button.active { background: #6b5cdd; color: white; }
+.anchors button:disabled { opacity: .5; cursor: default; }
+.expression > span { display: flex; justify-content: space-between; }
+.expression b { font-variant-numeric: tabular-nums; color: #7460d8; }
+.expressionPresets { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0; }
+.expressionPresets button { padding: 6px 10px; border: 1px solid #ddd7f4; border-radius: 7px; background: #f6f3ff; color: #64549f; cursor: pointer; font-size: 12px; }
+.expressionPresets button:disabled { opacity: .5; cursor: default; }
+.expressionGroup { border-top: 1px solid #e7e9e2; margin-top: 8px; }
+.expressionGroup > summary { cursor: pointer; font-size: 12px; font-weight: 600; padding: 12px 0; }
+.expressionGroup > summary small { float: right; color: #777f6d; font-weight: 400; }
+.channel { padding: 2px 0 8px; }
+.channelSettings > summary { font-size: 11px; color: #847996; cursor: pointer; }
+.channelSettings[open] { background: #f8f7fb; padding: 8px; border-radius: 6px; }
+.saveActions { display: flex; flex-direction: column; gap: 8px; }
+.gazePad { position: relative; height: 100px; border: 1px solid #d6d0ec; border-radius: 9px; background: linear-gradient(90deg, transparent 49.5%, #dad5ed 50%, transparent 50.5%), linear-gradient(transparent 49%, #dad5ed 50%, transparent 51%), #f7f5fc; }
+.gazePad i { position: absolute; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%; background: #6b5cdd; box-shadow: 0 1px 5px #6750a555; transform: translate(-50%, -50%); }
+.gazeActions { display: flex; gap: 8px; flex-wrap: wrap; }
+.picker { padding: 30px; }
+.picker h1 { font-size: 26px; margin-bottom: 8px; }
+.picker p { color: #73776d; margin: 12px 0 24px; }
+.picker > div { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.picker a { padding: 20px; border: 1px solid #d6dccb; border-radius: 12px; background: white; display: flex; flex-direction: column; gap: 10px; }
+.picker strong { overflow-wrap: anywhere; }
+.picker small { color: #808775; }
+@media (max-width: 1000px) { .workspace { height: auto; min-height: calc(100vh - 64px); padding: 12px; } .header { align-items: flex-start; flex-direction: column; } .layout { grid-template-columns: minmax(0, 1fr); } .preview { height: 65vh; } .settings { overflow: visible; } }

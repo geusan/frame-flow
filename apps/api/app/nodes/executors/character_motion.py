@@ -355,6 +355,12 @@ class ImageTo3DExecutor:
 
 
 class TripoImageTo3DExecutor:
+    reference_artifact_type = "CharacterReferenceSet"
+    reference_schema = "character.reference_set.v1"
+
+    def validate_reference_manifest(self, manifest: dict[str, Any]) -> None:
+        pass
+
     @staticmethod
     def runtime_revision(definition: Any, resolved_config: dict[str, Any]) -> str:
         del resolved_config
@@ -367,15 +373,16 @@ class TripoImageTo3DExecutor:
         typed_inputs: list[dict[str, Any]],
     ) -> NodeExecutionResult:
         reference = _find_artifact(
-            context, typed_inputs, {"CharacterReferenceSet"}, "Tripo Image to 3D",
+            context, typed_inputs, {self.reference_artifact_type}, "Tripo Image to 3D",
         )
         manifest_bytes, _ = _read_artifact(reference)
         try:
             manifest = json.loads(manifest_bytes)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("CharacterReferenceSet Artifact contains invalid JSON") from exc
-        if manifest.get("schema_version") != "character.reference_set.v1":
-            raise ValueError("Tripo Image to 3D requires character.reference_set.v1")
+        if not isinstance(manifest, dict) or manifest.get("schema_version") != self.reference_schema:
+            raise ValueError(f"Tripo Image to 3D requires {self.reference_schema}")
+        self.validate_reference_manifest(manifest)
         source_views = manifest.get("views")
         if not isinstance(source_views, list):
             raise ValueError("CharacterReferenceSet does not contain views")
@@ -438,7 +445,7 @@ class TripoImageTo3DExecutor:
             metadata={
                 "experiment_id": context.experiment_id,
                 "request_hash": context.request_hash,
-                "execution_mode": TRIPO_IMAGE_TO_3D_REVISION,
+                "execution_mode": context.definition.execution.revision,
                 "immutable": True,
                 "source": "tripo_multiview_image_to_3d",
                 "filename": "character.glb",

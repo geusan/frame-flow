@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {FaceRigCapture,FACE_POINT_IDS,FACE_CHANNELS_2D,freshFaceRig,parseFaceRig,neutralRigFace,solveFacePoints,solveFaceValues,smoothRigFace} from '../src/features/avatar-2d/face-rig.ts';
+import {triangulateFace,triangleArea,safeFaceDeformation,affineTriangle} from '../src/features/avatar-2d/face-triangulation.ts';
+const profile=parseFaceRig(freshFaceRig('source-sha'),'source-sha');
+assert.equal(FACE_CHANNELS_2D.length,20);assert.equal(FACE_POINT_IDS.length,36);
+assert.throws(()=>parseFaceRig(profile,'wrong-source'),/원화/);
+const bad=structuredClone(profile);bad.poses.neutral.points.frameTL[0]++;assert.throws(()=>parseFaceRig(bad,'source-sha'),/고정점/);
+const badEye=structuredClone(profile);badEye.poses.wink.points.leftEyeLower[1]=badEye.poses.wink.points.leftEyeUpper[1];assert.throws(()=>parseFaceRig(badEye,'source-sha'),/간격|겹치/);
+const badGain=structuredClone(profile);badGain.channels.jawOpen.gain=NaN;assert.throws(()=>parseFaceRig(badGain,'source-sha'),/설정/);
+assert.deepEqual(solveFacePoints(profile,neutralRigFace()),profile.poses.neutral.points);
+const half=solveFacePoints(profile,{...neutralRigFace(),jawOpen:.5}),full=solveFacePoints(profile,{...neutralRigFace(),jawOpen:1});
+assert.ok(Math.abs(half.mouthInnerLower[1]-255.9)<1e-8);assert.equal(full.mouthInnerLower[1],261,'jaw must interpolate continuously, not select an image');
+const wink=solveFacePoints(profile,{...neutralRigFace(),eyeBlinkLeft:1});
+assert.deepEqual(wink.rightEyeUpper,profile.poses.neutral.points.rightEyeUpper,'left wink cannot close the other eye');
+assert.ok(wink.leftEyeLower[1]-wink.leftEyeUpper[1]<4);
+const smile=solveFacePoints(profile,{...neutralRigFace(),mouthSmileLeft:1});assert.deepEqual(smile.mouthRight,profile.poses.neutral.points.mouthRight,'left mouth control must preserve the other corner');
+const gaze=solveFacePoints(profile,{...neutralRigFace(),eyeLookOutLeft:1,eyeLookInRight:1});assert.equal(gaze.leftIris[0]-profile.poses.neutral.points.leftIris[0],4);assert.equal(gaze.rightIris[0]-profile.poses.neutral.points.rightIris[0],4);
+const blinkGaze=solveFacePoints(profile,{...neutralRigFace(),eyeBlinkLeft:1,eyeLookOutLeft:1});assert.deepEqual(blinkGaze.leftIris,wink.leftIris,'closed eyes suppress gaze displacement');
+const rest=FACE_POINT_IDS.map(id=>profile.poses.neutral.points[id]),triangles=triangulateFace(rest);
+assert.equal(triangles.length,62);assert.deepEqual(triangulateFace(rest),triangles);
+assert.equal(triangles.reduce((sum,t)=>sum+triangleArea(...t.map(i=>rest[i]))/2,0),180*145,'control mesh must cover the entire face crop');
+for(const channel of FACE_CHANNELS_2D){const target=solveFacePoints(profile,{...neutralRigFace(),[channel]:1}),safe=safeFaceDeformation(rest,FACE_POINT_IDS.map(id=>target[id]),triangles);assert.equal(safe.limited,false,`${channel} authored endpoint must not fold`);for(const id of FACE_POINT_IDS.filter(k=>k.startsWith('frame')))assert.deepEqual(target[id],profile.poses.neutral.points[id]);}
+let seed=19;for(let trial=0;trial<250;trial++){const weights=Object.fromEntries(FACE_CHANNELS_2D.map(k=>{seed=(seed*1664525+1013904223)>>>0;return [k,seed/2**32]}));const target=solveFacePoints(profile,weights),safe=safeFaceDeformation(rest,FACE_POINT_IDS.map(id=>target[id]),triangles);assert.ok(triangles.every(t=>triangleArea(...t.map(i=>safe.points[i]))>0),'mixed expressions cannot invert the mesh');}
+assert.deepEqual(affineTriangle([[0,0],[1,0],[0,1]],[[3,4],[5,4],[3,6]]),[2,0,0,2,3,4]);assert.equal(affineTriangle([[0,0],[1,0],[2,0]],[[0,0],[1,1],[2,2]]),null);
+const capture=new FaceRigCapture();capture.receive({jawOpen:.5},false,0,profile);assert.deepEqual(capture.target(0,profile),neutralRigFace());
+capture.begin('neutral',10);for(let i=0;i<24;i++)capture.receive({jawOpen:.2,eyeBlinkLeft:.1},true,20+i*40,profile);
+assert.ok(Math.abs(capture.baseline.jawOpen-.2)<1e-6);assert.match(capture.message,/보정 완료/);
+assert.equal(solveFaceValues({jawOpen:.2},capture.baseline,profile).jawOpen,0);
+capture.receive({jawOpen:.8},true,2000,profile);assert.ok(capture.target(2001,profile).jawOpen>.5);assert.deepEqual(capture.target(2600,profile),neutralRigFace());
+capture.begin('jawOpen',3000);let update;for(let i=0;i<24;i++)update=capture.receive({jawOpen:.8},true,3000+i*40,profile);assert.ok(update.jawOpen.gain>1&&update.jawOpen.gain<=5);
+capture.begin('eyeBlinkLeft',5000);for(let i=0;i<24;i++)capture.receive({eyeBlinkLeft:.1},true,5000+i*40,profile);assert.match(capture.message,/충분히/);
+capture.begin('neutral',7000);capture.target(16000,profile);assert.equal(capture.samples,null);assert.match(capture.message,/종료/);
+const target={...neutralRigFace(),jawOpen:1};const a=smoothRigFace(neutralRigFace(),target,.1,.08);let b=neutralRigFace();for(let i=0;i<10;i++)b=smoothRigFace(b,target,.01,.08);assert.ok(Math.abs(a.jawOpen-b.jawOpen)<1e-9);
+assert.equal(solveFaceValues({jawOpen:NaN}, {},profile).jawOpen,0);
+assert.equal(solveFaceValues({eyeBlinkLeft:1,eyeWideLeft:1},{},profile).eyeWideLeft,0);
+capture.reset();assert.deepEqual(capture.baseline,{});assert.deepEqual(capture.target(0,profile),neutralRigFace());
+console.log('Face rig 2D: 36-point topology, 20 independent controls, continuous interpolation, fold protection, calibration, stale-face reset and smoothing passed.');
+
+const laughing=solveFacePoints(profile,{...neutralRigFace(),jawOpen:1,mouthSmileLeft:1,mouthSmileRight:1});
+assert.ok(laughing.mouthInnerLower[1]-laughing.mouthInnerUpper[1]>(full.mouthInnerLower[1]-full.mouthInnerUpper[1])*.85,"smiling must not halve the jaw opening");

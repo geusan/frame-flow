@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Portable illustrated face rig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "rig",
+    "library"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "avatar.face_rig_package.v1"
+    },
+    "rig": {
+      "$ref": "avatar.face_rig2d.v1.schema.json"
+    },
+    "library": {
+      "$ref": "avatar.expression_library.v1.schema.json"
+    }
+  }
+}

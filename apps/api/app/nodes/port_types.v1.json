@@ -5,6 +5,7 @@
     { "id": "artifact.character_lora.v1", "label": "Character LoRA", "legacy_type": "Character" },
     { "id": "artifact.character_reference.v1", "label": "Character reference", "legacy_type": "CharacterReference" },
     { "id": "artifact.character_reference_set.v1", "label": "Character multiview reference", "legacy_type": "CharacterReferenceSet" },
+    { "id": "artifact.character_turnaround.v1", "label": "3D character turnaround", "legacy_type": "CharacterTurnaround" },
     { "id": "data.any.v1", "label": "Any", "legacy_type": "Any" },
     { "id": "data.audio_profile.v1", "label": "Audio profile", "legacy_type": "AudioProfile" },
     { "id": "data.caption_layout.v1", "label": "Caption layout", "legacy_type": "CaptionLayout" },

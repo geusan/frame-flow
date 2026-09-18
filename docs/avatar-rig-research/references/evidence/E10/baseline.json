@@ -1,0 +1,10 @@
+{
+  "head": "e18ed2d5d17fbb0612290796d827299ff2ff67b9",
+  "files": {
+    "apps/web/src/features/avatar-2d/shoulder-contour-e09.ts": "8c44afe8c2bf7cdabd9afe05c4936d2003e2882c1d2c15e084bd140726cf200e",
+    "apps/web/src/features/avatar-2d/shoulder-contour-study.tsx": "9355f913995fd6a73f1e404816afcdcdcaef6ea5ea1974dc839e9b1b3aa1659b",
+    "apps/web/src/features/avatar-2d/shoulder-contour-study.module.css": "5749e9efe5e8e10c24c2e744ec1da321b51f4dab8233a7d2eec86d7a580ced6b",
+    "apps/web/scripts/test-shoulder-contour-e09.mjs": "dcf8ee4b24bcd3e3dfc4b53dd28a4300d566fd061fdb3a41d4cb5f5e0a7bfe13"
+  },
+  "artwork_sha256": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b"
+}

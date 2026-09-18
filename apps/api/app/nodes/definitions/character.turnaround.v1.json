@@ -1,0 +1,91 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "character.turnaround.generate",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "3D Turnaround · 4 Views",
+    "description": "Generate front, left, back and right views from one full-body image with Tripo. The reference image controls the pose; review all views before 3D generation.",
+    "category": "Image",
+    "icon": "character",
+    "cost_label": "Tripo credits",
+    "keywords": [
+      "3d",
+      "avatar",
+      "turnaround",
+      "same pose",
+      "four views",
+      "tripo",
+      "동일 포즈",
+      "4방향"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "image",
+        "type": "media.image.v1",
+        "label": "Reference Image",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "turnaround",
+        "type": "artifact.character_turnaround.v1",
+        "label": "3D Turnaround"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "minimum_resolution",
+      "timeout_seconds"
+    ],
+    "properties": {
+      "minimum_resolution": {
+        "type": "integer",
+        "minimum": 256,
+        "maximum": 2048,
+        "default": 256,
+        "title": "Minimum image resolution",
+        "description": "Minimum pixels on each side for the reference and every generated view.",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "integer"
+        }
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 60,
+        "maximum": 3600,
+        "default": 1200,
+        "title": "Provider timeout",
+        "description": "The source pose is preserved. For rigging, connect a clean full-body A-pose or T-pose image."
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "provider",
+    "executor": "character-turnaround",
+    "revision": "character-turnaround.v1",
+    "provider": "tripo",
+    "model_alias": "tripo.image.multiview"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "CharacterTurnaround",
+    "schema_id": "character.turnaround.v1",
+    "input_roles": {
+      "media.image.v1": "source_character_image"
+    },
+    "output_role": "character_turnaround"
+  }
+}

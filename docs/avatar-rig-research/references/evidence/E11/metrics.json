@@ -1,0 +1,320 @@
+[
+  {
+    "experiment": "E11",
+    "angle": 45,
+    "neckToCapX": 35.064448354323076,
+    "neckToCapDistance": 35.06477430288796,
+    "neckStartHandle": 21.143088582841074,
+    "numericVerdict": "PASS_SCOPED_STATIC_INVARIANTS",
+    "visualVerdict": "LOCAL_IMPROVEMENT_ONLY",
+    "motionPerformance": "NOT_EVALUATED_SINGLE_STATIC_POSE",
+    "baseline": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 1.3579220293379368
+        },
+        {
+          "join": 2,
+          "degrees": 32.60206934452792
+        },
+        {
+          "join": 3,
+          "degrees": 3.9451862290374997
+        },
+        {
+          "join": 6,
+          "degrees": 18.37010557656752
+        },
+        {
+          "join": 7,
+          "degrees": 68.19859051364818
+        },
+        {
+          "join": 8,
+          "degrees": 17.15426751496588
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.19490439742748
+        },
+        {
+          "along": 150,
+          "width": 51.364732092143456
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 40.67158892821687,
+      "pitDrop": 48.547446062424456,
+      "upperLength": 191.03926298015287,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50
+      ]
+    },
+    "candidate": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 0
+        },
+        {
+          "join": 2,
+          "degrees": 1.2404163257707715e-13
+        },
+        {
+          "join": 3,
+          "degrees": 8.587497639951497e-14
+        },
+        {
+          "join": 6,
+          "degrees": 6.679164831073384e-14
+        },
+        {
+          "join": 7,
+          "degrees": 1.9719439025073803e-13
+        },
+        {
+          "join": 8,
+          "degrees": 4.6118042881220995e-14
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.19490439742748
+        },
+        {
+          "along": 150,
+          "width": 51.364732092143456
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 40.67158892821687,
+      "pitDrop": 48.547446062424456,
+      "upperLength": 191.03926298015287,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50
+      ]
+    }
+  },
+  {
+    "experiment": "E11",
+    "angle": 90,
+    "neckToCapX": 17.67531857879999,
+    "neckToCapDistance": 18.26628930397622,
+    "neckStartHandle": 5.941752794912645,
+    "numericVerdict": "PASS_SCOPED_STATIC_INVARIANTS",
+    "visualVerdict": "LOCAL_IMPROVEMENT_ONLY",
+    "motionPerformance": "NOT_EVALUATED_SINGLE_STATIC_POSE",
+    "baseline": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 57.89493258993482
+        },
+        {
+          "join": 2,
+          "degrees": 72.91904954670646
+        },
+        {
+          "join": 3,
+          "degrees": 3.9451862290375623
+        },
+        {
+          "join": 6,
+          "degrees": 9.833921492376337
+        },
+        {
+          "join": 7,
+          "degrees": 68.19859051364818
+        },
+        {
+          "join": 8,
+          "degrees": 7.726633716599932
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.194904397427486
+        },
+        {
+          "along": 150,
+          "width": 51.36473209214344
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 76.03629377127528,
+      "pitDrop": 44.06173305555649,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ]
+    },
+    "candidate": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 0
+        },
+        {
+          "join": 2,
+          "degrees": 4.770832022195276e-15
+        },
+        {
+          "join": 3,
+          "degrees": 4.4527765540489235e-14
+        },
+        {
+          "join": 6,
+          "degrees": 2.9221346135946064e-14
+        },
+        {
+          "join": 7,
+          "degrees": 2.9261103069464353e-13
+        },
+        {
+          "join": 8,
+          "degrees": 4.2142349529391595e-14
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.194904397427486
+        },
+        {
+          "along": 150,
+          "width": 51.36473209214344
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 76.03629377127528,
+      "pitDrop": 44.06173305555649,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ]
+    }
+  },
+  {
+    "experiment": "E11",
+    "angle": 135,
+    "neckToCapX": 2.780045344331029,
+    "neckToCapDistance": 6.643426597977561,
+    "neckStartHandle": 18.257511183546626,
+    "numericVerdict": "PASS_SCOPED_STATIC_INVARIANTS",
+    "visualVerdict": "FAIL_NECK_SPUR",
+    "motionPerformance": "NOT_EVALUATED_SINGLE_STATIC_POSE",
+    "baseline": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 138.65925327336004
+        },
+        {
+          "join": 2,
+          "degrees": 109.96075914783837
+        },
+        {
+          "join": 3,
+          "degrees": 3.945186229037756
+        },
+        {
+          "join": 6,
+          "degrees": 4.868669520513013
+        },
+        {
+          "join": 7,
+          "degrees": 68.19859051364818
+        },
+        {
+          "join": 8,
+          "degrees": 2.927007603436722
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.19490439742749
+        },
+        {
+          "along": 150,
+          "width": 51.364732092143456
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 99.43021431579848,
+      "pitDrop": 41.42436975438437,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50.00000000000005
+      ]
+    },
+    "candidate": {
+      "tangents": [
+        {
+          "join": 1,
+          "degrees": 0
+        },
+        {
+          "join": 2,
+          "degrees": 6.043053894780683e-14
+        },
+        {
+          "join": 3,
+          "degrees": 1.1131941385122311e-13
+        },
+        {
+          "join": 6,
+          "degrees": 4.4527765540489235e-14
+        },
+        {
+          "join": 7,
+          "degrees": 3.753054524126949e-13
+        },
+        {
+          "join": 8,
+          "degrees": 1.90833280887811e-14
+        }
+      ],
+      "actualCrossSectionWidths": [
+        {
+          "along": 100,
+          "width": 57.19490439742749
+        },
+        {
+          "along": 150,
+          "width": 51.364732092143456
+        }
+      ],
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 99.43021431579848,
+      "pitDrop": 41.42436975438437,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50.00000000000005
+      ]
+    }
+  }
+]

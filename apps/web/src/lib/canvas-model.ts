@@ -45,6 +45,7 @@ export interface CanvasOutput {
   mimeType?: string;
   characterId?: string;
   imageCount?: number;
+  images?: { url: string; title: string; artifactId: string }[];
   frameCount?: number;
   sampleFps?: number;
   faceCoverage?: number;
@@ -376,7 +377,7 @@ export function refreshReadyStatuses(nodes: StudioFlowNode[], edges: Edge[]): St
     if (["prompt.input", "asset.select", "character.select", "utility.sticky"].includes(node.data.key)) {
       return { ...node, data: { ...node.data, status: node.data.configText?.trim() ? "SUCCEEDED" : "READY" } };
     }
-    if (node.data.status === "STALE" && (node.data.output || node.data.outputArtifactIds?.length)) return node;
+    if (node.data.status === "STALE") return node;
     if (["RUNNING", "SUCCEEDED", "WAITING_INPUT", "FAILED"].includes(node.data.status)) return node;
     const ready = !stepInputError(node, nodes, edges);
     return { ...node, data: { ...node.data, status: ready ? "READY" : "BLOCKED" } };

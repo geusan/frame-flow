@@ -1,0 +1,8 @@
+{
+  "tool": "built-in image_gen",
+  "reference": "../base.png",
+  "prompts": [
+    "Create one isolated eyebrow sprite matching the black-haired cat-eared anime woman reference. Her ANATOMICAL LEFT eyebrow (viewer right), inner end at image LEFT and outer tapered tail at image RIGHT. A slim dark charcoal softly angular eyebrow with a subtle gentle arch, not thick or realistic furry. Preserve her understated clean cel-anime linework. ONLY ONE EYEBROW on a genuinely transparent RGBA background. NO eye, lashes, skin, hair, face, shadow, lettering, no checkerboard. Center horizontally on square canvas, generous empty transparent padding. Entire brow spans approximately 70% canvas width and 7% height; opaque dark charcoal stroke with antialiased alpha. Intended as an independent deformable eyebrow layer for animation.",
+    "Precise inpainting edit of the supplied full-body cat-eared anime woman. Remove ONLY both eyebrow strokes, reconstructing their underlying forehead skin where they cross skin and continuing the black hair naturally where those thin eyebrow strokes cross the bangs. Keep EVERYTHING ELSE identical: same canvas 1024x1536, exact character location and scale, face silhouette, eyes and eyelid creases, bangs/hair silhouette, ears, nose, mouth, clothing, body, white background. Do not beautify, restyle, change expression or camera. This is an eyebrow-free clean backing plate for layering independently animated eyebrows, not a new character portrait. Both eyebrows must be absent, but the curved upper eyelid crease just above each eye must remain. Only edit the narrow eyebrow region around y165..179, x440..575 in original pixel coordinates."
+  ]
+}

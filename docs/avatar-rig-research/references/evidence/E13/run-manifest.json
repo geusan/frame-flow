@@ -1,0 +1,37 @@
+{
+  "experiment": "E13",
+  "time": "2026-09-09T12:16:15.635662+00:00",
+  "angle": 160,
+  "url": "http://localhost:3002/live-avatar/2d/shoulder/e13",
+  "viewport_css": [
+    2524,
+    1328
+  ],
+  "dpr": 2,
+  "svg_css": [
+    683,
+    420
+  ],
+  "geometry": "static scope passed",
+  "visual": "local neck defect improved; full shoulder/axilla unverified",
+  "motion": "not evaluated",
+  "preexisting_changes": [
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md"
+  ],
+  "sha256": {
+    "apps/web/src/features/avatar-2d/shoulder-base-e13.ts": "1c30c590b2249f0d93c62a188d0ff48ef5257321a4846e7c3dec4eb47940c5f8",
+    "apps/web/src/features/avatar-2d/shoulder-attachment-e13.ts": "11c3536ee9d07e4493637fcf84b1394137100b82c4093ccbc223ef8b6f9ca403",
+    "apps/web/src/features/avatar-2d/shoulder-attachment-study.tsx": "7671965f6c004424e329dea7deadbab0fec90bcdc2b905658ccb27eb9c6cc082",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/e13/page.tsx": "dbca361866784cc9adc10d69b9384070a42d95f4adc55c9017e9a2e4131b631d",
+    "apps/web/scripts/test-shoulder-attachment-e13.mjs": "f34e82c49d54fe59800e1492a30187c9b1f63316dc4197b168e563eea48febb2",
+    "docs/avatar-rig-research/references/experiments.md": "f8ae8728e041ac4c53bc4acc7c1d3d82f64f0752b194741c0f8cfa8ce535fef1",
+    "docs/avatar-rig-research/references/handoff.md": "31ac45d65cc5495543bee6c8f9d05d940a5cb7e50ddf38eb308fa8fdc923562e",
+    "docs/avatar-rig-research/references/evidence/E13/160-full.png": "30c41dd23cb3cd290156c191fc8863d208ea94ffa2b721a38cc5c70c1d86092a",
+    "docs/avatar-rig-research/references/evidence/E13/results.json": "5016a5eda52b508cf911a1dd1ed03fbad749606ff9f20fde174b7ba82a525d72",
+    "docs/avatar-rig-research/references/evidence/E13/baseline.json": "96a2bcc6f42dc4d4eaeda3aa4ea726299963ed11606bd72d6c173a6027602699",
+    "docs/avatar-rig-research/references/evidence/E13/160-close.png": "8f34cb0d3b76ab60033095a25e4747d81d99b916d4823adfe53405b453697129",
+    "docs/avatar-rig-research/references/evidence/E13/160-controls.png": "218b8b3ef9561ae8ce0ca6330f9e6a68797a51618c97ed8e04d2aad6597271db",
+    "docs/avatar-rig-research/references/evidence/E13/baseline-source.tar.gz": "9bdf0f35d854a5d50ece5500b27953512f696d0d9c65c151d16ca0949cc8f005"
+  }
+}

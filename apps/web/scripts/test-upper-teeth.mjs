@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {mouthContours,freshMouthRig} from '../src/features/avatar-2d/mouth-rig.ts';
+import {freshFaceRig,neutralRigFace,solveFaceValues,smoothRigFace,FaceRigCapture} from '../src/features/avatar-2d/face-rig.ts';
+import {DEFAULT_FEATURE_ALIGNMENT} from '../src/features/avatar-2d/feature-alignment.ts';
+const p=freshFaceRig('test'),rig=freshMouthRig(),zero=neutralRigFace(),rest=p.poses.neutral.points;
+const closed=mouthContours(rest,zero,DEFAULT_FEATURE_ALIGNMENT,rig),lifted=mouthContours(rest,{...zero,mouthUpperUpLeft:1,mouthUpperUpRight:1},DEFAULT_FEATURE_ALIGNMENT,rig);
+assert.equal(lifted.jaw,0);assert.ok(lifted.aperture>5);assert.deepEqual(lifted.lower,closed.lower);assert.ok(lifted.upper[4][1]<closed.upper[4][1]);
+const one=mouthContours(rest,{...zero,mouthUpperUpLeft:1},DEFAULT_FEATURE_ALIGNMENT,rig);assert.ok(closed.upper[6][1]-one.upper[6][1]>closed.upper[2][1]-one.upper[2][1]);
+const values=solveFaceValues({jawOpen:0,mouthUpperUpLeft:.8,mouthUpperUpRight:.7},{},p);assert.equal(values.jawOpen,0);assert.ok(values.mouthUpperUpLeft>.9);assert.ok(smoothRigFace(zero,values,.1,.08).mouthUpperUpLeft>0);
+const capture=new FaceRigCapture();capture.begin('neutral',0);for(let i=0;i<24;i++)capture.receive({jawOpen:0,mouthUpperUpLeft:.2,mouthUpperUpRight:.2},true,i*20,p);assert.equal(solveFaceValues({mouthUpperUpLeft:.2},capture.baseline,p).mouthUpperUpLeft,0);capture.receive({jawOpen:0,mouthUpperUpLeft:.8},true,1000,p);assert.ok(capture.target(1001,p).mouthUpperUpLeft>.5);assert.equal(capture.target(2000,p).mouthUpperUpLeft,0);
+console.log('Upper teeth: zero-jaw lip lift, fixed lower lip, asymmetry, calibration, smoothing and stale reset passed');

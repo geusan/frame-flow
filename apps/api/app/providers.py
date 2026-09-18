@@ -75,6 +75,7 @@ FAL_MODEL_REGISTRY = {
 }
 
 TRIPO_MODEL_REGISTRY = {
+    "tripo.image.multiview": "provider-managed:image-to-multiview",
     "tripo.3d.p1": "P1-20260311",
     "tripo.3d.h3.1": "v3.1-20260211",
     "tripo.rig.biped": "v1.0-20240301",

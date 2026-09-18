@@ -52,6 +52,9 @@ import { VideoPlayer } from "@/components/ui/video-player";
 import { PromptTokenEditor } from "@/features/workflows/components/prompt-token-editor";
 import { API_BASE, type ArtifactListItem, type CharacterRecord } from "@/lib/api";
 import { inputHandleId, type CanvasOutput, type IconName, type StickyColor, type StudioFlowNode } from "@/lib/canvas-model";
+import { ImageOutputGallery } from "@/components/media/image-output-gallery";
+import { isModel3DArtifactType, modelPreviewUrl } from "@/features/nodes/model-preview";
+import modelPreviewStyles from "@/components/media/model-preview.module.css";
 import { maximizePlaybackVolume } from "@/lib/media";
 import type { PortType } from "@/lib/types";
 
@@ -92,6 +95,7 @@ export interface CanvasSpaceHoldRequest {
 }
 
 export interface NodeActions {
+  openNodeDetails: (nodeId: string) => void;
   runStep: (nodeId: string) => void;
   updateConfig: (nodeId: string, value: string) => void;
   updateStickyColor: (nodeId: string, color: StickyColor) => void;
@@ -106,7 +110,7 @@ export interface NodeActions {
   characterOptions: CharacterRecord[];
 }
 
-export const NodeActionsContext = createContext<NodeActions>({ runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, selectCharacter: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [], characterOptions: [] });
+export const NodeActionsContext = createContext<NodeActions>({ openNodeDetails: () => undefined, runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, selectCharacter: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [], characterOptions: [] });
 
 export function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
   return <StatusPill status={data.status} compact={compact} />;
@@ -169,7 +173,7 @@ export function isAudioAsset(asset: ArtifactListItem): boolean {
 }
 
 export function isModel3DAsset(asset: ArtifactListItem): boolean {
-  return ["Model3D", "Character3D", "Character3DValidated", "CharacterRigged", "AnimatedCharacter"].includes(asset.type);
+  return isModel3DArtifactType(asset.type);
 }
 
 export function storedAssetOutput(asset: ArtifactListItem): { outputType: PortType; output: CanvasOutput } {
@@ -381,7 +385,9 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
       </div>}
       {editor}
       {data.configText !== undefined && !editor && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
-      {data.output ? data.outputType === "ReferenceAnalysis"
+      {modelPreviewUrl(data, API_BASE) ? <button type="button" className={`${modelPreviewStyles.card} nodrag nopan`} onClick={() => actions.openNodeDetails(id)}>
+        <Box size={32} /><span><strong>3D 프리뷰 열기</strong><small>회전 · 확대/축소{data.status === "STALE" ? " · 이전 결과" : ""}</small></span>
+      </button> : data.output ? data.outputType === "ReferenceAnalysis"
         ? <ReferenceAnalysisOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
         : data.outputType === "MotionTrack"
           ? <MotionTrackOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
@@ -573,6 +579,7 @@ function StructuredDataPreview({ output, state }: { output: CanvasOutput; state:
 
 function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
   const state = stateLabel && <b className="node-output-state">{stateLabel}</b>;
+  if (output.kind === "image" && output.images?.length) return <div className="node-output"><ImageOutputGallery images={output.images} compact />{state}</div>;
   if (output.kind === "image") return <div className="node-output node-output-image">
     {/* Artifact URLs are dynamic and their dimensions are only known once loaded. */}
     {/* eslint-disable-next-line @next/next/no-img-element */}

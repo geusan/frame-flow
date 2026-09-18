@@ -1,0 +1,33 @@
+{
+  "head": "e18ed2d5d17fbb0612290796d827299ff2ff67b9",
+  "files": {
+    "apps/web/src/features/avatar-2d/face-triangulation.ts": "53d7a7a04b62947447510e2cf662c46fabd3f3c5bea57755385427b57356ca75",
+    "apps/web/src/features/avatar-2d/shoulder-garment.ts": "333764dc0da338d46650b94654f56d50c529d3dba29f266a57bd2af9666fd5cf",
+    "apps/web/src/features/avatar-2d/expression-renderer.ts": "6d7064aa22d9bb0e728759d6d7501a0867ada6be324ec55e681dfaeb0f13660f",
+    "apps/web/src/features/avatar-2d/face-rig-renderer.ts": "c2b42a789adee2ab2cc09fa5d68720f0df5d97f8063c47bc6c397e3d606efd3e",
+    "apps/web/src/features/avatar-2d/artwork-partition.ts": "91e98ddd955109ea64b1334942adf034dbd20887ab6585dda7bffd17750b1ee1",
+    "apps/web/src/features/avatar-2d/face-rig-panel.module.css": "46cf2ebf4f9138d22661771e89ba1eea17e415090667a5ef31936ff956304ec4",
+    "apps/web/src/features/avatar-2d/parts.ts": "5c4b505387dabd33ed7f285dea4c2e96772c9f7e038da0108fc1fd4d5fdc98e9",
+    "apps/web/src/features/avatar-2d/shoulder-surface.ts": "e5c7a9619b9aa5f258d0bfbfc71f7abdc8e52a8efe88f5c5725e88cde0408656",
+    "apps/web/src/features/avatar-2d/shoulder-lab.module.css": "b899729864aa9d3bd561f37415d66523c90c7185cbe6fb4b92f9ddbee5b73323",
+    "apps/web/src/features/avatar-2d/avatar-studio.module.css": "386cb5414dbb33ea56a4601b0abd524cc7ce18b3078304c2c7e6651f253e5065",
+    "apps/web/src/features/avatar-2d/avatar-studio.tsx": "fce90cc7be967868d5d4b875ee0dca8bc49c3b418192110954d3d5c05687288b",
+    "apps/web/src/features/avatar-2d/face-rig-inference.ts": "cc43eb1ba887c8a00a4c5e22425573cc569442608da3a4615a4a97c27cd0307a",
+    "apps/web/src/features/avatar-2d/expression-panel.tsx": "bf81a8efc54994b0da058e904e79b37ea253db2753c60d1836a1ede243a5f1ed",
+    "apps/web/src/features/avatar-2d/tracking-session.ts": "8cfd76971323f73a1a36d737258477267dedb0d1dd4fa3ce200cae87ccf737e1",
+    "apps/web/src/features/avatar-2d/shoulder-lab-model.ts": "c6d8fc3254c78dca23a37d8bd4aa1a436fb4a3264bbcf82c337475136b8da59a",
+    "apps/web/src/features/avatar-2d/rig.ts": "05f4d135fe0d62d37ec1c7578571f8e13c4033a52f74d9c4a11a87453df80fb0",
+    "apps/web/src/features/avatar-2d/shoulder-lab.tsx": "01bcc88296a51bc28797983f9de1ec74d4457e461a0aaaa6acf1512cc89e6a0e",
+    "apps/web/src/features/avatar-2d/puppet-scene.ts": "a0e7fa5d1fa34e18feb52393696289145abd46d56e3eb5bb6ddf3e53206a60f1",
+    "apps/web/src/features/avatar-2d/face-rig-controller.ts": "12d5c6efe251169f427bdf41a86102b1b0ec2ee7dd6aefa47e10f66edab70d22",
+    "apps/web/src/features/avatar-2d/face-rig-panel.tsx": "954c12a122dc8f86601ebf55e1781936a774b87760344885394aa32914144cf5",
+    "apps/web/src/features/avatar-2d/face-rig.ts": "65df43ea57f1e5a6f3c789fd08b195ea40bd4372e0f9e2302643b4691c184ca1",
+    "apps/web/src/features/avatar-2d/expression-library.ts": "42dd5e26e07deaa71c89516b74cf01a93f2f6fffa0bc6144203496d68bc45b1f",
+    "apps/web/src/features/avatar-2d/expression-panel.module.css": "dc37e07ec9b2f1812cdb85feecbfa4a08a3b9b2740ef4750a2c6be58c1293b5c",
+    "apps/web/src/app/(studio)/live-avatar/2d/page.tsx": "598948e6558300270f4621c7be4a0c742e934f012bc8bb8583c63579540a147d",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/page.tsx": "fcd2b964c76af1ac71dc4277e10407a4f75713f08bd0f38a8522fca1af59b263",
+    "apps/web/public/avatars/cat-2d-v1/base.png": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b",
+    "apps/web/scripts/test-shoulder-lab.mjs": "4594eb252d3e34e40a99d1b3a027e8c92e78af75e1e9d3a36bdfbaab54ab5da8"
+  },
+  "archive_sha256": "0a4a9e134880052ec3bf70a7845722ee6d267bd2a0aa9b44b8f3d3cf2c9bb520"
+}

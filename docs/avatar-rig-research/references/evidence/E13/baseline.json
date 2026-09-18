@@ -1,0 +1,9 @@
+{
+  "files": {
+    "apps/web/src/features/avatar-2d/shoulder-contour-e09.ts": "8c44afe8c2bf7cdabd9afe05c4936d2003e2882c1d2c15e084bd140726cf200e",
+    "apps/web/src/features/avatar-2d/shoulder-tangent-e10.ts": "354418318df11a98d6c9a9db5e96a4eb69ca3282ecb13d5c5a406d60cc9abedc",
+    "apps/web/src/features/avatar-2d/shoulder-tangent-e11.ts": "45bdfe89ce1dd01500a984451dfba8d7cc9271ad160822fc42880827c77dd50d",
+    "apps/web/src/features/avatar-2d/shoulder-handle-e12.ts": "950a4f224cfd0cf0574f95d98c33cee3e5dfe762ea75dcf6c0df9a3a6812ebba"
+  },
+  "artwork_sha256": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b"
+}

@@ -1,0 +1,176 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "character.image_to_3d",
+  "contract_version": 3,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Image to 3D \u00b7 Tripo",
+    "description": "Generate a textured GLB from a single-source 3D Turnaround; existing Character bundle references require the v2 node.",
+    "category": "Advanced",
+    "icon": "character",
+    "cost_label": "Tripo credits",
+    "keywords": [
+      "tripo",
+      "multiview",
+      "image to 3d",
+      "glb",
+      "p1",
+      "h3.1"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "turnaround",
+        "type": "artifact.character_turnaround.v1",
+        "label": "3D Turnaround",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "asset_3d",
+        "type": "model.character_3d.v1",
+        "label": "3D Character GLB"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "model_alias",
+      "face_limit",
+      "texture",
+      "pbr",
+      "texture_quality",
+      "export_uv",
+      "smart_low_poly",
+      "seed",
+      "timeout_seconds"
+    ],
+    "properties": {
+      "model_alias": {
+        "type": "string",
+        "enum": [
+          "tripo.3d.p1",
+          "tripo.3d.h3.1"
+        ],
+        "x-enum-labels": {
+          "tripo.3d.p1": "P1 \u00b7 clean low-poly",
+          "tripo.3d.h3.1": "H3.1 \u00b7 highest identity fidelity"
+        },
+        "default": "tripo.3d.p1",
+        "title": "Model",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "model_alias"
+        }
+      },
+      "face_limit": {
+        "type": "integer",
+        "minimum": 48,
+        "maximum": 20000,
+        "default": 20000,
+        "title": "Face limit",
+        "description": "Kept animation-friendly even when H3.1 is selected.",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "integer"
+        }
+      },
+      "texture": {
+        "type": "boolean",
+        "default": true,
+        "title": "Generate texture",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "boolean"
+        }
+      },
+      "pbr": {
+        "type": "boolean",
+        "default": true,
+        "title": "PBR materials",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "boolean"
+        }
+      },
+      "texture_quality": {
+        "type": "string",
+        "enum": [
+          "standard",
+          "detailed"
+        ],
+        "default": "detailed",
+        "title": "Texture quality",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "enum"
+        }
+      },
+      "export_uv": {
+        "type": "boolean",
+        "default": true,
+        "title": "Export UV",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "boolean"
+        }
+      },
+      "smart_low_poly": {
+        "type": "boolean",
+        "default": true,
+        "title": "H3.1 smart low-poly",
+        "description": "Applied only to H3.1; P1 already produces controlled low-poly output.",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "boolean"
+        }
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "default": 0,
+        "title": "Seed",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "integer"
+        }
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 60,
+        "maximum": 3600,
+        "default": 1200,
+        "title": "Provider timeout"
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "provider",
+    "executor": "character-turnaround-to-3d",
+    "revision": "tripo-turnaround-to-3d.v1",
+    "provider": "tripo",
+    "model_alias": "tripo.3d.p1",
+    "model_families": [
+      "tripo.3d."
+    ]
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Character3D",
+    "schema_id": "character.3d.glb.v1",
+    "input_roles": {
+      "artifact.character_turnaround.v1": "character_reference_set"
+    },
+    "output_role": "generated_3d_asset"
+  }
+}

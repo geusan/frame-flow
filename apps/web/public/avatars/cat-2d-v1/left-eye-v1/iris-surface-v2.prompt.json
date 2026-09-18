@@ -1,0 +1,5 @@
+{
+  "tool": "built-in image_gen",
+  "prompt": "Edit the supplied isolated amber iris sprite into a reusable iris texture WITHOUT a pupil and WITHOUT any white highlights. Preserve the exact outer silhouette, placement, golden/brown color palette, dark outer rim and radial hand-painted anime fibers. Fill the entire former black oval pupil with continuous amber radial iris fibers converging to a small golden center: absolutely no black central hole, no dark pupil, no transparent central hole. Also replace every white specular highlight with matching underlying amber fibers. The whole iris interior must be opaque. Keep truly transparent padding outside the iris, same canvas and same iris position as reference. One isolated golden iris texture only; no eye, no lashes, no text, no checkerboard. This will be combined with a separately controlled pupil and corneal reflections in software.",
+  "note": "Output is RGB with painted checkerboard padding. Used only as an interior texture clipped to an ellipse in the renderer; not a transparent sprite."
+}

@@ -6,5 +6,5 @@ import nextTs from "eslint-config-next/typescript";
 export default defineConfig([
   ...fixupConfigRules(nextVitals),
   ...fixupConfigRules(nextTs),
-  globalIgnores([".next/**", "next-env.d.ts"]),
+  globalIgnores([".next/**", "next-env.d.ts", "public/mediapipe/**"]),
 ]);

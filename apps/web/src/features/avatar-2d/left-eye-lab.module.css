@@ -1,0 +1,12 @@
+.lab { padding: 16px 0; color: #38332d; scroll-margin-top: 20px; }
+.lab h3 { font-size: 15px; margin: 0 0 10px; }
+.lab p { font-size: 11px; line-height: 1.65; color: #807969; }
+.eye { width: 100%; display: block; background: #f2d2b7; border: 1px solid #ddd1c1; border-radius: 10px; margin: 12px 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.actions button { font-size: 11px; padding: 7px 8px; border: 1px solid #ddd6e7; border-radius: 6px; background: #faf8fd; cursor: pointer; }
+.actions button[aria-pressed=true] { background: #e8dff8; color: #654495; }
+.lab label { display: grid; gap: 6px; font-size: 11px; margin: 12px 0; }
+.lab input { width: 100%; accent-color: #8e74bf; }
+.layers { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin: 12px 0; }
+.layers a { min-width: 0; color: #7c639e; text-decoration: none; font-size: 10px; }
+.layers svg { width: 100%; background: #eee9e2; border-radius: 5px; }

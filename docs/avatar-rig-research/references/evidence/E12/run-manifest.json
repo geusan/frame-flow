@@ -1,0 +1,62 @@
+{
+  "experiment": "E12",
+  "time": "2026-09-09T11:38:09.960798+00:00",
+  "angles": [
+    45,
+    90,
+    135
+  ],
+  "url": "http://localhost:3002/live-avatar/2d/shoulder/e12",
+  "viewport_css": [
+    2524,
+    1328
+  ],
+  "devicePixelRatio": 2,
+  "svg_css": [
+    683,
+    420
+  ],
+  "viewBoxes": {
+    "full": "495 95 365 475",
+    "close": "555 270 180 180"
+  },
+  "numeric": "PASS_STATIC_INVARIANTS_AND_135_MONOTONICITY",
+  "visual": "135 local spur removed; no new deep notch observed; full skin naturalness unverified",
+  "motion_performance": "not evaluated",
+  "preexisting_files_changed": [
+    "apps/web/src/features/avatar-2d/avatar-studio.module.css",
+    "apps/web/src/features/avatar-2d/avatar-studio.tsx",
+    "apps/web/src/features/avatar-2d/face-rig-panel.tsx",
+    "apps/web/src/features/live-avatar/live-avatar.tsx",
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md",
+    "docs/face-rig2d.md"
+  ],
+  "sha256": {
+    "apps/web/src/features/avatar-2d/shoulder-handle-e12.ts": "950a4f224cfd0cf0574f95d98c33cee3e5dfe762ea75dcf6c0df9a3a6812ebba",
+    "apps/web/src/features/avatar-2d/shoulder-handle-study.tsx": "77db312fb2609ebaa7b1cc12a148bcc6e7661585e2caef4175a5b17afca5ea79",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/e12/page.tsx": "e27dd5db1457db4cfb0b104ebce1299c6c2babac2d27a1aabb492d3d2c7f3518",
+    "apps/web/scripts/test-shoulder-handle-e12.mjs": "d6d05e4503bff38adbc079708eeee1eea243ec3df7b9f2630ce91b87e2b65dba",
+    "docs/avatar-rig-research/references/experiments.md": "817a3a80394217dc0d83414b5554cb51cee49f7a4e3e531ff5e51f7c4d4658d7",
+    "docs/avatar-rig-research/references/handoff.md": "9c86a5bcf0f7e00a4a2d7f55f27e09cdef736239fced8cec79412948c9350c30",
+    "docs/avatar-rig-research/references/evidence/E12/90-preserved.png": "e63ddeeaaee023069460a1c31c3af22675d98334c851b3061d09401b5062ab63",
+    "docs/avatar-rig-research/references/evidence/E12/135-close.png": "1d27397a73247399a5d8651b5a36fae72f63f1ce607f5357a23fc1d1276993d7",
+    "docs/avatar-rig-research/references/evidence/E12/135-full.png": "fa203d3f668568a9c2fc4fbf16a65843ef4d25b5d77321e584295695f43d60d4",
+    "docs/avatar-rig-research/references/evidence/E12/results.json": "78d7bbdbb7819791002a514913ab9e06e6c097f51f17dde3c02d137a59cbb100",
+    "docs/avatar-rig-research/references/evidence/E12/45-preserved.png": "9bbd11796de1963cb27e3719f647c5ced7aea948a1c7ab01592ce138750e45f1",
+    "docs/avatar-rig-research/references/evidence/E12/baseline.json": "9492a505acceef46f4570f8bb625e398109ec40915dd1c13905412d3f6c49712",
+    "docs/avatar-rig-research/references/evidence/E12/135-controls.png": "84dbcc7bd2cd36a17d9e64b31a71063a8e84d9ddec15ab854586160292c573a2",
+    "docs/avatar-rig-research/references/evidence/E12/baseline-source.tar.gz": "5b5fdbad15baf88dadc3212b3b8fa2fc288515ced29f330097e8edc2bac41adf"
+  },
+  "agent_modified_preexisting_files": [
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md"
+  ],
+  "observed_other_changes_left_untouched": [
+    "apps/web/src/features/avatar-2d/avatar-studio.module.css",
+    "apps/web/src/features/avatar-2d/avatar-studio.tsx",
+    "apps/web/src/features/avatar-2d/face-rig-panel.tsx",
+    "apps/web/src/features/live-avatar/live-avatar.tsx",
+    "docs/face-rig2d.md"
+  ]
+}

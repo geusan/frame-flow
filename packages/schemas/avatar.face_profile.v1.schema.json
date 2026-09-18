@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Live Avatar face authoring profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_sha256",
+    "mode",
+    "mesh",
+    "head_bone",
+    "front_axis",
+    "anchors",
+    "eye_radius",
+    "depth",
+    "gain",
+    "smoothing",
+    "mappings"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "avatar.face_profile.v1"
+    },
+    "source_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "mode": {
+      "enum": [
+        "native",
+        "starter"
+      ]
+    },
+    "mesh": {
+      "type": "string"
+    },
+    "head_bone": {
+      "type": "string"
+    },
+    "front_axis": {
+      "enum": [
+        "+x",
+        "-x",
+        "+z",
+        "-z"
+      ]
+    },
+    "anchors": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "leftEye": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "rightEye": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mouth": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "mappings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "mouth_patch": {
+      "type": "boolean",
+      "default": true
+    },
+    "eye_radius": {
+      "type": "number",
+      "minimum": 0.15,
+      "maximum": 0.55
+    },
+    "depth": {
+      "type": "number",
+      "minimum": 0.05,
+      "maximum": 0.7
+    },
+    "gain": {
+      "type": "number",
+      "minimum": 0.5,
+      "maximum": 3
+    },
+    "smoothing": {
+      "type": "number",
+      "minimum": 0.02,
+      "maximum": 0.5
+    }
+  }
+}

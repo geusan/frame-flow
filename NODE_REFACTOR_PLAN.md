@@ -30,6 +30,8 @@ Status: Proposed
 - 2026-09-04 Full-source View Center vertical slice: `image.motion@4`는 Path point를 선행 crop 내부의 Pan 비율이 아니라 원본 이미지의 View 중심 좌표로 저장한다. `video.frame_apply@5`는 원본을 중앙 crop하지 않고 cover-scale한 전체 이미지에서 동적 View를 잘라 상단·하단까지 탐색한다. 기존 `image.motion@1,@2,@3`/`video.frame_apply@1,@2,@3,@4`는 유지한다.
 - 2026-09-04 Tripo 3D Provider vertical slice: 기존 manual/pass-through `character.image_to_3d@1`·`character.auto_rig@1`은 유지하고 `character.reference.multiview@1`, `character.image_to_3d@2`, `character.auto_rig@2`를 추가했다. Character bundle의 role-keyed Image를 versioned ReferenceSet Artifact로 고정하고, Tripo API v3의 P1/H3.1 multiview 생성, task polling/resume, Rig Check와 Mixamo GLB Auto Rig를 독립 Executor/Artifact로 연결했다. API key는 Provider Settings의 write-only secret으로 관리하며 실제 유료 호출 전 경로는 MockTransport와 Docker Temporal reference-set 실행으로 검증했다.
 
+- 2026-09-09 추가: `character.turnaround.generate@1`이 단일 Image에서 3D용 동일 포즈 4방향 이미지를 생성하고 `artifact.character_turnaround.v1`으로 출력한다. `character.image_to_3d@3`은 이 입력을 받아 Tripo GLB를 생성한다. 기존 Character/ReferenceSet 및 3D @1/@2 계약은 유지한다. Generic Inspector, 공통 4방향 이미지 Preview, task resume/중복 과금 방지와 Local/Temporal 공통 Executor를 사용한다. 수동 Draft 교체 Diff와 제약은 `docs/character-turnaround.md`에 기록했다.
+
 ## 1. 목적
 
 현재 Node 정의와 동작은 Web과 API 여러 파일에 분산돼 있다. 앞으로 Node가 추가되어도 기존 Workflow가 깨지지 않게 하려면 기존 data/execution Node는 공통 계약으로 전환하고 Canvas-only 요소는 Annotation/Layout/Authoring 계약으로 분리해야 한다.

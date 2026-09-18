@@ -7,6 +7,8 @@ import { StudioSidebar } from "@/components/layout/studio-sidebar";
 import { frameflowApi, type CanvasDocument, type WorkspaceSummary } from "@/lib/api";
 
 function pageTitle(pathname: string): { eyebrow: string; title: string } {
+  if (pathname === "/live-avatar/2d/shoulder") return { eyebrow: "Isolated joint study", title: "Shoulder Lab" };
+  if (pathname.startsWith("/live-avatar")) return { eyebrow: "Local webcam session", title: "Live Avatar" };
   if (pathname.startsWith("/canvases/")) return { eyebrow: "Canvas editor", title: "Canvas Draft" };
   if (pathname === "/canvases") return { eyebrow: "Workspace drafts", title: "Canvases" };
   if (pathname.startsWith("/workflows/")) return { eyebrow: "Versioned automation", title: "Workflow" };

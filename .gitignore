@@ -25,3 +25,5 @@ artifacts/
 *.tfvars
 *.tfplan
 !*.tfvars.example
+
+/apps/web/public/mediapipe/

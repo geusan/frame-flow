@@ -1,0 +1,390 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Illustrated avatar facial control rig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "asset",
+    "source_sha256",
+    "poses",
+    "channels",
+    "smoothing"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "avatar.face_rig2d.v1"
+    },
+    "asset": {
+      "const": "cat-2d-v1"
+    },
+    "source_sha256": {
+      "const": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b"
+    },
+    "poses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "neutral",
+        "smile",
+        "laugh",
+        "surprise",
+        "sad",
+        "angry",
+        "wink",
+        "open"
+      ],
+      "properties": {
+        "neutral": {
+          "$ref": "#/$defs/pose"
+        },
+        "smile": {
+          "$ref": "#/$defs/pose"
+        },
+        "laugh": {
+          "$ref": "#/$defs/pose"
+        },
+        "surprise": {
+          "$ref": "#/$defs/pose"
+        },
+        "sad": {
+          "$ref": "#/$defs/pose"
+        },
+        "angry": {
+          "$ref": "#/$defs/pose"
+        },
+        "wink": {
+          "$ref": "#/$defs/pose"
+        },
+        "open": {
+          "$ref": "#/$defs/pose"
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "eyeBlinkLeft",
+        "eyeBlinkRight",
+        "eyeWideLeft",
+        "eyeWideRight",
+        "jawOpen",
+        "mouthSmileLeft",
+        "mouthSmileRight",
+        "mouthFrownLeft",
+        "mouthFrownRight",
+        "browInnerUp",
+        "browDownLeft",
+        "browDownRight",
+        "eyeLookInLeft",
+        "eyeLookOutLeft",
+        "eyeLookUpLeft",
+        "eyeLookDownLeft",
+        "eyeLookInRight",
+        "eyeLookOutRight",
+        "eyeLookUpRight",
+        "eyeLookDownRight"
+      ],
+      "properties": {
+        "eyeBlinkLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeBlinkRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeWideLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeWideRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "jawOpen": {
+          "$ref": "#/$defs/channel"
+        },
+        "mouthSmileLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "mouthSmileRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "mouthFrownLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "mouthFrownRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "browInnerUp": {
+          "$ref": "#/$defs/channel"
+        },
+        "browDownLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "browDownRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookInLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookOutLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookUpLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookDownLeft": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookInRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookOutRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookUpRight": {
+          "$ref": "#/$defs/channel"
+        },
+        "eyeLookDownRight": {
+          "$ref": "#/$defs/channel"
+        }
+      }
+    },
+    "smoothing": {
+      "type": "number",
+      "minimum": 0.02,
+      "maximum": 0.4
+    }
+  },
+  "$defs": {
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number",
+          "minimum": 420,
+          "maximum": 600
+        },
+        {
+          "type": "number",
+          "minimum": 145,
+          "maximum": 290
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "points": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frameTL",
+        "frameTM",
+        "frameTR",
+        "frameRM",
+        "frameBR",
+        "frameBM",
+        "frameBL",
+        "frameLM",
+        "rightBrowOuter",
+        "rightBrowMid",
+        "rightBrowInner",
+        "leftBrowInner",
+        "leftBrowMid",
+        "leftBrowOuter",
+        "rightEyeOuter",
+        "rightEyeUpper",
+        "rightEyeInner",
+        "rightEyeLower",
+        "rightIris",
+        "leftEyeInner",
+        "leftEyeUpper",
+        "leftEyeOuter",
+        "leftEyeLower",
+        "leftIris",
+        "nose",
+        "bridge",
+        "chin",
+        "mouthRight",
+        "mouthUpper",
+        "mouthLeft",
+        "mouthLower",
+        "mouthInnerUpper",
+        "mouthInnerLower",
+        "cheekRight",
+        "cheekLeft",
+        "philtrum"
+      ],
+      "properties": {
+        "frameTL": {
+          "$ref": "#/$defs/point"
+        },
+        "frameTM": {
+          "$ref": "#/$defs/point"
+        },
+        "frameTR": {
+          "$ref": "#/$defs/point"
+        },
+        "frameRM": {
+          "$ref": "#/$defs/point"
+        },
+        "frameBR": {
+          "$ref": "#/$defs/point"
+        },
+        "frameBM": {
+          "$ref": "#/$defs/point"
+        },
+        "frameBL": {
+          "$ref": "#/$defs/point"
+        },
+        "frameLM": {
+          "$ref": "#/$defs/point"
+        },
+        "rightBrowOuter": {
+          "$ref": "#/$defs/point"
+        },
+        "rightBrowMid": {
+          "$ref": "#/$defs/point"
+        },
+        "rightBrowInner": {
+          "$ref": "#/$defs/point"
+        },
+        "leftBrowInner": {
+          "$ref": "#/$defs/point"
+        },
+        "leftBrowMid": {
+          "$ref": "#/$defs/point"
+        },
+        "leftBrowOuter": {
+          "$ref": "#/$defs/point"
+        },
+        "rightEyeOuter": {
+          "$ref": "#/$defs/point"
+        },
+        "rightEyeUpper": {
+          "$ref": "#/$defs/point"
+        },
+        "rightEyeInner": {
+          "$ref": "#/$defs/point"
+        },
+        "rightEyeLower": {
+          "$ref": "#/$defs/point"
+        },
+        "rightIris": {
+          "$ref": "#/$defs/point"
+        },
+        "leftEyeInner": {
+          "$ref": "#/$defs/point"
+        },
+        "leftEyeUpper": {
+          "$ref": "#/$defs/point"
+        },
+        "leftEyeOuter": {
+          "$ref": "#/$defs/point"
+        },
+        "leftEyeLower": {
+          "$ref": "#/$defs/point"
+        },
+        "leftIris": {
+          "$ref": "#/$defs/point"
+        },
+        "nose": {
+          "$ref": "#/$defs/point"
+        },
+        "bridge": {
+          "$ref": "#/$defs/point"
+        },
+        "chin": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthRight": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthUpper": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthLeft": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthLower": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthInnerUpper": {
+          "$ref": "#/$defs/point"
+        },
+        "mouthInnerLower": {
+          "$ref": "#/$defs/point"
+        },
+        "cheekRight": {
+          "$ref": "#/$defs/point"
+        },
+        "cheekLeft": {
+          "$ref": "#/$defs/point"
+        },
+        "philtrum": {
+          "$ref": "#/$defs/point"
+        }
+      }
+    },
+    "pose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "imageId",
+        "points"
+      ],
+      "properties": {
+        "imageId": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "points": {
+          "$ref": "#/$defs/points"
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pose",
+        "gain",
+        "deadzone",
+        "max",
+        "enabled"
+      ],
+      "properties": {
+        "pose": {
+          "enum": [
+            "neutral",
+            "smile",
+            "laugh",
+            "surprise",
+            "sad",
+            "angry",
+            "wink",
+            "open"
+          ]
+        },
+        "gain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "deadzone": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.4
+        },
+        "max": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

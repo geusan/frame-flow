@@ -61,6 +61,12 @@ download or a large committed model.
 
 ## 4. Use the Tripo character branch
 
+For new single-image 3D workflows, use the separate **3D Turnaround · 4 Views**
+Node, then **Image to 3D · Tripo @3**. The input image determines the pose; the
+four generated images are previewed together before 3D generation. See
+[the turnaround contract and Draft replacement guide](../../docs/character-turnaround.md).
+The example below preserves the older Character bundle / Image to 3D @2 path.
+
 Configure the write-only Tripo API key in **Settings → Tripo**, then build this character branch in
 the Canvas:
 

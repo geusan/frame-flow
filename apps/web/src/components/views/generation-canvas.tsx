@@ -82,16 +82,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { VideoPlayer } from "@/components/ui/video-player";
 import { SearchField } from "@/components/shared/search-field";
 import { CharacterViewGallery } from "@/components/characters/character-view-gallery";
+import { ImageOutputGallery } from "@/components/media/image-output-gallery";
+import { ModelPreview } from "@/components/media/model-preview";
+import { modelPreviewUrl } from "@/features/nodes/model-preview";
 import { ReferenceResultDetail } from "@/components/views/reference-results-view";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
 import { latestNodeTemplates } from "@/features/nodes/contracts";
+import { canRestoreExperiment } from "@/features/nodes/experiment-restore";
 import { LEGACY_CONFIG_DATA_FIELDS, serializeCanvasDocument } from "@/features/nodes/canvas-document-adapter";
 import { NodeInspectorEditor } from "@/features/nodes/node-inspector-editor";
 import { nodeConnectionCompatible, targetPortContract } from "@/features/nodes/port-contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type NodePortTypeRegistryRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
+import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type NodePortTypeRegistryRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 import { migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
@@ -216,11 +220,12 @@ function NodeDetailSurface({ node, open, onClose, onTextOutputSave, children }: 
   const [view, setView] = useState<NodeDetailView>("ui");
   if (!open) return children;
   const output = node.data.output;
+  const modelUrl = modelPreviewUrl(node.data, API_BASE);
   const hasReferenceAnalysis = node.data.key === "reference.decompose" && Boolean(output?.text || node.data.outputArtifactIds?.[0]);
-  const hasMedia = Boolean(output?.url && ["image", "video"].includes(output.kind));
+  const hasMedia = !modelUrl && Boolean(output?.url && ["image", "video"].includes(output.kind));
   const hasMotionTrack = node.data.outputType === "MotionTrack" && Boolean(output);
   const hasText = !hasReferenceAnalysis && !hasMotionTrack && Boolean(output?.text && output.kind === "text");
-  const hasOutput = hasReferenceAnalysis || hasMedia || hasMotionTrack || hasText;
+  const hasOutput = Boolean(modelUrl) || hasReferenceAnalysis || hasMedia || hasMotionTrack || hasText;
   return <Dialog open onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
     <DialogContent className={`node-detail-dialog ${view === "raw" ? "raw-data" : hasOutput ? "has-output" : "settings-only"}${hasReferenceAnalysis && view === "ui" ? " reference-output" : ""}`} overlayClassName="node-detail-backdrop">
       <DialogTitle className="sr-only">{node.data.label} node details</DialogTitle>
@@ -233,6 +238,10 @@ function NodeDetailSurface({ node, open, onClose, onTextOutputSave, children }: 
         <header><span><small>Read-only snapshot</small><strong>{node.data.key}@{node.data.contractVersion ?? 1}</strong></span><b>{node.data.outputType ?? "Node"}</b></header>
         <pre>{JSON.stringify(rawNodeSnapshot(node), null, 2)}</pre>
       </section> : <>
+      {modelUrl && <section className="node-detail-media">
+        <header><span><small>3D Preview</small><strong>{output?.title ?? node.data.label}</strong></span><b>GLB</b></header>
+        <div><ModelPreview key={modelUrl} src={modelUrl} title={output?.title ?? node.data.label} artifactId={node.data.outputArtifactIds?.[0]} /></div>
+      </section>}
       {hasReferenceAnalysis && <section className="node-detail-reference-output">
         <ReferenceResultDetail
           artifactId={node.data.outputArtifactIds?.[0]}
@@ -244,7 +253,8 @@ function NodeDetailSurface({ node, open, onClose, onTextOutputSave, children }: 
       {hasMedia && output && <section className={`node-detail-media ${node.data.outputType === "Character" ? "character-output" : ""}`}>
         <header><span><small>{node.data.outputType === "Character" ? "character output" : `${output.kind} output`}</small><strong title={output.title}>{output.title}</strong></span><b>{node.data.outputType === "Character" ? `${output.imageCount ?? ""} views`.trim() : node.data.outputType}</b></header>
         <div className={node.data.outputType === "Character" ? "node-detail-character-stage" : undefined}>
-          {output.kind === "image" && node.data.outputType !== "Character" && <>
+          {output.kind === "image" && !!output.images?.length && <ImageOutputGallery images={output.images} />}
+          {output.kind === "image" && !output.images?.length && node.data.outputType !== "Character" && <>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={output.url} alt={output.title} />
           </>}
@@ -410,7 +420,7 @@ function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = le
   return { ...graph, nodes: refreshReadyStatuses(migratedNodes, migratedEdges), edges: migratedEdges };
 }
 
-function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experiments: ExperimentRun[]): { nodes: StudioFlowNode[]; changed: boolean } {
+function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experiments: ExperimentRun[], definitions: NodeDefinitionRecord[]): { nodes: StudioFlowNode[]; changed: boolean } {
   const latestByNode = new Map<string, ExperimentRun>();
   for (const experiment of experiments) {
     if (!latestByNode.has(experiment.node_id)) latestByNode.set(experiment.node_id, experiment);
@@ -419,6 +429,8 @@ function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experi
   const reconciled = nodes.map((node) => {
     const experiment = latestByNode.get(node.id);
     if (!experiment || node.data.executable === false) return node;
+    const definition = definitions.find((item) => item.type_key === node.data.key && item.contract_version === (node.data.contractVersion ?? 1));
+    if (!canRestoreExperiment(node, experiment, definition)) return node;
     if (node.data.outputEdited && node.data.output) return node;
     const deliberatelyStale = node.data.status === "STALE" && node.data.lastExperimentId === experiment.id;
     if (deliberatelyStale && node.data.output && node.data.outputArtifactIds?.length) return node;
@@ -665,7 +677,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         { id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id },
         [...legacyNodeTemplates, ...templates],
       );
-      const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments);
+      const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments, definitions);
       setNodes(reconciled.nodes);
       setEdges(migrated.edges);
       setCanvasName(document.name);
@@ -704,7 +716,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       void frameflowApi.listExperiments(canvasId, undefined, 100).then((experiments) => {
         if (!active) return;
         setNodes((current) => {
-          const reconciled = reconcileExperimentState(current, edgesRef.current, experiments);
+          const reconciled = reconcileExperimentState(current, edgesRef.current, experiments, nodeDefinitions);
           if (reconciled.changed) setSaveState("Unsaved");
           return reconciled.nodes;
         });
@@ -713,7 +725,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const timer = window.setInterval(refreshRunningExperiments, 3000);
     refreshRunningExperiments();
     return () => { active = false; window.clearInterval(timer); };
-  }, [canvasId, nodes, setNodes]);
+  }, [canvasId, nodeDefinitions, nodes, setNodes]);
 
   useEffect(() => {
     let active = true;
@@ -1389,6 +1401,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         if (targetNodeId && node.id !== targetNodeId) return node;
         const server = byNodeId.get(node.id);
         if (!server) return node;
+        // A targeted run marks skipped nodes complete in its execution snapshot.
+        // Those placeholders are not new successful results for the Draft.
+        if (node.data.executable !== false && server.attempt_count === 0 && !server.output_artifact_ids.length && !Object.keys(server.output ?? {}).length) return node;
         const output = Object.keys(server.output ?? {}).length ? server.output as CanvasOutput : undefined;
         const status = server.status as NodeStatus;
         const statusChanged = node.data.status !== status;
@@ -1694,6 +1709,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const showInspector = Boolean(!nodeDetailId && inspectorOpen && selectedNode && !["utility.sticky", "utility.drawing"].includes(selectedNode.data.key));
   const nodeActions = useMemo<NodeActions>(() => ({
     runStep: (nodeId) => void runStep(nodeId),
+    openNodeDetails: (nodeId) => { selectNode(nodeId); setInspectorOpen(false); onOpenNodeDetail(nodeId); },
     updateConfig: updateNodeConfig,
     updateStickyColor,
     openDrawingEditor: setDrawingNodeId,
@@ -1709,7 +1725,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     beginSpaceHold,
     assetOptions,
     characterOptions,
-  }), [assetOptions, beginSpaceHold, characterOptions, edges, importNodeAssetUrl, nodes, runStep, selectStoredAsset, selectStoredCharacter, updateNodeConfig, updateStickyColor, uploadNodeAsset]);
+  }), [assetOptions, beginSpaceHold, characterOptions, edges, importNodeAssetUrl, nodes, onOpenNodeDetail, runStep, selectNode, selectStoredAsset, selectStoredCharacter, setInspectorOpen, updateNodeConfig, updateStickyColor, uploadNodeAsset]);
 
   return (
     <div className={`canvas-shell ${paletteOpen ? "" : "palette-hidden"} ${showInspector ? "with-inspector" : ""}`}>

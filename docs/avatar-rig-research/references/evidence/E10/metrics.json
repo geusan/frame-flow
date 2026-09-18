@@ -1,0 +1,103 @@
+{
+  "experiment": "E10",
+  "angle": 90,
+  "numericVerdict": "PASS_SCOPED_STATIC_INVARIANTS",
+  "visualVerdict": "LOCAL_SEAM_IMPROVEMENT; full skin naturalness not validated",
+  "motionPerformance": "NOT_EVALUATED_SINGLE_STATIC_POSE",
+  "baseline": {
+    "tangents": [
+      {
+        "join": 1,
+        "degrees": 57.89493258993482
+      },
+      {
+        "join": 2,
+        "degrees": 72.91904954670646
+      },
+      {
+        "join": 3,
+        "degrees": 3.9451862290375623
+      },
+      {
+        "join": 6,
+        "degrees": 9.833921492376337
+      },
+      {
+        "join": 7,
+        "degrees": 68.19859051364818
+      },
+      {
+        "join": 8,
+        "degrees": 7.726633716599932
+      }
+    ],
+    "actualCrossSectionWidths": [
+      {
+        "along": 100,
+        "width": 57.19490439742748
+      },
+      {
+        "along": 150,
+        "width": 51.36473209214347
+      }
+    ],
+    "crossings": 0,
+    "boundarySamples": 176,
+    "rootToPit": 76.03629377127528,
+    "pitDrop": 44.06173305555649,
+    "upperLength": 191.0392629801529,
+    "widths": [
+      61,
+      58,
+      50
+    ]
+  },
+  "candidate": {
+    "tangents": [
+      {
+        "join": 1,
+        "degrees": 0
+      },
+      {
+        "join": 2,
+        "degrees": 4.770832022195276e-15
+      },
+      {
+        "join": 3,
+        "degrees": 4.4527765540489235e-14
+      },
+      {
+        "join": 6,
+        "degrees": 2.9221346135946064e-14
+      },
+      {
+        "join": 7,
+        "degrees": 2.9261103069464353e-13
+      },
+      {
+        "join": 8,
+        "degrees": 4.2142349529391595e-14
+      }
+    ],
+    "actualCrossSectionWidths": [
+      {
+        "along": 100,
+        "width": 57.19490439742748
+      },
+      {
+        "along": 150,
+        "width": 51.36473209214347
+      }
+    ],
+    "crossings": 0,
+    "boundarySamples": 176,
+    "rootToPit": 76.03629377127528,
+    "pitDrop": 44.06173305555649,
+    "upperLength": 191.0392629801529,
+    "widths": [
+      61,
+      58,
+      50
+    ]
+  }
+}

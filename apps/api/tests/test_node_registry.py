@@ -308,7 +308,7 @@ def test_node_definition_api_exposes_active_contracts_only(client):
 
 
 def test_port_type_registry_covers_legacy_canvas_contracts():
-    assert len(port_type_registry.ids) == 48
+    assert len(port_type_registry.ids) == 49
     assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
     assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
     assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"

@@ -139,8 +139,7 @@ class LegacySqlAlchemyRunOperations:
                 )
                 await handle.signal(
                     CanvasRunWorkflow.candidate_selected,
-                    command.canvas_node_id,
-                    command.artifact_id,
+                    args=[command.canvas_node_id, command.artifact_id],
                 )
             else:
                 try:
@@ -171,8 +170,7 @@ class LegacySqlAlchemyRunOperations:
                 )
                 await handle.signal(
                     CanvasRunWorkflow.node_approved,
-                    command.canvas_node_id,
-                    command.parameters,
+                    args=[command.canvas_node_id, command.parameters],
                 )
             else:
                 try:

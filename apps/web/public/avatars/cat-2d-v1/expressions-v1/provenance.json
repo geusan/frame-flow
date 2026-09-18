@@ -1,0 +1,31 @@
+{
+  "tool": "built-in image_gen",
+  "source": "../base.png",
+  "source_sha256": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b",
+  "images": {
+    "smile": {
+      "sha256": "a0ce42cee4f9fb38f940084ec0f9f1d50303cefe5d989acd09f1946f72e5cf7c",
+      "generation_file": "exec-c5917938-6197-465f-a994-3dd684b19bdd.png"
+    },
+    "laugh": {
+      "sha256": "51bd398150ac4503dcc3207923afd9732ecbf6ad8d29fdfdd8e54d5e9116500e",
+      "generation_file": "exec-2c9f23bf-5870-43b9-b43e-d3f6bc6c4df7.png"
+    },
+    "surprise": {
+      "sha256": "6d39ff0b71d12db936dd623bce4ee0f915c2f3928a030ee3be51bace3c549627",
+      "generation_file": "exec-4a28deea-1cc2-4f34-b5e5-fee0c1bfb8fe.png"
+    },
+    "sad": {
+      "sha256": "da5209544f080f5b7609933c74859023d756db09cf389f7df65358d9850908d8",
+      "generation_file": "exec-be4dcfdb-06a1-46ce-a37e-014dadbb0952.png"
+    },
+    "angry": {
+      "sha256": "658cb38acf78faebfd08e0246a8cec5bef8fe03f6aec998b8b62455af7531671",
+      "generation_file": "exec-7b31317e-fadb-4b1d-9782-4f6646fdf162.png"
+    },
+    "wink": {
+      "sha256": "bfc60d14eb874281332d787acd5319184d90bc116579ffed7b615e0922d6a36a",
+      "generation_file": "exec-31be814a-694a-4dbb-b4e5-4cc85fa93aa9.png"
+    }
+  }
+}

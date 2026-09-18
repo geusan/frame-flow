@@ -334,7 +334,7 @@ async def respond_to_workflow_run(
         if uses_temporal():
             client = await temporal_client()
             handle = client.get_workflow_handle_for(CanvasRunWorkflow.run, f"frameflow/canvas/{run.id}")
-            await handle.signal(CanvasRunWorkflow.node_approved, node_id, approval_parameters)
+            await handle.signal(CanvasRunWorkflow.node_approved, args=[node_id, approval_parameters])
         else:
             record_canvas_approval(run_id, node_id, approval_parameters)
             await local_canvas_engine.start(run_id)
@@ -344,7 +344,7 @@ async def respond_to_workflow_run(
         if uses_temporal():
             client = await temporal_client()
             handle = client.get_workflow_handle_for(CanvasRunWorkflow.run, f"frameflow/canvas/{run.id}")
-            await handle.signal(CanvasRunWorkflow.candidate_selected, node_id, artifact_id)
+            await handle.signal(CanvasRunWorkflow.candidate_selected, args=[node_id, artifact_id])
         else:
             record_canvas_selection(run_id, node_id, artifact_id)
             await local_canvas_engine.start(run_id)

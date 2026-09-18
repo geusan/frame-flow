@@ -1,0 +1,38 @@
+{
+  "experiment": "E14",
+  "time": "2026-09-09T12:59:59.728975+00:00",
+  "angle": 0,
+  "url": "http://localhost:3002/live-avatar/2d/shoulder/e14",
+  "viewport_css": [
+    2524,
+    1328
+  ],
+  "dpr": 2,
+  "svg_css": [
+    450,
+    420
+  ],
+  "numeric": "diagnostic invariants pass",
+  "skin": "FAIL_HOLE_REMAINS_BOTH_ORDERS",
+  "motion": "not evaluated",
+  "preexisting_changes": [
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md",
+    "docs/face-rig2d.md"
+  ],
+  "sha256": {
+    "apps/web/src/features/avatar-2d/shoulder-occlusion-e14.ts": "82dcf0e82aff1a98692bc1b239cf862dd9eeec57687589acdd023cf4f7cbc363",
+    "apps/web/src/features/avatar-2d/shoulder-occlusion-study.tsx": "3efca14dc65340270eec7cf5ea050fbd70ffa4ae6905d799db12a5f60d825eb9",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/e14/page.tsx": "b58c6549f0c0ba4243121cdd49c9a2b020cf9528c8cfe55cca6c58b2186dcb4b",
+    "apps/web/scripts/test-shoulder-occlusion-e14.mjs": "b9b3d88c073771dd7972d5e851b3958bace35b34c2bf5bc3afd2d4a63f736721",
+    "docs/avatar-rig-research/references/experiments.md": "bc87912c95df4ab08026005ecb715b88ada670f9077f9f7761aad99ebde4e829",
+    "docs/avatar-rig-research/references/handoff.md": "47f813e51f98223a0c2da88ab1e2d669e0e1074d2bb250a24a6464e7564948dc",
+    "docs/avatar-rig-research/references/evidence/E14/0-full.png": "d0feba8463bb7cc0a79ce9fca03d247b323e85a76f7a01d9772c219f78dd0e5f",
+    "docs/avatar-rig-research/references/evidence/E14/results.json": "f8803b694e4901fee53421cc52bf37c39dfa5852fafa9ecc0574faa64342d5a2",
+    "docs/avatar-rig-research/references/evidence/E14/0-hidden-boundaries.png": "9eb32e1085a7d6dc98737ee4af705889c3f4b2f37a8c48086ade92987f3d0763",
+    "docs/avatar-rig-research/references/evidence/E14/0-flat.png": "9e9bc634b855cb522b7daf4068506ec6caa6dee7d064ecb33e7d453112db97d3",
+    "docs/avatar-rig-research/references/evidence/E14/baseline.json": "d7b2f80dfa377d432c5df0a79bf9629cc9d03bf438a9802d16f7aaf540b75427",
+    "docs/avatar-rig-research/references/evidence/E14/0-ownership.png": "d5569f41ec811631f9c2d5a4fec2f076e7e3093eaa26fd83fecf1720b62a4a73",
+    "docs/avatar-rig-research/references/evidence/E14/baseline-source.tar.gz": "76171975cad947c3fde27fdd1af96db009f9925cfd56ceaee7e1882a11274daf"
+  }
+}

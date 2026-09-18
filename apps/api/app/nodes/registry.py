@@ -7,6 +7,7 @@ from typing import Any
 
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
 from .editor_refs import node_editor_ref_registry
+from .executors.character_turnaround import CharacterTurnaroundExecutor, TurnaroundTo3DExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -201,6 +202,8 @@ node_registry = NodeRegistry(
         "character-image-to-3d-tripo": TripoImageTo3DExecutor(),
         "character-model-validation": Character3DValidationExecutor(),
         "character-multiview-reference": CharacterMultiviewReferenceExecutor(),
+        "character-turnaround": CharacterTurnaroundExecutor(),
+        "character-turnaround-to-3d": TurnaroundTo3DExecutor(),
         "character-reference-validation": CharacterReferenceValidationExecutor(),
         "humanoid-motion-cleanup": HumanoidMotionCleanupExecutor(),
         "humanoid-motion-extraction": HumanoidMotionExtractionExecutor(),

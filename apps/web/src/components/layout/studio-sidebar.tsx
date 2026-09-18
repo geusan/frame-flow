@@ -15,6 +15,7 @@ import {
   Type,
   Sparkles,
   ContactRound,
+  ScanFace,
   WandSparkles,
   Workflow,
   type LucideIcon,
@@ -45,6 +46,7 @@ const workspaceNavigation: NavigationItem[] = [
   { href: "/workflows", label: "Workflows", icon: Workflow, count: "workflows" },
   { href: "/canvases", label: "Canvases", icon: PanelsTopLeft, count: "canvases" },
   { href: "/characters", label: "Characters", icon: ContactRound, count: "characters" },
+  { href: "/live-avatar", label: "Live Avatar", icon: ScanFace },
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
   { href: "/asset/audio", label: "Audio", icon: Headphones, count: "audio" },
@@ -64,6 +66,7 @@ function isActive(pathname: string, href: string): boolean {
   if (href === "/canvases") return pathname === href || pathname.startsWith("/canvases/");
   if (href.startsWith("/asset/")) return pathname === href || pathname.startsWith(`${href}/`);
   if (href === "/reference-results") return pathname === href || pathname.startsWith("/reference-results/");
+  if (href === "/live-avatar") return pathname === href || pathname.startsWith("/live-avatar/");
   return pathname === href;
 }
 

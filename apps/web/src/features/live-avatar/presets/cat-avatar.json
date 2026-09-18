@@ -1,0 +1,38 @@
+{
+  "schema_version": "avatar.face_profile.v1",
+  "source_sha256": "46e2f1035e6596156d0137bf21ae1fa5c550fee200651a4d41e855662a69a7ff",
+  "mode": "starter",
+  "mesh": "tripo_node_a8edcd0d-5879-45f3-a75d-ef09f",
+  "head_bone": "mixamorigHead",
+  "front_axis": "+x",
+  "anchors": {
+    "leftEye": [
+      0.07367636067270189,
+      0.8745033502254888,
+      -0.017427710817678913
+    ],
+    "rightEye": [
+      0.07338553938086911,
+      0.8736953767897276,
+      0.031656080152209415
+    ],
+    "mouth": [
+      0.08695481110773623,
+      0.83940079359781,
+      0.00835474169186646
+    ]
+  },
+  "eye_radius": 0.38,
+  "depth": 0.3,
+  "gain": 1.4,
+  "smoothing": 0.09,
+  "mappings": {
+    "eyeBlinkLeft": "",
+    "eyeBlinkRight": "",
+    "jawOpen": "",
+    "mouthSmileLeft": "",
+    "mouthSmileRight": "",
+    "browInnerUp": ""
+  },
+  "mouth_patch": true
+}

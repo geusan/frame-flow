@@ -443,6 +443,7 @@ export interface ExperimentOutput {
   mimeType?: string;
   characterId?: string;
   imageCount?: number;
+  images?: { url: string; title: string; artifactId: string }[];
 }
 
 export interface ExperimentRun {

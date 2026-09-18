@@ -3,12 +3,17 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
+from typing import Any
 
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-from .nodes.human_gates import HumanGateMode
-from .nodes.legacy_run_adapter import legacy_human_gate_modes
+# These helpers only classify snapshot values. Importing their package also
+# initializes the Activity-only Executor Registry and provider SDKs; do not
+# re-import those network libraries inside the deterministic Workflow sandbox.
+with workflow.unsafe.imports_passed_through():
+    from .nodes.human_gates import HumanGateMode
+    from .nodes.legacy_run_adapter import legacy_human_gate_modes
 
 
 @dataclass
@@ -29,7 +34,7 @@ class CanvasRunWorkflow:
         self.waiting_node_id: str | None = None
         self.selected_artifact_id: str | None = None
         self.approved_node_id: str | None = None
-        self.approval_parameters: dict[str, object] | None = None
+        self.approval_parameters: dict[str, Any] | None = None
 
     @workflow.run
     async def run(self, payload: CanvasWorkflowInput) -> dict[str, object]:
@@ -135,7 +140,7 @@ class CanvasRunWorkflow:
             self.selected_artifact_id = artifact_id
 
     @workflow.signal(name="canvas_node_approved")
-    def node_approved(self, canvas_node_id: str, parameters: dict[str, object]) -> None:
+    def node_approved(self, canvas_node_id: str, parameters: dict[str, Any]) -> None:
         if self.waiting_node_id == canvas_node_id:
             self.approved_node_id = canvas_node_id
             self.approval_parameters = parameters

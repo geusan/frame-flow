@@ -1,0 +1,42 @@
+{
+  "experiment": "E10",
+  "time": "2026-09-09T10:06:48.496483+00:00",
+  "angle": 90,
+  "url": "http://localhost:3002/live-avatar/2d/shoulder/e10",
+  "viewport_css": [
+    2524,
+    1328
+  ],
+  "devicePixelRatio": 2,
+  "svg_css": [
+    683,
+    420
+  ],
+  "viewBoxes": {
+    "full": "495 95 365 475",
+    "close": "555 270 180 180"
+  },
+  "geometry": "scoped static checks pass",
+  "visual": "local seam improvement; full skin naturalness unverified",
+  "motion_performance": "not evaluated",
+  "preexisting_files_changed": [
+    "docs/avatar-rig-research/references/experiments.md",
+    "docs/avatar-rig-research/references/handoff.md"
+  ],
+  "sha256": {
+    "apps/web/src/features/avatar-2d/shoulder-tangent-e10.ts": "354418318df11a98d6c9a9db5e96a4eb69ca3282ecb13d5c5a406d60cc9abedc",
+    "apps/web/src/features/avatar-2d/shoulder-tangent-study.tsx": "2d6f71aaf8ee80f9ff4a328a888374411bc780a6d1f9164707f1d13727aaf62e",
+    "apps/web/src/app/(studio)/live-avatar/2d/shoulder/e10/page.tsx": "1b23c099925dfc09d95d322d73ae57cdebc0d2fafb90e0cef8493c168fc2f7cb",
+    "apps/web/scripts/test-shoulder-tangent-e10.mjs": "54a61a120cd260d4d0377a2f1194f12634089c8deffd8f445e15ff6296793e0d",
+    "docs/avatar-rig-research/references/experiments.md": "ce76ae33ad07f700741873c9e0a483717174781a023a167a9b3f70434f7379f2",
+    "docs/avatar-rig-research/references/handoff.md": "3e90139f6e6cc7c1967b1720bf6bdc72f23fd24ff89a3455c467f7fd0745a34f",
+    "docs/avatar-rig-research/references/evidence/E10/90-full.png": "6b4d49794ca2ef078f73590004fec798250e1b27c7c61125842d8c01079b0b62",
+    "docs/avatar-rig-research/references/evidence/E10/metrics.json": "3f8a52ad8eca85f7afa87e63634a38c28e16ff43d906ca7b83c72d47110a2691",
+    "docs/avatar-rig-research/references/evidence/E10/E09-source.tar.gz": "07e62f47b6b559101d829a7935e33a61b649f3d5432252037001d7b0c274e539",
+    "docs/avatar-rig-research/references/evidence/E10/90-close.png": "fca4b165fdfbcc55abd1de1c07a6ec56e65d799b1d6ac23b60f86f92550eeaf4",
+    "docs/avatar-rig-research/references/evidence/E10/90-controls.png": "b2bd0c71b476ace8bef5ba76f1448a45f7967b6d9905bd9d7632321b06e60a1a",
+    "docs/avatar-rig-research/references/evidence/E10/baseline.json": "a1d12f33a344a37fd698f065ceebaa6d9ccb649de9c2f8d758af4ce8d0c2a2cc",
+    "docs/avatar-rig-research/references/evidence/E10/pose-90.json": "af4d39613c2aa9280be74c05fc8ee42c7bc5844a39f696eff0b530ada8aa87a1"
+  },
+  "generated_file_restoration": "next-env.d.ts restored to exact pre-task SHA-256 after next dev regeneration"
+}

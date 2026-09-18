@@ -1,0 +1,279 @@
+{
+  "experiment": "E09",
+  "scope": "six static poses only; boundary study, no interior skin mesh",
+  "protocolAssertions": "pass",
+  "visualVerdict": "FAIL; see experiments.md",
+  "motion": "not evaluated: static visual gate failed",
+  "rows": [
+    {
+      "angle": 0,
+      "variant": "minimal",
+      "crossings": 2,
+      "boundarySamples": 176,
+      "rootToPit": 18.687384178030342,
+      "pitDrop": 47.51641659618923,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "FAIL_SELF_INTERSECTION"
+    },
+    {
+      "angle": 0,
+      "variant": "helper",
+      "crossings": 2,
+      "boundarySamples": 176,
+      "rootToPit": 21.400934559032695,
+      "pitDrop": 51,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "FAIL_SELF_INTERSECTION"
+    },
+    {
+      "angle": 0,
+      "variant": "corrected",
+      "crossings": 2,
+      "boundarySamples": 176,
+      "rootToPit": 21.400934559032695,
+      "pitDrop": 51,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "FAIL_SELF_INTERSECTION"
+    },
+    {
+      "angle": 19.573125830410195,
+      "variant": "minimal",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 19.976419349281674,
+      "pitDrop": 51,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        60.99999999999996,
+        58.00000000000002,
+        50.000000000000114
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 19.573125830410195,
+      "variant": "helper",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 19.976419349281674,
+      "pitDrop": 51,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        60.99999999999996,
+        58.00000000000002,
+        50.000000000000114
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 19.573125830410195,
+      "variant": "corrected",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 19.976419349281674,
+      "pitDrop": 51,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        60.99999999999996,
+        58.00000000000002,
+        50.000000000000114
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 45,
+      "variant": "minimal",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 28.731085448461144,
+      "pitDrop": 51.69596516328704,
+      "upperLength": 191.03926298015287,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 45,
+      "variant": "helper",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 40.67158892821687,
+      "pitDrop": 48.547446062424456,
+      "upperLength": 191.03926298015287,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 45,
+      "variant": "corrected",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 43.38876247428217,
+      "pitDrop": 44.547446062424456,
+      "upperLength": 191.03926298015287,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 90,
+      "variant": "minimal",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 49.30790991098337,
+      "pitDrop": 46.77477840833802,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 90,
+      "variant": "helper",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 76.03629377127528,
+      "pitDrop": 44.06173305555649,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 90,
+      "variant": "corrected",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 77.85054834408606,
+      "pitDrop": 36.06173305555649,
+      "upperLength": 191.0392629801529,
+      "widths": [
+        61,
+        58,
+        50
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 135,
+      "variant": "minimal",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 72.61421095127648,
+      "pitDrop": 34.42259004513693,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50.00000000000005
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 135,
+      "variant": "helper",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 99.43021431579848,
+      "pitDrop": 41.42436975438437,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50.00000000000005
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 135,
+      "variant": "corrected",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 97.27907640728152,
+      "pitDrop": 34.42436975438437,
+      "upperLength": 191.03926298015284,
+      "widths": [
+        61.000000000000014,
+        57.99999999999999,
+        50.00000000000005
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 160,
+      "variant": "minimal",
+      "crossings": 0,
+      "boundarySamples": 176,
+      "rootToPit": 81.51888033462036,
+      "pitDrop": 25.666665599832413,
+      "upperLength": 191.0392629801528,
+      "widths": [
+        60.99999999999999,
+        58,
+        50.00000000000002
+      ],
+      "geometryVerdict": "NO_SAMPLED_CROSSING_ONLY"
+    },
+    {
+      "angle": 160,
+      "variant": "helper",
+      "crossings": 1,
+      "boundarySamples": 176,
+      "rootToPit": 107.64027580727468,
+      "pitDrop": 41,
+      "upperLength": 191.0392629801528,
+      "widths": [
+        60.99999999999999,
+        58,
+        50.00000000000002
+      ],
+      "geometryVerdict": "FAIL_SELF_INTERSECTION"
+    },
+    {
+      "angle": 160,
+      "variant": "corrected",
+      "crossings": 1,
+      "boundarySamples": 176,
+      "rootToPit": 105.38129116678095,
+      "pitDrop": 37,
+      "upperLength": 191.0392629801528,
+      "widths": [
+        60.99999999999999,
+        58,
+        50.00000000000002
+      ],
+      "geometryVerdict": "FAIL_SELF_INTERSECTION"
+    }
+  ]
+}

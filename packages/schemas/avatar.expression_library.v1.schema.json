@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Illustrated avatar expression library",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "asset",
+    "source_sha256",
+    "selected",
+    "strength",
+    "transition_ms",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "avatar.expression_library.v1"
+    },
+    "asset": {
+      "const": "cat-2d-v1"
+    },
+    "source_sha256": {
+      "const": "cf8192ed7f3be78f1a22022fc0bb173c842cfc3b7eeb4592c4387515c563b42b"
+    },
+    "selected": {
+      "type": "string"
+    },
+    "strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "transition_ms": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 600
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "image",
+          "layout",
+          "offsetX",
+          "offsetY",
+          "scale"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,80}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "image": {
+            "type": "string",
+            "maxLength": 8000000,
+            "description": "Bundled image path or embedded PNG/JPEG/WebP data URL; runtime validates allowed sources."
+          },
+          "layout": {
+            "enum": [
+              "full",
+              "face"
+            ]
+          },
+          "offsetX": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "offsetY": {
+            "type": "number",
+            "minimum": -100,
+            "maximum": 100
+          },
+          "scale": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 2
+          }
+        }
+      }
+    }
+  }
+}

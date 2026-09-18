@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frameflow.local/schemas/character.turnaround.v1.schema.json",
+  "title": "Frameflow single-source 3D Character Turnaround",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_image_id",
+    "pose_policy",
+    "views"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "character.turnaround.v1"
+    },
+    "views": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider_role",
+          "artifact_id",
+          "content_type",
+          "width",
+          "height",
+          "has_alpha"
+        ],
+        "properties": {
+          "provider_role": {
+            "enum": [
+              "front",
+              "left",
+              "back",
+              "right"
+            ]
+          },
+          "artifact_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "content_type": {
+            "const": "image/png"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "has_alpha": {
+            "type": "boolean"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "provider_role": {
+                "const": "front"
+              }
+            },
+            "required": [
+              "provider_role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "provider_role": {
+                "const": "left"
+              }
+            },
+            "required": [
+              "provider_role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "provider_role": {
+                "const": "back"
+              }
+            },
+            "required": [
+              "provider_role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "provider_role": {
+                "const": "right"
+              }
+            },
+            "required": [
+              "provider_role"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "source_image_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "pose_policy": {
+      "const": "preserve_source"
+    }
+  }
+}
