@@ -85,7 +85,7 @@ def test_openai_image_provider_maps_vertical_size_and_decodes_png():
     )
     assert images[0].startswith(b"\x89PNG")
     assert client.images.last["model"] == "gpt-image-2"
-    assert client.images.last["size"] == "1024x1536"
+    assert client.images.last["size"] == "1152x2048"
     assert "response_format" not in client.images.last
 
 

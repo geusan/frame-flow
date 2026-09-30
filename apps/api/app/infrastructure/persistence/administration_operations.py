@@ -111,6 +111,17 @@ class SqlAlchemyAdministrationOperations:
             db.commit()
             return result
 
+    def storage_operation(self, action: str, values: dict[str, Any]) -> dict[str, Any]:
+        from ...storage_profiles import list_storage_profiles, save_storage_profile, check_storage_profile, activate_storage_profile, rotate_storage_credentials
+        from ...storage_migration import migration_plan, migrate_batch
+        from ...storage import StorageError
+        operations = {"rotate": rotate_storage_credentials, "list": list_storage_profiles, "save": save_storage_profile, "test": check_storage_profile,
+                      "activate": activate_storage_profile, "plan": migration_plan, "migrate": migrate_batch}
+        try:
+            return operations[action](**values)
+        except (StorageError, ValueError) as exc:
+            raise AdministrationValidationError(str(exc)) from exc
+
     def list_provider_settings(self) -> list[dict[str, Any]]:
         with self._session_factory() as db:
             return [provider_settings_payload(record) for record in ensure_provider_settings(db)]
@@ -243,6 +254,7 @@ class SqlAlchemyAdministrationOperations:
 
             rows.extend(self._configured_registry_rows(db, XAI_MODEL_REGISTRY, usage, "xai", "xAI", "xAI Responses API", "XAI_API_KEY configured", "XAI_API_KEY is not set"))
             rows.extend(self._configured_registry_rows(db, FAL_MODEL_REGISTRY, usage, "fal", "fal.ai", "fal Queue API", "FAL_KEY configured", "FAL_KEY is not set"))
+            rows.extend(self._configured_registry_rows(db, provider_catalog.ELEVENLABS_MODEL_REGISTRY, usage, "elevenlabs", "ElevenLabs", "ElevenLabs API", "ELEVENLABS_API_KEY configured", "ELEVENLABS_API_KEY is not set"))
             tripo_models = getattr(provider_catalog, "TRIPO_MODEL_REGISTRY", {})
             if tripo_models:
                 rows.extend(self._configured_registry_rows(db, tripo_models, usage, "tripo", "Tripo", "Tripo API v3", "TRIPO_API_KEY configured", "TRIPO_API_KEY is not set", modality=lambda alias: "3d" if ".3d." in alias else "rig"))

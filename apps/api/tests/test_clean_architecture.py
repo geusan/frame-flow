@@ -96,6 +96,7 @@ def test_web_uses_registry_templates_for_production_nodes() -> None:
     canvas_model = (REPOSITORY_ROOT / "apps/web/src/lib/canvas-model.ts").read_text()
     canvas_view = (REPOSITORY_ROOT / "apps/web/src/components/views/generation-canvas.tsx").read_text()
     assert "export const nodeTemplates" not in canvas_model
-    assert "legacyNodeTemplates" in canvas_model
+    assert "legacyNodeTemplates" not in canvas_model
+    assert "execute_canvas_operation" not in (REPOSITORY_ROOT / "apps/api/app/canvas_operations.py").read_text()
     assert "latestNodeTemplates(definitions" in canvas_view
     assert "createNodeFromTemplate(templateId: string, position: XYPosition, sequence: number, templates: NodeTemplate[])" in canvas_model

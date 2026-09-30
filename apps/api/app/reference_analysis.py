@@ -59,6 +59,7 @@ class SemanticAnalyzer(Protocol):
         shots: list[dict[str, Any]],
         language_code: str,
         has_audio: bool,
+        transcript_text: str = "",
     ) -> SemanticAnalysis: ...
 
 
@@ -211,7 +212,7 @@ def _fixture_transcript(duration_ms: int) -> TranscriptResult:
     return TranscriptResult("en-US", segments)
 
 
-def _transcribe_long_audio(speech_path: Path, duration_ms: int, language_code: str) -> TranscriptResult:
+def _transcribe_long_audio(speech_path: Path, duration_ms: int, language_code: str, recognizer: Any | None = None) -> TranscriptResult:
     mode = os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower()
     if mode == "fixture":
         if os.getenv("APP_ENV") != "test":
@@ -219,7 +220,7 @@ def _transcribe_long_audio(speech_path: Path, duration_ms: int, language_code: s
         return _fixture_transcript(duration_ms)
     if mode != "live":
         raise ReferenceAnalysisError("REFERENCE_ANALYSIS_MODE must be live or fixture")
-    recognizer = get_speech_recognizer()
+    recognizer = recognizer or get_speech_recognizer()
     if duration_ms <= 58_000:
         return recognizer.transcribe(speech_path.read_bytes(), language_code=language_code, duration_ms=duration_ms)
     segment_directory = speech_path.parent / "speech-segments"
@@ -323,6 +324,7 @@ class FixtureSemanticAnalyzer:
         shots: list[dict[str, Any]],
         language_code: str,
         has_audio: bool,
+        transcript_text: str = "",
     ) -> SemanticAnalysis:
         del video, content_type, language_code
         actions = [{
@@ -370,6 +372,7 @@ class GeminiSemanticAnalyzer:
         shots: list[dict[str, Any]],
         language_code: str,
         has_audio: bool,
+        transcript_text: str = "",
     ) -> SemanticAnalysis:
         logical_model = os.getenv("REFERENCE_ANALYSIS_MODEL", "google.text.fast").strip() or "google.text.fast"
         exact_model = model_id_for_alias(logical_model, gemini_api=bool(self.provider.config.api_key))
@@ -465,7 +468,7 @@ def _normalize_events(rows: list[dict[str, Any]], duration_ms: int, *, action: b
 
 
 def _normalized_text(value: str) -> str:
-    return re.sub(r"[^0-9a-z가-힣]+", "", value.lower())
+    return re.sub(r"[^0-9a-z가-힣\u3040-\u30ff\u3400-\u9fff]+", "", value.lower())
 
 
 def _normalize_text_tracks(rows: list[dict[str, Any]], duration_ms: int, transcript_text: str) -> list[dict[str, Any]]:
@@ -554,6 +557,9 @@ def analyze_reference_video(
     language_code: str = "auto",
     separate_music: bool = True,
     scene_threshold: float = 0.28,
+    semantic_analyzer: SemanticAnalyzer | None = None,
+    speech_recognizer: Any | None = None,
+    analyzer_revision: str = REFERENCE_ANALYSIS_REVISION,
 ) -> ReferenceAnalysisBundle:
     if not video:
         raise ReferenceAnalysisError("reference video is empty")
@@ -566,7 +572,7 @@ def analyze_reference_video(
         video_stream = _video_stream(metadata)
         has_audio = _has_audio(metadata)
         shots = _detect_shots(source, duration_ms, scene_threshold)
-        proxy = _render_analysis_proxy(source, directory, duration_ms)
+        proxy = video if semantic_analyzer is not None else _render_analysis_proxy(source, directory, duration_ms)
 
         audio_mix: bytes | None = None
         transcript_result: TranscriptResult | None = None
@@ -579,7 +585,7 @@ def analyze_reference_video(
         if has_audio:
             mix_path, speech_path = _extract_audio(source, directory)
             audio_mix = mix_path.read_bytes()
-            transcript_result = _transcribe_long_audio(speech_path, duration_ms, language_code)
+            transcript_result = _transcribe_long_audio(speech_path, duration_ms, language_code, speech_recognizer)
             transcript_payload = {
                 "schema_version": "transcript.v1",
                 "language_code": transcript_result.language_code,
@@ -593,13 +599,15 @@ def analyze_reference_video(
             )
             warnings.extend(separation_warnings)
 
-        semantic = _semantic_analyzer().analyze(
+        analyzer = semantic_analyzer or _semantic_analyzer()
+        semantic = analyzer.analyze(
             proxy,
-            "video/mp4",
+            content_type if semantic_analyzer is not None else "video/mp4",
             duration_ms=duration_ms,
             shots=shots,
             language_code=language_code,
             has_audio=has_audio,
+            transcript_text=transcript_result.text if transcript_result else "",
         )
         transcript_text = transcript_result.text if transcript_result else ""
         actions = _normalize_events(semantic.actions, duration_ms, action=True)
@@ -651,7 +659,9 @@ def analyze_reference_video(
                 "warnings": warnings,
             },
             "provenance": {
-                "analyzer_revision": REFERENCE_ANALYSIS_REVISION,
+                "analyzer_revision": analyzer_revision,
+                **getattr(analyzer, "provenance", {}),
+                **({"transcription_model": "whisper-1", "transcription_request_ids": speech_recognizer.request_ids} if speech_recognizer is not None else {}),
                 "semantic_model": semantic.exact_model_id,
                 "semantic_provider_request_id": semantic.provider_request_id,
                 "scene_threshold": round(min(0.9, max(0.05, scene_threshold)), 3),

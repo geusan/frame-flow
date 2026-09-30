@@ -2,6 +2,13 @@ import type { NodeDefinitionRecord, NodePortTypeRegistryRecord } from "@/lib/api
 import type { IconName, NodeTemplate } from "@/lib/canvas-model";
 import type { PortType } from "@/lib/types";
 
+export function nodeHumanGateMode(definition: NodeDefinitionRecord | undefined): "approve" | "select_artifact" | undefined {
+  if (definition?.execution.kind !== "human_gate") return undefined;
+  if (definition.execution.approval_schema) return "approve";
+  const outputTypes = new Set(definition.ports.outputs.map((port) => port.type));
+  return definition.ports.inputs.some((port) => port.multiple && outputTypes.has(port.type)) ? "select_artifact" : "approve";
+}
+
 export function legacyPortType(typeId: string, registry: NodePortTypeRegistryRecord): PortType {
   const type = registry.types.find((item) => item.id === typeId);
   if (!type) throw new Error(`Unsupported registry port type: ${typeId}`);
@@ -45,6 +52,8 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord, reg
       description: definition.display.description,
       icon: definition.display.icon as IconName,
       kind: definition.execution.kind === "source" ? "input" : definition.execution.kind === "provider" ? "generate" : definition.execution.kind === "human_gate" ? "review" : "logic",
+      inputPorts: definition.ports.inputs,
+      outputPorts: definition.ports.outputs.map((port) => ({ ...port, legacyType: legacyPortType(port.type, registry) })),
       inputTypes,
       requiredInputTypes,
       multiInputTypes,
@@ -64,7 +73,7 @@ export function nodeTemplateFromDefinition(definition: NodeDefinitionRecord, reg
 
 export function latestNodeTemplates(definitions: NodeDefinitionRecord[], registry: NodePortTypeRegistryRecord): NodeTemplate[] {
   const latest = new Map<string, NodeDefinitionRecord>();
-  for (const definition of definitions) {
+  for (const definition of definitions.filter((item) => item.lifecycle === "ACTIVE")) {
     const current = latest.get(definition.type_key);
     if (!current || definition.contract_version > current.contract_version) latest.set(definition.type_key, definition);
   }

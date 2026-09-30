@@ -1,0 +1,77 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.practice_motion",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "학습 구간 길이",
+    "description": "음성 타이밍의 빈칸/정답 구간을 정지 이미지 Motion 계약으로 변환합니다.",
+    "category": "Utilities",
+    "icon": "render",
+    "cost_label": "$0.00"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "image",
+        "type": "media.image.v1",
+        "label": "Study screen",
+        "required": true
+      },
+      {
+        "key": "timing",
+        "type": "data.practice_timing.v1",
+        "label": "Practice timing",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "motion",
+        "type": "data.media_motion.v4",
+        "label": "Timed still motion",
+        "required": true
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "phase"
+    ],
+    "properties": {
+      "phase": {
+        "type": "string",
+        "default": "question",
+        "title": "Phase",
+        "enum": [
+          "question",
+          "answer"
+        ]
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "local",
+    "executor": "practice-motion",
+    "revision": "practice-motion.v1",
+    "provider": "local",
+    "model_alias": "local.practice-motion"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "MediaMotion",
+    "schema_id": "image.motion.v4",
+    "input_roles": {
+      "media.image.v1": "source_image",
+      "data.practice_timing.v1": "practice_timing"
+    },
+    "output_role": "practice_motion"
+  }
+}

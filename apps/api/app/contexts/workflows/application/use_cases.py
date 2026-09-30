@@ -31,6 +31,14 @@ class PublishWorkflowCommand:
 
 
 @dataclass(frozen=True)
+class RestoreWorkflowDraftCommand:
+    workflow_id: str
+    version_number: int
+    expected_canvas_id: str
+    expected_canvas_revision: int
+
+
+@dataclass(frozen=True)
 class StartWorkflowRunCommand:
     workflow_id: str
     version: int | None
@@ -68,6 +76,9 @@ class WorkflowApplication:
 
     def publish(self, command: PublishWorkflowCommand) -> dict[str, Any]:
         return self._operations.publish(command)
+
+    def restore_draft(self, command: RestoreWorkflowDraftCommand) -> dict[str, Any]:
+        return self._operations.restore_draft(command)
 
     async def start_run(self, command: StartWorkflowRunCommand) -> CanvasRunResponse:
         return await self._operations.start_run(command)

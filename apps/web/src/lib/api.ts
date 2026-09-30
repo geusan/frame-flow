@@ -85,20 +85,20 @@ export interface ProviderSettingField {
   placeholder: string;
   help_text: string;
   auth_methods: string[];
-  input_kind: "text" | "service_account_json";
+  input_kind: "text" | "service_account_json" | "cookies_txt";
 }
 
 export interface ProviderAuthMethod {
   key: string;
   label: string;
   description: string;
-  kind: "api_key" | "oauth" | "setup_token" | "cloud";
+  kind: "api_key" | "oauth" | "setup_token" | "cloud" | "session";
   external: boolean;
   required_fields: string[];
 }
 
 export interface ProviderSetting {
-  provider: "openai" | "xai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "tripo" | "r2";
+  provider: "openai" | "xai" | "google" | "claude" | "elevenlabs" | "seedance" | "kling" | "minimax" | "fal" | "tripo" | "r2" | "youtube";
   label: string;
   description: string;
   enabled: boolean;
@@ -215,6 +215,7 @@ export interface WorkflowBindingDefinition {
 }
 
 export interface WorkflowOutputDefinition {
+  port_key?: string;
   key: string;
   label: string;
   node_id: string;
@@ -230,6 +231,7 @@ export interface WorkflowDraftContract {
 }
 
 export interface CanvasDocument {
+  document?: CanvasDocumentV1 | null;
   id: string;
   created_at: string;
   updated_at: string;
@@ -658,8 +660,15 @@ const EMPTY_CANVAS_DOCUMENT: CanvasDocumentV1 = {
 };
 
 export const frameflowApi = {
+  storageSettings: () => request<StorageConfiguration>("/settings/storage"),
+  saveStorage: (values: Record<string, string | number>, baseProfileId?: string) => request<StorageProfile>("/settings/storage/profiles", { method: "POST", body: JSON.stringify({ values, base_profile_id: baseProfileId }) }),
+  testStorage: (id: string) => request<{ok: boolean}>(`/settings/storage/profiles/${encodeURIComponent(id)}/test`, { method: "POST" }),
+  activateStorage: (id: string) => request<StorageConfiguration>(`/settings/storage/profiles/${encodeURIComponent(id)}/activate`, { method: "POST" }),
+  rotateStorageCredentials: (id: string, values: Record<string, string>) => request<StorageProfile>(`/settings/storage/profiles/${encodeURIComponent(id)}/credentials`, { method: "PUT", body: JSON.stringify({values}) }),
+  storageMigrationPlan: (id: string) => request<StorageMigrationPlan>(`/settings/storage/profiles/${encodeURIComponent(id)}/migration-plan`),
+  migrateStorage: (id: string, artifactIds: string[]) => request<{results: Array<{artifact_id: string; status: string; error?: string}>}>("/settings/storage/migrate", { method: "POST", body: JSON.stringify({target_profile_id: id, artifact_ids: artifactIds}) }),
   health: () => request<{ status: string; service: string; google_configured: boolean; openai_configured: boolean; tripo_configured: boolean; generation_provider_mode: string; video_downloader_provider: string; storage_provider: string; execution_backend: string }>("/health"),
-  listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions"),
+  listNodeDefinitions: () => request<NodeDefinitionRecord[]>("/node-definitions?include_inactive=true"),
   listNodePortTypes: () => request<NodePortTypeRegistryRecord>("/node-port-types"),
   listSkills: (includeDisabled = false) => request<ProjectSkillRecord[]>(`/skills${includeDisabled ? "?include_disabled=true" : ""}`),
   registerSkill: (file: File) => {
@@ -692,6 +701,7 @@ export const frameflowApi = {
   archiveWorkflow: (workflowId: string) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}/archive`, { method: "POST" }),
   activateWorkflow: (workflowId: string) => request<WorkflowDefinitionRecord>(`/workflows/${workflowId}/activate`, { method: "POST" }),
   publishWorkflow: (workflowId: string, payload: { expected_canvas_revision: number; release_notes?: string }) => request<WorkflowVersionRecord>(`/workflows/${workflowId}/publish`, { method: "POST", body: JSON.stringify(payload) }),
+  restoreWorkflowDraft: (workflowId: string, version: number, payload: { expected_canvas_id: string; expected_canvas_revision: number }) => request<{ canvas_id: string; preserved_canvas_id: string; base_version_id: string }>(`/workflows/${workflowId}/versions/${version}/restore-draft`, { method: "POST", body: JSON.stringify(payload) }),
   listWorkflowVersions: (workflowId: string) => request<WorkflowVersionRecord[]>(`/workflows/${workflowId}/versions`),
   getWorkflowVersion: (workflowId: string, version: number) => request<WorkflowVersionRecord>(`/workflows/${workflowId}/versions/${version}`),
   listWorkflowVersionAnnotations: (workflowId: string, version: number) => request<WorkflowAnnotationRecord[]>(`/workflows/${workflowId}/versions/${version}/annotations`),
@@ -768,3 +778,26 @@ export const frameflowApi = {
   approveCanvasNode: (runId: string, canvasNodeId: string, parameters: Record<string, unknown>) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/approve`, { method: "POST", body: JSON.stringify({ parameters }) }),
   canvasRunEventsUrl: (runId: string) => `${API_BASE}/canvas-runs/${runId}/events`,
 };
+
+
+export interface StorageProfile {
+  id: string;
+  name: string;
+  provider: "minio" | "r2" | "s3";
+  endpoint_url?: string;
+  public_endpoint_url?: string;
+  account_id?: string;
+  region: string;
+  reference_bucket: string;
+  formats_bucket: string;
+  generation_bucket: string;
+  renders_bucket: string;
+  addressing_style: string;
+  auth_mode?: string;
+  signed_url_ttl_seconds: number;
+  has_access_key: boolean;
+  has_secret_key: boolean;
+  has_session_token: boolean;
+}
+export interface StorageConfiguration { providers: string[]; active_profile_id: string | null; environment_provider: string; profiles: StorageProfile[] }
+export interface StorageMigrationPlan { target_profile_id: string; count: number; size_bytes: number; artifact_ids: string[]; source_deleted: boolean }

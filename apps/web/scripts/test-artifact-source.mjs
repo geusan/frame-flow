@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { latestNodeTemplates } from '../src/features/nodes/contracts.ts';
+import { importedAssetData, recoverInterruptedAssetImport } from '../src/features/nodes/artifact-source.ts';
+const root = new URL('../../api/app/nodes/', import.meta.url);
+const definitions = readdirSync(new URL('definitions/', root)).filter(name => name.endsWith('.json')).flatMap(name => JSON.parse(readFileSync(new URL(`definitions/${name}`, root))));
+const ports = JSON.parse(readFileSync(new URL('port_types.v1.json', root)));
+const templates = latestNodeTemplates(definitions, ports);
+for (const [type, kind, content_type] of [['Image', 'image', 'image/jpeg'], ['Video', 'video', 'video/mp4'], ['Audio', 'audio', 'audio/mpeg']]) {
+  const artifact = { artifact_id: 'artifact_imported', type, filename: 'imported', content_type, url: '/artifacts/artifact_imported/content', size_bytes: 123 };
+  const data = importedAssetData(artifact, templates);
+  const source = templates.find(item => item.data.key === 'asset.select');
+  assert.equal(data.key, 'asset.select');
+  assert.equal(data.contractVersion, source.data.contractVersion);
+  assert.equal(data.model, source.data.model);
+  assert.deepEqual(data.outputPorts, source.data.outputPorts);
+  assert.deepEqual(data.config, { ...source.data.config, artifact_id: artifact.artifact_id, artifact_type: type });
+  assert.equal(data.output.kind, kind);
+  assert.equal(data.output.url, artifact.url);
+  assert.equal(data.outputType, type);
+  assert.equal(data.executable, false);
+  assert.equal(data.status, 'SUCCEEDED');
+  assert.equal(recoverInterruptedAssetImport({ id: 'source', data }).data, data);
+}
+const pending = { id: 'upload', position: {x: 1, y: 2}, data: {key: 'asset.upload', status: 'RUNNING', configText: 'https://example.com/image.jpg', preview: 'Downloading…'} };
+const recovered = recoverInterruptedAssetImport(pending);
+assert.equal(recovered.data.status, 'FAILED');
+assert.equal(recovered.data.configText, pending.data.configText);
+assert.equal(recovered.data.preview, undefined);
+assert.equal(pending.data.status, 'RUNNING');
+const running = {...pending, data: {...pending.data, key: 'image.generate'}};
+assert.equal(recoverInterruptedAssetImport(running), running);
+console.log('Image/video import preserves the registered source config and preview; interrupted uploads can be retried.');

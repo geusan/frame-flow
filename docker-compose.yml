@@ -233,6 +233,7 @@ services:
     volumes:
       - ./apps/api/app:/app/app:ro
       - ./packages/schemas:/app/packages/schemas:ro
+      - ${FRAMEFLOW_STUDY_SCREEN_TOKEN_FILE:-./imports/.study-screen-token}:/imports/.study-screen-token:ro
       - demucs_cache:/home/frameflow/.cache
       - mediapipe_cache:/home/frameflow/.cache/mediapipe
       - ${FRAMEFLOW_CODEX_AUTH_DIR:-./.local/codex}:/home/frameflow/.codex

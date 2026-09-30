@@ -140,15 +140,15 @@ function AssetUploadControl({ nodeId, busy }: { nodeId: string; busy: boolean })
       <span><strong>Choose a file</strong><small>Image, video, audio or GLB</small></span>
       <input type="file" accept="image/*,video/*,audio/*,.glb,model/gltf-binary" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) actions.uploadAsset(nodeId, file); }} />
     </label>
-    <span className="node-upload-divider">or paste a video URL</span>
+    <span className="node-upload-divider">or paste an image or video URL</span>
     <form className="node-url-import" onSubmit={(event) => { event.preventDefault(); submitUrl(url); }}>
       <Link2 size={13} />
       <input
         value={url}
         type="url"
         inputMode="url"
-        placeholder="https://youtube.com/watch?v=…"
-        aria-label="Video URL"
+        placeholder="https://… (image or video)"
+        aria-label="Image or video URL"
         disabled={busy}
         onChange={(event) => setUrl(event.target.value)}
         onKeyDown={(event) => event.stopPropagation()}
@@ -159,7 +159,7 @@ function AssetUploadControl({ nodeId, busy }: { nodeId: string; busy: boolean })
           submitUrl(pastedUrl);
         }}
       />
-      <button type="submit" aria-label="Import video URL" disabled={busy || !httpUrl(url)}><ArrowRight size={13} /></button>
+      <button type="submit" aria-label="Import image or video URL" disabled={busy || !httpUrl(url)}><ArrowRight size={13} /></button>
     </form>
   </div>;
 }
@@ -372,6 +372,7 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
           <span>{type}</span>
         </Handle>
       ))}
+      {data.inputPorts?.flatMap((port, index) => [port.key, `input-${port.key}`].map((handle) => <Handle key={`alias-${handle}`} type="target" position={Position.Left} id={handle} isConnectable={false} style={{ top: `${((index + 1) / (inputs.length + 1)) * 100}%`, opacity: 0, pointerEvents: "none" }} />))}
       <div className="node-head">
         <span className="node-icon"><Icon size={16} /></span>
         <span className="node-title"><small>{data.key}</small><strong>{data.label}</strong></span>
@@ -400,8 +401,9 @@ function WorkflowNode(props: NodeProps<StudioFlowNode>) {
         {data.cost && <span className="node-cost">{data.cost}</span>}
         {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={running || data.status === "BLOCKED"}>{running ? <><RefreshCw className="spin" size={13} /> Running</> : <><Play size={12} fill="currentColor" /> Run</>}</button>}
       </div>
+      {data.outputPorts?.map((port, index) => <Handle key={port.key} type="source" position={Position.Right} id={port.key} isConnectable={index > 0} className={`typed-handle type-${port.legacyType.toLowerCase()}`} style={{ top: `${((index + 1) / (data.outputPorts!.length + 1)) * 100}%`, ...(!index ? { opacity: 0, pointerEvents: "none" as const } : {}) }}><span>{port.label}</span></Handle>)}
       {data.outputType && (
-        <Handle type="source" position={Position.Right} id="output" className={`typed-handle type-${data.outputType.toLowerCase()}`}>
+        <Handle type="source" position={Position.Right} id="output" style={data.outputPorts && data.outputPorts.length > 1 ? { top: `${100 / (data.outputPorts.length + 1)}%` } : undefined} className={`typed-handle type-${data.outputType.toLowerCase()}`}>
           <span>{data.outputType}</span>
         </Handle>
       )}

@@ -54,7 +54,19 @@ CHARACTER_SHOTS: tuple[tuple[str, str], ...] = (
 )
 
 
-def character_shot_prompts(synopsis: str, count: int) -> list[tuple[str, str]]:
+STUDIO_CHARACTER_SHOTS: tuple[tuple[str, str], ...] = (
+    ("baseline", "full-body front view, relaxed neutral standing pose, both hands and both feet visible"),
+    ("front", "front-facing head-and-shoulders portrait, calm neutral expression"),
+    ("three_quarter_left", "head-and-shoulders portrait with the subject turned 45 degrees toward camera-left"),
+    ("three_quarter_right", "head-and-shoulders portrait with the subject turned 45 degrees toward camera-right"),
+    ("profile_left", "clean left-side profile head-and-shoulders portrait, nose pointing camera-left"),
+    ("profile_right", "clean right-side profile head-and-shoulders portrait, nose pointing camera-right"),
+    ("back", "full-body rear view, back to the camera, arms relaxed, hair silhouette and outfit visible"),
+    ("smile", "front-facing waist-up portrait, small natural smile, relaxed shoulders"),
+)
+
+
+def character_shot_prompts(synopsis: str, count: int, *, shot_style: str = "story") -> list[tuple[str, str]]:
     count = max(4, min(len(CHARACTER_SHOTS), count))
     identity_lock = (
         "Use the first supplied image as the canonical character identity and design source, never as a layout reference. "
@@ -64,9 +76,19 @@ def character_shot_prompts(synopsis: str, count: int) -> list[tuple[str, str]]:
         "No duplicate character, alternate pose, collage, contact sheet, split panel, inset, extra face, "
         "body-part study, icon, label, arrow, typography, logo, or watermark."
     )
+    shots = CHARACTER_SHOTS
+    if shot_style == "studio":
+        shots = STUDIO_CHARACTER_SHOTS
+        identity_lock = (
+            "The first supplied photograph defines the character's face and hair; the remaining photographs guide only styling and posing. "
+            "Photograph exactly one person in the same seamless neutral-gray studio in every view. "
+            "Keep facial structure, age, skin tone, body proportions, haircut, wardrobe and natural photographic medium consistent. "
+            "Change only the requested view and expression. Keep the camera level, perspective natural, and studio lighting consistent. "
+            "No cafe, desk, street, outdoor scene, dramatic narrative, collage, duplicate person, labels, logo or watermark."
+        )
     return [
         (role, f"Character identity specification:\n{synopsis.strip()}\n\nShot: {shot}.\n\n{identity_lock}")
-        for role, shot in CHARACTER_SHOTS[:count]
+        for role, shot in shots[:count]
     ]
 
 

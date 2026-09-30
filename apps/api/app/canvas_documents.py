@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
+from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator
 from .nodes import node_registry
 from .nodes.inventory import canvas_only_keys
 from .nodes.port_types import port_type_registry
@@ -11,6 +14,10 @@ from .nodes.port_types import port_type_registry
 CANVAS_DOCUMENT_SCHEMA_VERSION = "canvas.document.v1"
 CANVAS_GRAPH_SCHEMA_VERSION = "canvas.graph.v1"
 CANVAS_RUNTIME_SCHEMA_VERSION = "canvas.runtime.v1"
+_DOCUMENT_VALIDATOR = Draft202012Validator(json.loads(
+    next(parent / "packages/schemas/canvas.document.v1.schema.json" for parent in Path(__file__).resolve().parents
+         if (parent / "packages/schemas/canvas.document.v1.schema.json").is_file()).read_text()
+))
 
 LEGACY_CONFIG_FIELDS = {
     "resolution": "resolution",
@@ -63,6 +70,8 @@ CONTRACT_DERIVED_DATA_FIELDS = frozenset({
     "description",
     "icon",
     "kind",
+    "inputPorts",
+    "outputPorts",
     "inputTypes",
     "inputsRequired",
     "requiredInputTypes",
@@ -107,8 +116,31 @@ def normalize_canvas_document(document: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("document.runtime.nodes must be an object")
     if len(graph["nodes"]) + len(graph["elements"]) > 500 or len(graph["edges"]) > 2000:
         raise ValueError("Canvas document exceeds the Node or Edge limit")
-    legacy = legacy_canvas_graph(document)
-    return canonicalize_canvas_document(legacy["nodes"], legacy["edges"])
+    errors = sorted(_DOCUMENT_VALIDATOR.iter_errors(document), key=lambda error: str(error.path))
+    if errors:
+        raise ValueError(f"Invalid Canvas document: {errors[0].message}")
+    normalized = deepcopy(document)
+    ids = [item["id"] for item in [*graph["nodes"], *graph["elements"]]]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Canvas Node IDs must be unique")
+    for node in normalized["graph"]["nodes"]:
+        definition = node_registry.get(node["type_key"], node["contract_version"])
+        if definition:
+            if node.get("definition_digest") not in (None, "", definition.definition_digest):
+                raise ValueError(f"Node Definition digest mismatch: {node['id']}")
+            node["definition_digest"] = definition.definition_digest
+            node["config"] = node_registry.resolve_config(definition, node["config"])
+            node.pop("unknown", None)
+        else:
+            node["unknown"] = True
+        # Canonical config is authoritative, including for legacy-editor contracts.
+        node["editor"]["legacy_data"] = _legacy_data_extensions(node["editor"]["legacy_data"], node["type_key"])
+    normalized["runtime"]["nodes"] = {
+        node_id: {key: value for key, value in state.items() if key in RUNTIME_DATA_FIELDS}
+        for node_id, state in normalized["runtime"]["nodes"].items()
+        if node_id in ids
+    }
+    return normalized
 
 
 def legacy_node_config(data: dict[str, Any], type_key: str) -> dict[str, Any]:
@@ -319,7 +351,7 @@ def legacy_canvas_graph(document: dict[str, Any] | None) -> dict[str, list[dict[
     for node in graph.get("nodes") or []:
         ui = dict(node.get("ui") or {})
         legacy_data = _legacy_contract_data(node)
-        legacy_data.update(deepcopy(runtime_nodes.get(str(node.get("id") or "")) or {}))
+        legacy_data.update({key: deepcopy(value) for key, value in (runtime_nodes.get(str(node.get("id") or "")) or {}).items() if key in RUNTIME_DATA_FIELDS})
         legacy_nodes.append((int(ui.get("order") or 0), {
             **deepcopy(ui.get("react_flow") or {}),
             "id": str(node.get("id") or ""),
@@ -335,7 +367,7 @@ def legacy_canvas_graph(document: dict[str, Any] | None) -> dict[str, list[dict[
             "label": str(ui.get("label") or "Canvas element"),
             "description": str(ui.get("description") or ""),
         })
-        data.update(deepcopy(runtime_nodes.get(element_id) or {}))
+        data.update({key: deepcopy(value) for key, value in (runtime_nodes.get(element_id) or {}).items() if key in RUNTIME_DATA_FIELDS})
         legacy_nodes.append((int(ui.get("order") or 0), {
             **deepcopy(ui.get("react_flow") or {}),
             "id": element_id,

@@ -35,7 +35,7 @@ class CharacterGenerationCapabilityExecutor:
             typed_inputs,
             expand_characters=False,
         )
-        references = [item for item in media if item.artifact_type == "Image"][:3]
+        references = [item for item in media if item.artifact_type == "Image"][:4 if "shot_style" in resolved_node_config else 3]
         name = str(resolved_node_config.get("character_name") or "Generated character").strip() or "Generated character"
         model_alias = context.model_alias
         common = {
@@ -55,12 +55,17 @@ class CharacterGenerationCapabilityExecutor:
             provider = "google"
             revision = LIVE_GENERATION_REVISION
         else:
+            studio_options = {
+                key: resolved_node_config[key]
+                for key in ("shot_style",) if key in resolved_node_config
+            }
             generated = get_openai_generation_services().generate_character(
                 **common,
                 quality=str(resolved_node_config.get("quality") or "medium"),
+                **studio_options,
             )
             provider = "openai"
-            revision = OPENAI_LIVE_REVISION
+            revision = context.definition.execution.revision if studio_options else OPENAI_LIVE_REVISION
         exact_model_id = model_id_for_alias(model_alias) or model_alias
         image_artifacts = [
             artifact_store.create(

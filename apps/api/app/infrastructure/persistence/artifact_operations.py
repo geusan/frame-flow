@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...storage import get_artifact_storage
+
 import base64
 import mimetypes
 import re
@@ -35,6 +37,7 @@ from ...contexts.artifacts.domain import (
 )
 from ...database import ArtifactRecord, SessionLocal
 from ...domain import FrameCaptureRequest, SceneSearchRequest
+from ...image_import import download_image_url
 from ...media_capture import MediaCaptureError, capture_video_frame
 from ...media_compat import BrowserVideoError
 from ...providers_fal import get_fal_generation_services
@@ -277,8 +280,8 @@ class LegacySqlAlchemyArtifactOperations:
                     "source": "reference_audio_export",
                     "url": artifact_content_url(existing.id),
                 }
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(source.uri, source.metadata_json)
                 bucket, key = storage_location(source.uri, source.metadata_json)
                 content = storage.get_bytes(bucket=bucket, key=key)
             except StorageError as exc:
@@ -356,8 +359,8 @@ class LegacySqlAlchemyArtifactOperations:
                 raise ArtifactUnsupportedMediaError(
                     "only video artifacts support scene search"
                 )
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(source.uri, source.metadata_json)
                 bucket, key = storage_location(source.uri, source.metadata_json)
                 content_type = str(
                     (source.metadata_json.get("storage") or {}).get("content_type")
@@ -425,8 +428,8 @@ class LegacySqlAlchemyArtifactOperations:
                 raise ArtifactUnsupportedMediaError(
                     "only video artifacts support frame capture"
                 )
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(source.uri, source.metadata_json)
                 bucket, key = storage_location(source.uri, source.metadata_json)
                 content_type = str(
                     (source.metadata_json.get("storage") or {}).get("content_type")
@@ -523,8 +526,8 @@ class LegacySqlAlchemyArtifactOperations:
                 raise ArtifactUnsupportedMediaError(
                     "only video artifacts support frame previews"
                 )
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(source.uri, source.metadata_json)
                 bucket, key = storage_location(source.uri, source.metadata_json)
                 content_type = str(
                     (source.metadata_json.get("storage") or {}).get("content_type")
@@ -574,6 +577,41 @@ class LegacySqlAlchemyArtifactOperations:
         }
 
     def import_url(self, command: ImportArtifactUrlCommand) -> dict[str, Any]:
+        image = download_image_url(command.url, max_bytes=CANVAS_ARTIFACT_MAX_BYTES)
+        if image is not None:
+            with self._session_factory() as db:
+                artifact = create_artifact(
+                    db,
+                    "Image",
+                    content=image.content,
+                    content_type=image.content_type,
+                    filename=image.filename,
+                    metadata={
+                        "source": "canvas_url_import",
+                        "source_url": image.source_url,
+                        "downloader_provider": "http",
+                        "filename": image.filename,
+                        "immutable": True,
+                    },
+                )
+                db.flush()
+                audit(db, "artifact.canvas_url_imported", artifact.id, {
+                    "source_url": image.source_url,
+                    "downloader_provider": "http",
+                    "content_type": image.content_type,
+                    "size_bytes": len(image.content),
+                })
+                db.commit()
+                return {
+                    "artifact_id": artifact.id,
+                    "type": artifact.type,
+                    "content_type": image.content_type,
+                    "size_bytes": len(image.content),
+                    "filename": image.filename,
+                    "source_url": image.source_url,
+                    "downloader_provider": "http",
+                    "url": artifact_content_url(artifact.id),
+                }
         try:
             provider = get_video_downloader()
             inspected = provider.inspect(command.url)
@@ -833,8 +871,8 @@ class LegacySqlAlchemyArtifactOperations:
             artifact = db.get(ArtifactRecord, artifact_id)
             if artifact is None:
                 raise ArtifactNotFoundError("artifact not found")
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
                 bucket, key = storage_location(artifact.uri, artifact.metadata_json)
                 url = storage.create_download_url(bucket=bucket, key=key)
             except StorageError as exc:
@@ -850,8 +888,8 @@ class LegacySqlAlchemyArtifactOperations:
             artifact = db.get(ArtifactRecord, artifact_id)
             if artifact is None:
                 raise ArtifactNotFoundError("artifact not found")
-            storage = get_storage()
             try:
+                storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
                 bucket, key = storage_location(artifact.uri, artifact.metadata_json)
                 content_type = str(
                     (artifact.metadata_json.get("storage") or {}).get("content_type")

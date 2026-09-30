@@ -30,6 +30,8 @@ ISOLATED_ENV_KEYS = (
     "OPENAI_PROJECT_ID",
     "XAI_API_KEY",
     "FAL_KEY",
+    "ELEVENLABS_API_KEY",
+    "ELEVENLABS_BASE_URL",
     "TRIPO_API_KEY",
     "TRIPO_BASE_URL",
     "TRIPO_POLL_INTERVAL_SECONDS",
@@ -61,7 +63,13 @@ from app.main import app
 
 
 @pytest.fixture()
-def client():
+def client(monkeypatch):
+    # Existing video fixtures never probe real websites for direct images.
+    # Image import tests inject their own MockTransport at this boundary.
+    monkeypatch.setattr(
+        "app.infrastructure.persistence.artifact_operations.download_image_url",
+        lambda *args, **kwargs: None,
+    )
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     with TestClient(app) as test_client:

@@ -309,6 +309,11 @@ class WorkflowUpdateRequest(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=32)
 
 
+class WorkflowRestoreDraftRequest(BaseModel):
+    expected_canvas_id: str = Field(min_length=1)
+    expected_canvas_revision: int = Field(ge=1)
+
+
 class WorkflowPublishRequest(BaseModel):
     expected_canvas_revision: int = Field(ge=1)
     release_notes: str = Field(default="", max_length=10_000)

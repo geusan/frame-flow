@@ -1,5 +1,7 @@
 "use client";
 
+import { subscribeExclusiveMediaPlayback } from "@/lib/exclusive-media-playback";
+
 import {
   forwardRef,
   useEffect,
@@ -158,6 +160,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(funct
   const playerRef = useRef<MediaPlayerInstance>(null);
   const [metadata, setMetadata] = useState<VideoPlayerMetadata | null>(null);
   const startsMuted = muted ?? autoPlay;
+
+  useEffect(subscribeExclusiveMediaPlayback, []);
 
   useImperativeHandle(ref, () => ({
     getCurrentTime: () => playerRef.current?.currentTime ?? 0,

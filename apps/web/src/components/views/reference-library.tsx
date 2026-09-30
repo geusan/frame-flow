@@ -11,6 +11,7 @@ import {
   List,
   Play,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Tv,
   X,
@@ -23,7 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { frameflowApi, type InspectResult, type ReferenceRecord } from "@/lib/api";
+import { API_BASE, frameflowApi, type InspectResult, type ReferenceRecord } from "@/lib/api";
 
 const rightsLabel: Record<string, string> = {
   owned: "Owned",
@@ -33,7 +34,7 @@ const rightsLabel: Record<string, string> = {
   unknown: "Unknown",
 };
 
-export function ReferenceLibrary() {
+export function ReferenceLibrary({ allowFormatExtraction = true, autoRefresh = false }: { allowFormatExtraction?: boolean; autoRefresh?: boolean }) {
   const [references, setReferences] = useState<ReferenceRecord[]>([]);
   const [query, setQuery] = useState("");
   const [rightsFilter, setRightsFilter] = useState("all");
@@ -62,8 +63,11 @@ export function ReferenceLibrary() {
       .then((items) => { if (active) setReferences(items); })
       .catch((error) => { if (active) setInspectError(error instanceof Error ? error.message : "Reference loading failed"); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, []);
+    const timer = autoRefresh ? window.setInterval(() => {
+      frameflowApi.listReferences().then((items) => { if (active) setReferences(items); }).catch(() => {});
+    }, 15000) : undefined;
+    return () => { active = false; if (timer) window.clearInterval(timer); };
+  }, [autoRefresh]);
 
   const inspect = async () => {
     setInspecting(true);
@@ -115,7 +119,7 @@ export function ReferenceLibrary() {
 
   return (
     <div className="view-page reference-page">
-      <PageHeader title="Reference Library" description="원본은 분석 전용으로 격리되며, 생성 Worker에는 구조화된 Format만 전달됩니다." actions={<><Button type="button" variant="secondary" onClick={() => void extractSelectedFormat()} disabled={!selectedIds.length || extracting}><FolderPlus size={14} /> {extracting ? "Extracting…" : `Extract format${selectedIds.length ? ` (${selectedIds.length})` : ""}`}</Button><Button type="button" onClick={() => setShowImport(true)}><Plus size={14} /> Add references</Button></>} />
+      <PageHeader title="Reference Library" description="원본은 분석 전용으로 격리되며, 생성 Worker에는 구조화된 Format만 전달됩니다." actions={<><Button type="button" variant="secondary" onClick={() => void loadReferences().catch((error) => setInspectError(error instanceof Error ? error.message : "Refresh failed"))}><RefreshCw size={14} /> Refresh</Button>{allowFormatExtraction && <Button type="button" variant="secondary" onClick={() => void extractSelectedFormat()} disabled={!selectedIds.length || extracting}><FolderPlus size={14} /> {extracting ? "Extracting…" : `Extract format${selectedIds.length ? ` (${selectedIds.length})` : ""}`}</Button>}<Button type="button" onClick={() => setShowImport(true)}><Plus size={14} /> Add references</Button></>} />
 
       {inspectError && !showImport && <div className="inspect-error">{inspectError}</div>}
 
@@ -143,9 +147,13 @@ export function ReferenceLibrary() {
             <div className={`reference-thumb ${item.thumbnail_url ? "" : "no-thumbnail"}`} style={item.thumbnail_url ? { background: `center / cover url(${item.thumbnail_url})` } : undefined}>
               <div className="thumb-grid" />
               {!item.thumbnail_url && <Tv className="reference-thumb-empty" size={24} />}
-              <button type="button" className="thumb-play" onClick={() => window.open(String(item.metadata.canonical_url ?? ""), "_blank", "noopener,noreferrer")}><Play size={14} fill="currentColor" /></button>
+              <button type="button" className="thumb-play" aria-label={`Play ${item.title}`} onClick={() => {
+                const ids = item.metadata.artifact_ids as Record<string, string> | undefined;
+                const url = ids?.ReferenceOriginal ? `${API_BASE}/artifacts/${encodeURIComponent(ids.ReferenceOriginal)}/content` : String(item.metadata.canonical_url ?? "");
+                if (url) window.open(url, "_blank", "noopener,noreferrer");
+              }}><Play size={14} fill="currentColor" /></button>
               <span className="duration-badge">{`${Math.floor(item.duration_ms / 60000).toString().padStart(2, "0")}:${Math.floor(item.duration_ms / 1000 % 60).toString().padStart(2, "0")}`}</span>
-              <Checkbox className="absolute left-2 top-2 border-white/70 bg-black/35" checked={selectedIds.includes(item.id)} onCheckedChange={(checked) => setSelectedIds((current) => checked === true ? [...current, item.id] : current.filter((id) => id !== item.id))} aria-label={`Select ${item.title}`} />
+              {allowFormatExtraction && <Checkbox className="absolute left-2 top-2 border-white/70 bg-black/35" checked={selectedIds.includes(item.id)} onCheckedChange={(checked) => setSelectedIds((current) => checked === true ? [...current, item.id] : current.filter((id) => id !== item.id))} aria-label={`Select ${item.title}`} />}
             </div>
             <div className="reference-card-body">
               <div className="card-title-row">

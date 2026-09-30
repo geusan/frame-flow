@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, ArrowLeft, GitBranch, Pencil, Play, RefreshCw, RotateCcw, Workflow } from "lucide-react";
 
+import { workflowVersionDiff } from "@/features/workflows/version-diff";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,6 +133,10 @@ export function WorkflowDetail({ workflowId, onBack, onEditDraft, onOpenVersion,
     }
   };
 
+  const previousVersion = version ? versions.filter((item) => item.version_number < version.version_number).sort((a, b) => b.version_number - a.version_number)[0] : undefined;
+  const versionChanges = version && previousVersion ? workflowVersionDiff(previousVersion, version) : [];
+  const showChangeValue = (value: unknown) => value === undefined ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value);
+
   if (loading) return <p className="experiment-history-state">Loading Workflow…</p>;
   if (!workflow) return <div className="view-page"><PageHeader title="Workflow unavailable" description={error ?? "Workflow not found"} actions={<Button onClick={onBack}><ArrowLeft size={14} /> Back</Button>} /></div>;
 
@@ -153,6 +158,11 @@ export function WorkflowDetail({ workflowId, onBack, onEditDraft, onOpenVersion,
       </article>)}
     </div>
 
+    {version && previousVersion && <section className="settings-section">
+      <h2 className="text-sm font-semibold">Version changes · v{previousVersion.version_number} → v{version.version_number}</h2>
+      <p className="text-xs text-[#777b72]">{versionChanges.length} changes · 메모는 비교에서 제외됩니다.</p>
+      <div className="max-h-72 overflow-auto">{versionChanges.map((change) => <article className="my-2 rounded border p-2 text-xs" key={change.path}><strong>{change.path}</strong><div className="break-all text-red-700">− {showChangeValue(change.before)}</div><div className="break-all text-green-800">+ {showChangeValue(change.after)}</div></article>)}</div>
+    </section>}
     {version && <section className="settings-section">
       <div className="settings-section-heading"><div><span className="subtle-label">Run published version</span><h2>Workflow inputs</h2></div><Button type="button" variant="secondary" onClick={() => void load()}><RefreshCw size={14} /> Refresh</Button></div>
       <label className="field-label"><span>Version</span><NativeSelect value={String(version.version_number)} onChange={(event) => { const next = Number(event.target.value); setSelectedVersion(next); setInputs(defaultInputs(versions.find((item) => item.version_number === next))); }}>{versions.map((item) => <option value={item.version_number} key={item.id}>v{item.version_number}</option>)}</NativeSelect></label>

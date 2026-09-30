@@ -536,3 +536,17 @@ make check
 6. 인증·Workspace 데이터 격리·관측성 운영 설정
 
 현재 상태는 편집 가능한 Canvas, 실제 Google 생성·Reference 분석·Format 추출·영상 번역, MinIO 기반 미디어 저장·재생과 로컬 FFmpeg 편집·렌더·QC 경로를 갖춘 MVP다. 자동화 테스트를 제외한 애플리케이션 경로는 Fixture 결과로 폴백하지 않는다.
+
+### YouTube 로그인 세션
+
+Settings → **YouTube**에서 계정 표시 이름과 로그인한 브라우저에서 내보낸 Netscape `cookies.txt`를 등록하고 **Enabled → Save connection**을 선택한다. 계정 하나의 세션을 저장하며 새 파일을 등록하면 교체된다. 파일 옆 삭제 버튼은 세션을 제거하고, Enabled를 끄면 공개 영상용 비로그인 다운로드로 돌아간다.
+
+YouTube 도메인 쿠키만 저장하고 다른 사이트의 쿠키는 제외한다. 쿠키는 기존 Provider secret 저장소에 보관하며 API 조회 응답에는 원문을 반환하지 않는다. 비밀번호나 Google OAuth 토큰을 입력하는 방식은 아니다. [yt-dlp 공식 내보내기 안내](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies)를 참고한다.
+
+등록 상태는 쿠키 형식과 로컬 만료 시각 검사 결과이며 YouTube 로그인 성공을 보장하지 않는다. 서버에서 세션을 폐기했거나 영상 접근 권한이 없는 경우 가져오기가 실패할 수 있다. 이때 새 쿠키 파일로 교체한다. API와 Worker는 매 요청마다 현재 세션을 읽고, 권한 `0600` 임시 파일로 다운로드 프로세스에 전달한 뒤 성공·실패 시 모두 삭제한다. 새 세션 등록은 이미 진행 중인 요청이 아니라 다음 요청부터 적용된다.
+
+YouTube 링크에는 `--js-runtimes node`를 명시한다. `yt-dlp`는 기본적으로 Deno만 활성화하므로, Node.js가 설치되어 있어도 이 옵션이 없으면 서명 해석 실패나 `The page needs to be reloaded` 오류가 날 수 있다. API/Worker 이미지는 Node.js와 버전이 고정된 `yt-dlp-ejs`를 포함한다. 호스트에서 실행하는 경우에도 Node.js 22 이상과 해당 yt-dlp 버전에 맞는 EJS 패키지가 필요하다. 이 실행 환경 오류는 세션 교체 오류와 구분해 표시한다.
+
+### 파일 저장소 선택과 이전
+
+Settings → **File storage**에서 MinIO, Cloudflare R2 또는 AWS S3 연결을 저장하고 기본 저장소로 선택할 수 있다. 기존 파일은 생성 당시 연결로 계속 읽는다. 같은 화면의 이전 도구는 대상 파일을 복사하고 해시·크기를 검증한 뒤 위치를 전환하며, 원본은 보존한다. AWS IAM Role과 연결별 키 갱신도 지원한다. 상세 설정과 CLI는 [`docs/storage-providers.md`](docs/storage-providers.md)를 참고한다.

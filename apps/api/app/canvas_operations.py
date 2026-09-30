@@ -4,13 +4,12 @@ import hashlib
 import io
 import json
 import math
-import os
 import re
 import shutil
 import subprocess
 import tempfile
 import wave
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -18,42 +17,13 @@ from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
 from .caption_documents import caption_document_to_ass, materialize_caption_fonts
-from .domain import ExperimentRunRequest
-from .motion_extraction import MOTION_EXTRACTOR_REVISION, MOTION_TRACK_VERSION, extract_holistic_motion
-from .providers_localization import SpeechSegment, SynthesizedSpeech, get_localization_services, get_speech_recognizer
-from .reference_analysis import REFERENCE_ANALYSIS_REVISION, analyze_reference_video
-from .service import create_artifact
-from .storage import get_storage, storage_location
+from .providers_localization import SpeechSegment, SynthesizedSpeech
+from .storage import get_artifact_storage, storage_location
 
 
 LOCAL_EXECUTOR_REVISION = "local-media.v1"
 LOCALIZATION_EXECUTOR_REVISION = "google-localization.v1"
 GOOGLE_SPEECH_EXECUTOR_REVISION = "google-speech.v4"
-LOCAL_MODELS: dict[str, tuple[str, str]] = {
-    "generation.resolve": ("local.policy", "generation-policy.v1"),
-    "script.fit_duration": ("local.script-fit", "script-fit.v1"),
-    "shot.plan": ("local.shot-plan", "shot-plan.v1"),
-    "reference.decompose": ("reference-analysis.pipeline", "reference-analysis.v1"),
-    "motion.extract": ("local.mediapipe.holistic", "mediapipe-holistic-landmarker"),
-    "video.translate": ("google.localization.pipeline", "chirp_3+gemini-3.1-pro-preview+gemini-2.5-flash-tts"),
-    "subtitle.align": ("google.stt.default", "chirp_3"),
-    "timeline.compose": ("local.timeline", "timeline.v1"),
-    "media.qc": ("local.ffprobe", "ffprobe"),
-}
-
-
-@dataclass(frozen=True)
-class CanvasOperationResult:
-    output: dict[str, object]
-    artifact_type: str
-    schema_id: str | None
-    provider_request_id: str
-    content: bytes
-    content_type: str
-    filename: str
-    input_artifact_ids: list[str]
-    metadata: dict[str, Any] = field(default_factory=dict)
-    input_artifact_roles: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -63,26 +33,14 @@ class ArtifactData:
     content_type: str
 
 
-def is_local_operation(node_key: str) -> bool:
-    return node_key in LOCAL_MODELS
-
-
-def resolve_local_model(node_key: str) -> tuple[str, str]:
-    return LOCAL_MODELS[node_key]
-
-
 def executor_revision(node_key: str) -> str:
-    if node_key == "reference.decompose":
-        mode = os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower()
-        separator = os.getenv("REFERENCE_AUDIO_SEPARATOR", "demucs").strip().lower()
-        return f"{REFERENCE_ANALYSIS_REVISION}:{mode}:{separator}"
-    if node_key == "motion.extract":
-        return MOTION_EXTRACTOR_REVISION
-    if node_key == "video.translate":
-        return LOCALIZATION_EXECUTOR_REVISION
-    if node_key == "subtitle.align" and os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").lower() == "live":
-        return GOOGLE_SPEECH_EXECUTOR_REVISION
-    return LOCAL_EXECUTOR_REVISION
+    """Compatibility entry point for callers predating the Executor Registry."""
+    from .nodes import node_registry
+
+    definition = node_registry.get(node_key, 1)
+    if definition is None:
+        raise ValueError(f"Node Definition was not found: {node_key}@1")
+    return node_registry.runtime_revision(definition, node_registry.resolve_config(definition, {}))
 
 
 def _run(command: list[str], *, timeout: int = 180) -> subprocess.CompletedProcess[str]:
@@ -110,11 +68,11 @@ def _artifact_ids(inputs: list[dict[str, Any]]) -> list[str]:
 
 def _read_artifacts(db: Session, inputs: list[dict[str, Any]]) -> list[ArtifactData]:
     artifacts: list[ArtifactData] = []
-    storage = get_storage()
     for artifact_id in _artifact_ids(inputs):
         record = db.get(ArtifactRecord, artifact_id)
         if not record:
             raise ValueError(f"input artifact does not exist: {artifact_id}")
+        storage = get_artifact_storage(record.uri, record.metadata_json)
         bucket, key = storage_location(record.uri, record.metadata_json)
         content_type = str((record.metadata_json.get("storage") or {}).get("content_type") or "application/octet-stream")
         artifacts.append(ArtifactData(record, storage.get_bytes(bucket=bucket, key=key), content_type))
@@ -609,306 +567,3 @@ def _qc_report(video: ArtifactData, parameters: dict[str, Any]) -> dict[str, Any
         "media": {"width": stream.get("width"), "height": stream.get("height"), "duration_ms": duration_ms},
         "sha256": hashlib.sha256(video.data).hexdigest(),
     }
-
-
-def _json_result(title: str, artifact_type: str, schema_id: str, payload: dict[str, Any], digest: str, input_ids: list[str]) -> CanvasOperationResult:
-    content = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2).encode()
-    return CanvasOperationResult(
-        {"kind": "json", "title": title, "text": content.decode()}, artifact_type, schema_id,
-        f"local_{digest[:20]}", content, "application/json", f"{artifact_type.lower()}.json", input_ids,
-    )
-
-
-def execute_canvas_operation(db: Session, payload: ExperimentRunRequest, digest: str) -> CanvasOperationResult:
-    artifacts = _read_artifacts(db, payload.inputs)
-    input_ids = [artifact.record.id for artifact in artifacts]
-    node_key = payload.node_key
-
-    if node_key == "generation.resolve":
-        source_text = [str(item.get("config_text") or item.get("output_text") or item.get("description") or item.get("label") or "").strip() for item in payload.inputs]
-        spec = {
-            "version": "generation.spec.v1",
-            "brief": next((text for text in source_text if text), payload.prompt),
-            "target_duration_seconds": int(payload.parameters.get("target_duration_seconds") or 38),
-            "aspect_ratio": payload.parameters.get("aspect_ratio") or "9:16",
-            "input_artifact_ids": input_ids,
-        }
-        return _json_result("Generation specification", "GenerationSpec", "generation.spec.v1", spec, digest, input_ids)
-
-    if node_key == "reference.decompose":
-        video = _require(artifacts, "Video", "Video", "FinalVideo", "ProxyVideo", "ReferenceOriginal")
-        separate_music = payload.parameters.get("separate_music")
-        bundle = analyze_reference_video(
-            video.data,
-            video.content_type,
-            language_code=str(payload.parameters.get("source_language") or "auto"),
-            separate_music=True if separate_music is None else bool(separate_music),
-            scene_threshold=float(payload.parameters.get("scene_threshold") or 0.28),
-        )
-        metadata = {
-            "access_scope": "reference-analyzer-only",
-            "storage_scope": "reference",
-            "source_artifact_id": video.record.id,
-            "duration_ms": int(bundle.manifest["source"]["duration_ms"]),
-            "immutable": True,
-        }
-        source_roles = {video.record.id: "source_video"}
-        derived: dict[str, ArtifactRecord] = {}
-        if bundle.audio_mix is not None:
-            derived["audio_mix"] = create_artifact(
-                db,
-                "ReferenceAudioMix",
-                schema_id="reference.audio.mix.v1",
-                input_artifact_ids=[video.record.id],
-                input_artifact_roles=source_roles,
-                metadata=metadata,
-                content=bundle.audio_mix,
-                content_type="audio/wav",
-                filename="reference-audio.wav",
-            )
-        transcript_parent = derived.get("audio_mix")
-        if bundle.transcript is not None:
-            transcript_input = transcript_parent.id if transcript_parent else video.record.id
-            derived["transcript"] = create_artifact(
-                db,
-                "ReferenceTranscript",
-                schema_id="transcript.v1",
-                input_artifact_ids=[transcript_input],
-                input_artifact_roles={transcript_input: "source_audio"},
-                metadata=metadata,
-                content=bundle.transcript,
-                content_type="application/json",
-                filename="transcript.json",
-            )
-        if bundle.subtitles is not None:
-            subtitle_parent = derived.get("transcript")
-            subtitle_input = subtitle_parent.id if subtitle_parent else video.record.id
-            derived["subtitle"] = create_artifact(
-                db,
-                "ReferenceSubtitle",
-                schema_id="subtitle.srt.v1",
-                input_artifact_ids=[subtitle_input],
-                input_artifact_roles={subtitle_input: "timed_transcript"},
-                metadata=metadata,
-                content=bundle.subtitles,
-                content_type="application/x-subrip",
-                filename="transcript.srt",
-            )
-        for key, artifact_type, content, filename in (
-            ("vocals", "ReferenceVocals", bundle.vocals, "vocals.wav"),
-            ("accompaniment", "ReferenceAccompaniment", bundle.accompaniment, "accompaniment.wav"),
-        ):
-            if content is None:
-                continue
-            stem_parent = derived.get("audio_mix")
-            stem_input = stem_parent.id if stem_parent else video.record.id
-            derived[key] = create_artifact(
-                db,
-                artifact_type,
-                schema_id="reference.audio.stem.v1",
-                input_artifact_ids=[stem_input],
-                input_artifact_roles={stem_input: "source_mix"},
-                metadata={**metadata, "stem": key, "contains_sound_effects_possible": key == "accompaniment"},
-                content=content,
-                content_type="audio/wav",
-                filename=filename,
-            )
-        db.flush()
-        bundle.manifest["artifacts"] = {key: artifact.id for key, artifact in derived.items()}
-        manifest_content = json.dumps(bundle.manifest, ensure_ascii=False, sort_keys=True, indent=2).encode()
-        manifest_inputs = [video.record.id, *(artifact.id for artifact in derived.values())]
-        manifest_roles = {
-            video.record.id: "source_video",
-            **{artifact.id: key for key, artifact in derived.items()},
-        }
-        visual = bundle.manifest["visual"]
-        audio = bundle.manifest["audio"]
-        title = (
-            f"Reference analysis · {len(visual['shots'])} shots · "
-            f"{len(visual['actions'])} actions · {len(audio['sound_effects'])} SFX"
-        )
-        return CanvasOperationResult(
-            {"kind": "json", "title": title, "text": manifest_content.decode()},
-            "ReferenceAnalysis",
-            "reference.decomposition.v1",
-            bundle.provider_request_id,
-            manifest_content,
-            "application/json",
-            "reference-analysis.json",
-            manifest_inputs,
-            metadata={**metadata, "component_artifact_ids": bundle.manifest["artifacts"]},
-            input_artifact_roles=manifest_roles,
-        )
-
-    if node_key == "motion.extract":
-        video = _require(artifacts, "Video", "Video", "FinalVideo", "ProxyVideo", "ReferenceOriginal")
-        motion = extract_holistic_motion(
-            video.data,
-            video.content_type,
-            sample_fps=float(payload.parameters.get("motion_sample_fps") or os.getenv("MOTION_EXTRACT_FPS") or 12),
-            max_width=int(payload.parameters.get("motion_max_width") or os.getenv("MOTION_EXTRACT_MAX_WIDTH") or 640),
-            min_confidence=float(payload.parameters.get("motion_min_confidence") or 0.5),
-            output_face_blendshapes=bool(payload.parameters.get("motion_face_blendshapes", True)),
-        )
-        content = json.dumps(motion, ensure_ascii=False, separators=(",", ":")).encode()
-        summary = motion["summary"]
-        coverage = summary["coverage"]
-        return CanvasOperationResult(
-            {
-                "kind": "json",
-                "title": f"Holistic motion · {summary['frame_count']} frames",
-                "frameCount": summary["frame_count"],
-                "sampleFps": motion["source"]["sample_fps"],
-                "faceCoverage": coverage["face"],
-                "poseCoverage": coverage["pose"],
-                "leftHandCoverage": coverage["left_hand"],
-                "rightHandCoverage": coverage["right_hand"],
-            },
-            "MotionTrack",
-            MOTION_TRACK_VERSION,
-            f"local_{digest[:20]}",
-            content,
-            "application/json",
-            "motion-track.json",
-            input_ids,
-            metadata={
-                "source": "mediapipe_holistic",
-                "duration_ms": motion["source"]["duration_ms"],
-                "frame_count": summary["frame_count"],
-                "sample_fps": motion["source"]["sample_fps"],
-                "coverage": coverage,
-                "immutable": True,
-            },
-            input_artifact_roles={video.record.id: "source_video"},
-        )
-
-    if node_key in {"script.fit_duration", "shot.plan"}:
-        script_artifact = _require(artifacts, "Script", "Script", "TimedScript")
-        script = _text_from_artifact(script_artifact)
-        target_seconds = int(payload.parameters.get("target_duration_seconds") or 38)
-        if node_key == "script.fit_duration":
-            target_chars = max(20, round(target_seconds * 4.7))
-            fitted = script if len(script) <= target_chars else script[:target_chars].rsplit(" ", 1)[0].rstrip() + "…"
-            return CanvasOperationResult(
-                {"kind": "text", "title": f"Timed script · {target_seconds}s", "text": fitted},
-                "TimedScript", "script.timed.v1", f"local_{digest[:20]}", fitted.encode(), "text/plain", "script.txt", input_ids,
-            )
-        shot_duration = 6
-        shot_count = max(1, math.ceil(target_seconds / shot_duration))
-        shots = [{"index": index + 1, "start_ms": index * shot_duration * 1000, "duration_ms": min(shot_duration, target_seconds - index * shot_duration) * 1000} for index in range(shot_count)]
-        return _json_result("Shot plan", "ShotPlan", "shot.plan.v1", {"version": "shot.plan.v1", "shots": shots}, digest, input_ids)
-
-    if node_key == "video.translate":
-        video = _require(artifacts, "Video", "Video", "FinalVideo")
-        source_language = str(payload.parameters.get("source_language") or "auto")
-        target_language = str(payload.parameters.get("target_language") or "ko-KR")
-        voice_name = str(payload.parameters.get("voice_name") or "Kore")
-        speech_audio, duration_ms = _extract_speech_audio(video)
-        services = get_localization_services()
-        transcript = services.recognizer.transcribe(
-            speech_audio,
-            language_code=source_language,
-            duration_ms=duration_ms,
-        )
-        translation = services.translator.translate(transcript, target_language=target_language)
-        speech = services.synthesizer.synthesize(
-            translation.text,
-            language_code=target_language,
-            voice_name=voice_name,
-        )
-        translated_audio = _synthesized_wav(speech)
-        subtitles = _segments_to_srt(translation.segments)
-        transcript_payload = {
-            "version": "transcript.v1",
-            "language_code": transcript.language_code,
-            "text": transcript.text,
-            "segments": [segment.__dict__ for segment in transcript.segments],
-        }
-        translation_payload = {
-            "version": "translation.v1",
-            "source_language": transcript.language_code,
-            "target_language": target_language,
-            "text": translation.text,
-            "segments": [segment.__dict__ for segment in translation.segments],
-        }
-        transcript_content = json.dumps(transcript_payload, ensure_ascii=False, indent=2).encode()
-        translation_content = json.dumps(translation_payload, ensure_ascii=False, indent=2).encode()
-        common_metadata = {"experiment_node_id": payload.node_id, "immutable": True}
-        transcript_artifact = create_artifact(
-            db, "Transcript", schema_id="transcript.v1", content=transcript_content,
-            content_type="application/json", filename="transcript.json", metadata=common_metadata,
-        )
-        translation_artifact = create_artifact(
-            db, "TranslatedTranscript", schema_id="translation.v1", content=translation_content,
-            content_type="application/json", filename="translation.json",
-            metadata={**common_metadata, "provider_request_id": translation.provider_request_id},
-        )
-        audio_artifact = create_artifact(
-            db, "Audio", content=translated_audio, content_type="audio/wav", filename="translated.wav",
-            metadata={**common_metadata, "provider_request_id": speech.provider_request_id, "voice_name": voice_name},
-        )
-        subtitle_artifact = create_artifact(
-            db, "Subtitle", schema_id="subtitle.srt.v1", content=subtitles,
-            content_type="application/x-subrip", filename="translated.srt",
-            metadata={**common_metadata, "language_code": target_language},
-        )
-        db.flush()
-        translated_audio_data = ArtifactData(audio_artifact, translated_audio, "audio/wav")
-        translated_subtitle_data = ArtifactData(subtitle_artifact, subtitles, "application/x-subrip")
-        content = _replace_audio(video, translated_audio_data, translated_subtitle_data, language=target_language)
-        derived_ids = [transcript_artifact.id, translation_artifact.id, audio_artifact.id, subtitle_artifact.id]
-        return CanvasOperationResult(
-            {
-                "kind": "video",
-                "title": f"Translated video · {target_language}",
-                "mimeType": "video/mp4",
-                "sourceLanguage": transcript.language_code,
-                "targetLanguage": target_language,
-                "transcriptArtifactId": transcript_artifact.id,
-                "translationArtifactId": translation_artifact.id,
-                "audioArtifactId": audio_artifact.id,
-                "subtitleArtifactId": subtitle_artifact.id,
-                "ttsProviderRequestId": speech.provider_request_id,
-            },
-            "Video", "video.translation.v1", translation.provider_request_id,
-            content, "video/mp4", "translated.mp4", [*input_ids, *derived_ids],
-        )
-
-    if node_key == "subtitle.align":
-        audio = _require(artifacts, "Audio", "Audio")
-        with tempfile.TemporaryDirectory(prefix="frameflow-subtitle-") as temp_dir:
-            audio_path = _write_artifact(Path(temp_dir), audio, 0)
-            duration = _duration_seconds(_probe(audio_path))
-        alignment_mode = os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").strip().lower()
-        if alignment_mode == "live":
-            transcript = get_speech_recognizer().transcribe(
-                audio.data,
-                language_code=str(payload.parameters.get("source_language") or payload.parameters.get("language") or "auto"),
-                duration_ms=round(duration * 1000),
-            )
-            content = _segments_to_srt(transcript.segments)
-            title = f"Speech subtitles · {transcript.language_code}"
-        elif alignment_mode == "heuristic":
-            if os.getenv("APP_ENV") != "test":
-                raise ValueError("SUBTITLE_ALIGNMENT_MODE=heuristic is only allowed when APP_ENV=test")
-            script_artifact = _require(artifacts, "Script", "Script", "TimedScript")
-            content = _build_subtitles(_text_from_artifact(script_artifact), duration)
-            title = "Timed subtitles"
-        else:
-            raise ValueError("SUBTITLE_ALIGNMENT_MODE must be live or heuristic")
-        return CanvasOperationResult(
-            {"kind": "text", "title": title, "text": content.decode()}, "Subtitle", "subtitle.srt.v1",
-            f"local_{digest[:20]}", content, "application/x-subrip", "subtitles.srt", input_ids,
-        )
-
-    if node_key == "timeline.compose":
-        timeline = _timeline(artifacts, payload.parameters)
-        return _json_result("Timeline", "Timeline", "timeline.v1", timeline, digest, input_ids)
-
-    if node_key == "media.qc":
-        video = _require(artifacts, "Video", "Video", "FinalVideo")
-        report = _qc_report(video, payload.parameters)
-        title = "QC passed" if report["passed"] else "QC failed"
-        return _json_result(title, "QCReport", "qc.report.v1", report, digest, input_ids)
-
-    raise ValueError(f"unsupported local Canvas operation: {node_key}")

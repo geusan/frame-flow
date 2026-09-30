@@ -21,8 +21,8 @@ def health(
 
 
 @router.get("/node-definitions")
-def list_node_definitions() -> list[dict[str, Any]]:
-    return [definition.public_payload() for definition in node_registry.list(lifecycle="ACTIVE")]
+def list_node_definitions(include_inactive: bool = False) -> list[dict[str, Any]]:
+    return [definition.public_payload() for definition in node_registry.list(lifecycle=None if include_inactive else "ACTIVE")]
 
 
 @router.get("/node-port-types")

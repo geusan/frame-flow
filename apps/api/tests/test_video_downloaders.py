@@ -176,3 +176,18 @@ def test_unknown_video_downloader_is_a_configuration_error(monkeypatch):
 
     with pytest.raises(VideoDownloaderError, match="unknown video downloader provider"):
         get_video_downloader()
+
+
+def test_playlist_video_only_download_skips_optional_subtitle_requests(monkeypatch):
+    adapter = YtDlpVideoDownloaderAdapter(download_subtitles=False)
+    def run(command, **kwargs):
+        assert '--write-auto-subs' not in command
+        assert '--write-subs' not in command
+        directory = kwargs['cwd']
+        (directory/'123.mp4').write_bytes(b'video')
+        (directory/'123.jpg').write_bytes(b'image')
+        return subprocess.CompletedProcess(command,0,stdout='',stderr='')
+    monkeypatch.setattr(video_downloaders,'validate_public_url',lambda url:url)
+    monkeypatch.setattr(video_downloaders.subprocess,'run',run)
+    monkeypatch.setattr(video_downloaders,'_probe_video_duration_seconds',lambda path:30)
+    assert adapter.download('https://vimeo.com/123').subtitle is None

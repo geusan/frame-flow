@@ -19,6 +19,7 @@ from .infrastructure.node_execution import (
     SqlAlchemyNodeCharacterMotionRuntime,
     SqlAlchemyNodeMediaRuntime,
     SqlAlchemyNodeProviderSettings,
+    SqlAlchemyNodeProviderTasks,
 )
 from .nodes.contracts import NodeExecutionContext
 from .providers import model_id_for_alias
@@ -129,6 +130,7 @@ def validate_model_for_node(node_key: str, model_alias: str, contract_version: i
     definition = node_registry.get(node_key, contract_version)
     if definition is None:
         raise ValueError(f"Node Definition was not found: {node_key}@{contract_version}")
+    node_registry.assert_runnable(definition)
     if definition.execution.model_families:
         if not model_alias.startswith(tuple(definition.execution.model_families)):
             raise ValueError(f"{node_key} requires one of these model families: {', '.join(definition.execution.model_families)}")
@@ -277,6 +279,7 @@ def run_experiment(
             media_runtime=SqlAlchemyNodeMediaRuntime(db),
             character_lora_runtime=SqlAlchemyNodeCharacterLoraRuntime(db),
             character_motion_runtime=SqlAlchemyNodeCharacterMotionRuntime(db),
+            provider_tasks=SqlAlchemyNodeProviderTasks(db, record.id, digest),
         ) if definition else None
         if context is None:
             raise ValueError(

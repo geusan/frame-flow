@@ -4,6 +4,13 @@ Status: Proposed
 작성 기준: 2026-08-31
 범위: 설계만 포함하며 Migration, API, UI 구현은 포함하지 않는다.
 
+## 구현 현황 — 2026-09-18
+
+Phase 1~4의 핵심 흐름에 Prompt 다중 binding, Primary/Secondary 출력 선택, 게시 검토/Release notes,
+Version diff와 과거 Version의 새 Draft 복원을 연결했다. 복원은 기존 Draft를 별도 Canvas로 보존하며
+Version/Run/Artifact를 수정하지 않는다. 상세 검증과 호환 경계는 [플랫폼 마무리 기록](platform-completion.md)을 참고한다.
+Phase 5의 Workspace/권한/운영 보강은 별도 제품화 단계다.
+
 ## 1. 결론
 
 Frameflow에서는 다음 다섯 개념을 분리한다.

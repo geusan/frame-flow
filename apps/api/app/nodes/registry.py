@@ -8,6 +8,9 @@ from typing import Any
 from .contracts import NodeDefinition, NodeExecutionContext, NodeExecutionResult, NodeExecutor
 from .editor_refs import node_editor_ref_registry
 from .executors.character_turnaround import CharacterTurnaroundExecutor, TurnaroundTo3DExecutor
+from .executors.practice import StudyScreenExecutor, PracticeTrackExecutor, PracticeMotionExecutor, PracticeGuideExecutor
+from .executors.performance_transfer import PerformanceTransferExecutor, VoiceConvertExecutor
+from .executors.reference_captions import ReferenceCaptionsExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -98,8 +101,14 @@ class NodeRegistry:
         parameters: dict[str, Any],
         typed_inputs: list[dict[str, Any]],
     ) -> NodeExecutionResult:
+        self.assert_runnable(context.definition)
         config = self.resolve_config(context.definition, parameters)
         return self._executors[context.definition.execution.executor].execute(context, config, typed_inputs)
+
+    @staticmethod
+    def assert_runnable(definition: NodeDefinition) -> None:
+        if definition.lifecycle in {"BLOCKED", "RETIRED"}:
+            raise ValueError(f"Node cannot run: {definition.type_key}@{definition.contract_version} is {definition.lifecycle}")
 
     def can_execute(self, context: NodeExecutionContext) -> bool:
         executor = self._executors[context.definition.execution.executor]
@@ -194,7 +203,14 @@ class NodeRegistry:
 node_registry = NodeRegistry(
     definitions_dir=Path(__file__).with_name("definitions"),
     executors={
+        "study-screen": StudyScreenExecutor(),
+        "practice-track": PracticeTrackExecutor(),
+        "practice-motion": PracticeMotionExecutor(),
+        "practice-guide": PracticeGuideExecutor(),
         "audio-extract": AudioExtractExecutor(),
+        "performance-transfer": PerformanceTransferExecutor(),
+        "voice-convert": VoiceConvertExecutor(),
+        "reference-captions": ReferenceCaptionsExecutor(),
         "caption-timeline": CaptionTimelineExecutor(),
         "character-auto-rig": AutoRigExecutor(),
         "character-auto-rig-tripo": TripoAutoRigExecutor(),
@@ -205,6 +221,7 @@ node_registry = NodeRegistry(
         "character-turnaround": CharacterTurnaroundExecutor(),
         "character-turnaround-to-3d": TurnaroundTo3DExecutor(),
         "character-reference-validation": CharacterReferenceValidationExecutor(),
+        "character-generation": LegacyCompatibilityExecutor((CharacterGenerationCapabilityExecutor(), FixtureProviderCapabilityExecutor())),
         "humanoid-motion-cleanup": HumanoidMotionCleanupExecutor(),
         "humanoid-motion-extraction": HumanoidMotionExtractionExecutor(),
         "humanoid-motion-retarget": HumanoidMotionRetargetExecutor(),

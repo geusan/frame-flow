@@ -10,7 +10,7 @@ from .database import ArtifactRecord
 from .providers_fal import FAL_FLUX2_TRAINER_MODEL, get_fal_generation_services
 from .r2_training_storage import build_captioned_lora_archive, get_r2_training_dataset_store
 from .service import audit, create_artifact
-from .storage import get_storage, storage_location
+from .storage import get_artifact_storage, storage_location
 
 
 TERMINAL_LORA_STATUSES = {"READY", "FAILED", "CANCELLED"}
@@ -56,12 +56,12 @@ def start_character_lora_training(
     generated_ids = [str(value) for value in metadata.get("image_artifact_ids") or []]
     image_ids = list(dict.fromkeys([*reference_ids, *generated_ids]))
     roles = [str(value) for value in metadata.get("image_roles") or []]
-    storage = get_storage()
     training_images: list[tuple[str, bytes, str]] = []
     for image_id in image_ids:
         image = db.get(ArtifactRecord, image_id)
         if not image or image.type != "Image":
             continue
+        storage = get_artifact_storage(image.uri, image.metadata_json)
         bucket, key = storage_location(image.uri, image.metadata_json)
         content_type = str((image.metadata_json.get("storage") or {}).get("content_type") or "image/png")
         extension = "jpg" if "jpeg" in content_type or "jpg" in content_type else "webp" if "webp" in content_type else "svg" if "svg" in content_type else "png"
@@ -88,7 +88,8 @@ def start_character_lora_training(
         "learning_rate": learning_rate,
         "image_artifact_ids": image_ids,
         "dataset": {
-            "provider": "r2",
+            "provider": getattr(dataset, "provider", "r2"),
+            **({"profile_id": dataset.profile_id} if getattr(dataset, "profile_id", None) else {}),
             "bucket": dataset.bucket,
             "key": dataset.key,
             "uri": dataset.uri,

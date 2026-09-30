@@ -24,7 +24,7 @@ from ...database import (
 from ...domain import ExtractionRecipeRequest, FormatRunRequest, MergeRequest, VariationRequest
 from ...format_extraction import FormatSource, get_format_extractor
 from ...service import create_artifact, new_id
-from ...storage import get_storage, storage_location
+from ...storage import get_artifact_storage, storage_location
 
 
 class LegacySqlAlchemyFormatOperations:
@@ -74,7 +74,6 @@ class LegacySqlAlchemyFormatOperations:
                 for artifact in proxy_artifacts
                 if artifact.metadata_json.get("reference_id")
             }
-            storage = get_storage()
             sources: list[FormatSource] = []
             for reference in references:
                 assert reference is not None
@@ -83,6 +82,7 @@ class LegacySqlAlchemyFormatOperations:
                     raise FormatValidationError(
                         f"reference has no ProxyVideo artifact: {reference.id}"
                     )
+                storage = get_artifact_storage(proxy.uri, proxy.metadata_json)
                 bucket, key = storage_location(proxy.uri, proxy.metadata_json)
                 sources.append(
                     FormatSource(

@@ -14,7 +14,9 @@
     "test:avatar-2d": "node --experimental-strip-types scripts/test-avatar-2d.mjs",
     "test:shoulder-lab": "node scripts/test-shoulder-lab.mjs",
     "test:avatar-expressions": "node --experimental-strip-types scripts/test-avatar-expressions.mjs",
-    "test:face-rig2d": "node --experimental-strip-types scripts/test-face-rig2d.mjs"
+    "test:face-rig2d": "node --experimental-strip-types scripts/test-face-rig2d.mjs",
+    "test:workflow-contract": "node --experimental-strip-types scripts/test-workflow-contract.mjs",
+    "test:artifact-source": "node --experimental-strip-types scripts/test-artifact-source.mjs"
   },
   "dependencies": {
     "@google/model-viewer": "4.3.1",

@@ -326,6 +326,8 @@ Local profile의 인증 비활성화는 명시적 설정으로만 허용하며 �
 
 ### M1. Stable contracts
 
+2026-09-18: 핵심 구현 및 로컬 검증 완료. Legacy client/Run 호환 Adapter는 지원 종료 전까지 유지한다. [검증 기록](platform-completion.md).
+
 - Node 리팩터링 Phase 3~7 완료
 - Canonical Canvas/Workflow 저장과 Architecture guard
 

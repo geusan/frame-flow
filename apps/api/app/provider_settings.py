@@ -76,6 +76,17 @@ def _field(
 
 
 PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
+    "youtube": ProviderDefinition(
+        key="youtube", label="YouTube",
+        description="영상 가져오기에 사용할 YouTube 로그인 세션",
+        fields=(
+            _field("account_label", "계정 표시 이름", "YOUTUBE_ACCOUNT_LABEL", placeholder="개인 계정 / 작업용 계정"),
+            _field("cookies_txt", "로그인 cookies.txt", "YOUTUBE_COOKIES_TXT", secret=True,
+                   input_kind="cookies_txt", help_text="YouTube에 로그인한 뒤 내보낸 Netscape cookies.txt (최대 256 KB). YouTube 쿠키만 저장하며, 만료되면 새 파일로 교체하세요."),
+        ),
+        auth_methods=(ProviderAuthMethod("cookies", "로그인 세션", "YouTube cookies.txt로 인증합니다. 비밀번호는 저장하지 않습니다.", kind="session", required_fields=("cookies_txt",)),),
+        default_auth_method="cookies", order=11,
+    ),
     "openai": ProviderDefinition(
         key="openai",
         label="OpenAI",
@@ -241,7 +252,7 @@ PROVIDER_DEFINITIONS: dict[str, ProviderDefinition] = {
     "r2": ProviderDefinition(
         key="r2",
         label="Cloudflare R2",
-        description="Private LoRA training datasets with time-limited download URLs",
+        description="Legacy LoRA dataset connection; cloud File storage is used when selected",
         fields=(
             _field("account_id", "Cloudflare account ID", "R2_ACCOUNT_ID", placeholder="32-character account ID", help_text="R2 Overview에서 확인할 수 있습니다.", auth_methods=("s3_api",)),
             _field("bucket", "Training bucket", "R2_TRAINING_BUCKET", default="frameflow-lora-training", placeholder="frameflow-lora-training", help_text="LoRA ZIP 전용 비공개 버킷 이름입니다.", auth_methods=("s3_api",)),
@@ -319,6 +330,12 @@ def provider_is_configured(record: ProviderSettingRecord) -> bool:
         and not method.external
         and all(values.get(key, "").strip() for key in method.required_fields)
     )
+    if record.provider == "youtube" and configured:
+        from .youtube_session import normalize_youtube_cookies, session_expired
+        try:
+            return not session_expired(normalize_youtube_cookies(values["cookies_txt"]))
+        except ValueError:
+            return False
     if record.provider == "tripo" and record.source == "database":
         return bool(configured and (record.configuration or {}).get(TRIPO_CREDENTIAL_STATUS_KEY) == "validated")
     return configured
@@ -421,6 +438,8 @@ def apply_provider_settings_to_environment(records: list[ProviderSettingRecord])
     """Keep existing provider clients compatible while making the DB authoritative."""
     for record in records:
         definition = PROVIDER_DEFINITIONS.get(record.provider)
+        if record.provider == "youtube":
+            continue
         if not definition:
             continue
         if record.provider == "google":
@@ -456,6 +475,17 @@ def provider_settings_payload(record: ProviderSettingRecord) -> dict[str, Any]:
     local_status = _local_connection_status(record, auth_method, values)
     configured = provider_is_configured(record)
     connection = local_status.payload() if local_status is not None else None
+    if record.provider == "youtube":
+        present = bool(values.get("cookies_txt"))
+        connection = {
+            "ready": configured,
+            "state": "session_saved" if configured else "disabled" if not record.enabled else "needs_session",
+            "account": values.get("account_label", ""),
+            "message": ("로그인 세션 저장됨 · 실제 로그인 유효성은 영상 가져오기 시 확인합니다."
+                        if configured else "YouTube 연결이 꺼져 있습니다." if not record.enabled
+                        else "세션이 만료되었거나 유효하지 않습니다. cookies.txt를 교체하세요." if present
+                        else "로그인한 YouTube의 cookies.txt를 등록하세요."),
+        }
     if record.provider == "tripo":
         configuration = record.configuration or {}
         validated = configuration.get(TRIPO_CREDENTIAL_STATUS_KEY) == "validated"
@@ -542,6 +572,9 @@ def update_provider_settings(
             service_project = str(service_account["project_id"])
             configuration["project_id"] = service_project
             value = json.dumps(service_account, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        if record.provider == "youtube" and key == "cookies_txt" and value:
+            from .youtube_session import normalize_youtube_cookies
+            value = normalize_youtube_cookies(value)
         if value:
             target[key] = value
         elif not fields[key].secret:

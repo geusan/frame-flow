@@ -1,10 +1,32 @@
 # 기존 Node 계약화 리팩터링 계획
 
-Status: Proposed
+Status: Core implementation complete; historical compatibility adapters retained
 작성 기준: 2026-08-31
 범위: 현재 저장소에 이미 존재하는 Canvas/Generation Node를 버전이 있는 공통 Node Protocol로 전환한다.
 
 ## 구현 상태
+
+2026-09-18 마무리: Phase 0~6의 핵심 계약과 Web 작성·게시·실행 흐름을 구현했고, Phase 7의 수동 production Library/사용되지 않는 중앙 dispatch 제거와 Architecture guard를 완료했다. 과거 Canvas/API/Run snapshot의 호환 Adapter는 지원 계약으로 유지한다. 외부 클라이언트 전환 확인 없이 호환 API를 제거하는 작업은 하지 않는다.
+
+- Canonical Canvas는 직접 검증·조회·저장하고 Publish compiler도 Canonical graph를 사용한다.
+- Workflow Prompt 다중 binding, 입력 재사용/rename, Primary/Secondary 결과 선택, 게시 검토/Release notes를 제공한다.
+- Frozen Version diff와 `Edit as draft`를 연결했다. 복원 시 과거 Version과 기존 Draft를 모두 보존한다.
+- Fixture/Local/Provider capability와 Human gate Registry 전환이 반영됐다. `execute_canvas_operation`과 production `legacyNodeTemplates`는 제거됐다.
+- Unknown Node/Edge를 로드 중 지우거나 최신 계약으로 바꾸지 않는다. 미사용 가지는 Publish 전에 제외한다.
+- 59개 type_key / 78개 versioned Definition (ACTIVE 69, DEPRECATED 9). 원래 31개 Node 외 추가 vertical slice를 포함한다.
+- 자세한 구현·검증·유지하는 경계: [플랫폼 마무리 기록](docs/platform-completion.md).
+
+2026-10-01 추가: `video.performance_transfer@1`, `audio.voice_convert@1`,
+`video.reference_captions@1`을 Registry/native Executor/Generic Inspector 계약으로 등록했다.
+캐릭터 연기 전사, 지정 목소리 변환, 원본 화면 자막 렌더를 분리하고 기존 Audio Extract와
+Audio 결합 Node에 연결한다. Provider checkpoint는 알려진 fal 요청의 재개와 불명확한
+유료 요청의 중복 제출 방지를 담당한다. 신규 계약과 기존 typed Artifact 연결의 호환 수정,
+Local/Temporal parity, Publish reachability 검증은
+[캐릭터 레퍼런스 영상 제작](docs/character-performance-workflow.md)에 기록한다.
+
+### 이전 진행 기록 (2026-08-31 이후)
+
+아래는 당시 상태이며, 남은 작업 표현은 위의 최신 상태로 대체한다.
 
 2026-08-31 기준:
 
@@ -710,3 +732,11 @@ Publish 후 Canvas는 잠그지 않는다. WorkflowVersion graph만 불변으로
 11. Legacy write 제거와 Architecture CI guard
 
 각 PR은 동작 변경인지 구조 변경인지 명시하고, 구조 변경 PR에서는 기존 Golden output의 의도하지 않은 변경을 허용하지 않는다.
+
+### 히소히소 두 입력 릴스 vertical slice
+
+`image.study_screen@1`, `audio.practice_track@1`, `image.practice_motion@1`, `subtitle.practice_guide@1`과 `data.practice_timing.v1`을 등록했다. 일본어/한국어 입력으로 실제 Flutter 화면, TTS, 연습 트랙, 장면 길이, 안내 자막을 생성하며 기존 Frame/Caption/Audio mux 계약을 조합한다. 기존 Definition digest는 유지하고 새 Node는 Generic Inspector를 사용한다. 운영 범위와 검증은 [두 입력 워크플로우](docs/hisohiso-two-input-workflow.md)에 기록한다.
+
+- 2026-09-27: `reference.decompose@2` adds an OpenAI-only reference analysis path (ChatGPT frames, Whisper STT, actual-audio SFX/music analysis). V1 Definition/digest remains frozen. The shared capability Executor serves Local and Temporal, Generic Inspector exposes sampling configuration, and explicit Draft migration instructions are in `docs/reference-analysis-openai.md`.
+
+- 2026-09-30: `character.generate@2` adds an OpenAI-only studio Character plan, four original references plus a generated baseline, eight studio views, and Generic Inspector. V1 story scenes/digest remain unchanged. Manual Draft migration and warnings: `docs/studio-character-generation.md`.

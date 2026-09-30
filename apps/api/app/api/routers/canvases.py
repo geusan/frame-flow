@@ -14,7 +14,7 @@ from ...canvas_packages import (
     export_canvas_template,
     import_canvas_template,
 )
-from ...canvas_documents import legacy_canvas_graph
+from ...canvas_documents import legacy_canvas_graph, is_canonical_canvas_document
 from ...contexts.canvases.application import (
     CanvasApplication,
     CanvasDetails,
@@ -46,6 +46,7 @@ def canvas_document_payload(details: CanvasDetails) -> dict[str, Any]:
         "created_at": canvas.created_at,
         "updated_at": canvas.updated_at,
         "name": canvas.name,
+        "document": deepcopy(graph) if is_canonical_canvas_document(graph) else None,
         "nodes": legacy_graph["nodes"],
         "edges": legacy_graph["edges"],
         "node_count": len(legacy_graph["nodes"]),

@@ -82,3 +82,6 @@ class AdministrationApplication:
 
     def workspace_summary(self) -> dict[str, Any]:
         return self._operations.workspace_summary()
+
+    def storage_operation(self, action: str, values: dict[str, Any]) -> dict[str, Any]:
+        return self._operations.storage_operation(action, values)

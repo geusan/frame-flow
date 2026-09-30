@@ -33,7 +33,7 @@ class LegacyCompatibilityExecutor:
         if schema_id == "reference.decomposition.v1":
             mode = os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower()
             separator = os.getenv("REFERENCE_AUDIO_SEPARATOR", "demucs").strip().lower()
-            return f"reference-analysis.v1:{mode}:{separator}"
+            return f"{definition.execution.revision}:{mode}:{separator}"
         if schema_id == "motion.track.v1":
             return "mediapipe.holistic.v1"
         if schema_id == "subtitle.srt.v1":

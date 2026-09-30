@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import parse_qs, urlparse
 
+from .youtube_session import is_youtube_url, load_youtube_cookies, sanitize_download_metadata
+
 
 class VideoDownloaderError(RuntimeError):
     pass
@@ -134,8 +136,10 @@ class YtDlpVideoDownloaderAdapter:
         impersonate_target: str | None = "chrome",
         impersonate_domains: tuple[str, ...] = ("tiktok.com",),
         impersonate_attempts: int = 6,
+        download_subtitles: bool = True,
     ) -> None:
         self.executable = executable
+        self.download_subtitles = download_subtitles
         self.impersonate_target = (impersonate_target or "").strip() or None
         self.impersonate_domains = tuple(domain.strip().lower().lstrip(".") for domain in impersonate_domains if domain.strip())
         self.impersonate_attempts = max(1, impersonate_attempts)
@@ -152,6 +156,9 @@ class YtDlpVideoDownloaderAdapter:
             "--retries",
             "2",
         ]
+        if url and is_youtube_url(url):
+            # yt-dlp enables Deno by default, but our API/worker images ship Node.
+            command.extend(["--js-runtimes", "node"])
         if url and self.impersonate_target and self._should_impersonate(url):
             command.extend(["--impersonate", self.impersonate_target])
         return command
@@ -168,6 +175,41 @@ class YtDlpVideoDownloaderAdapter:
         timeout: int,
         failure_message: str,
         cwd: Path | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        cookies = ""
+        if is_youtube_url(url):
+            try:
+                cookies = load_youtube_cookies()
+            except ValueError as exc:
+                raise VideoDownloaderError(str(exc)) from None
+        if not cookies:
+            return self._run_command(command, url=url, timeout=timeout, failure_message=failure_message, cwd=cwd)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".txt", prefix="youtube-session-") as cookie_file:
+            cookie_file.write(cookies)
+            cookie_file.flush()
+            authenticated_command = [command[0], "--cookies", cookie_file.name, *command[1:]]
+            try:
+                return self._run_command(authenticated_command, url=url, timeout=timeout, failure_message=failure_message, cwd=cwd)
+            except VideoDownloaderError as exc:
+                # Classify locally; never return provider stderr containing session data.
+                detail = str(exc).lower()
+                if any(marker in detail for marker in ("signature solving failed", "n challenge solving failed", "no supported javascript runtime", "challenge solver")):
+                    raise VideoDownloaderError(
+                        f"{failure_message}: YouTube JavaScript processing failed. "
+                        "Check Node.js (22+) and the matching yt-dlp-ejs package on the download server."
+                    ) from None
+                if "yt-dlp is not installed" in detail:
+                    raise VideoDownloaderError("yt-dlp is not installed on the download server") from None
+                if "timed out" in detail:
+                    raise VideoDownloaderError(f"{failure_message}: YouTube request timed out. Please retry.") from None
+                raise VideoDownloaderError(
+                    f"{failure_message}: YouTube authenticated request failed. "
+                    "Check access to this video or replace cookies.txt in Settings → YouTube."
+                ) from None
+
+    def _run_command(
+        self, command: list[str], *, url: str, timeout: int,
+        failure_message: str, cwd: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         attempts = self.impersonate_attempts if self.impersonate_target and self._should_impersonate(url) else 1
         last_error: subprocess.CalledProcessError[str] | None = None
@@ -201,7 +243,7 @@ class YtDlpVideoDownloaderAdapter:
             failure_message="metadata inspection failed",
         )
         try:
-            info = json.loads(result.stdout)
+            info = sanitize_download_metadata(json.loads(result.stdout))
         except json.JSONDecodeError as exc:
             raise VideoDownloaderError("yt-dlp returned invalid metadata") from exc
         canonical_url = str(info.get("webpage_url") or safe_url)
@@ -250,15 +292,11 @@ class YtDlpVideoDownloaderAdapter:
                 "mp4",
                 "--write-info-json",
                 "--write-thumbnail",
-                "--write-subs",
-                "--write-auto-subs",
-                "--sub-langs",
-                "ko.*,en.*",
-                "--convert-subs",
-                "srt",
                 "--output",
                 template,
             ]
+            if self.download_subtitles:
+                command.extend(["--write-subs", "--write-auto-subs", "--sub-langs", "ko.*,en.*", "--convert-subs", "srt"])
             if max_filesize_bytes is not None:
                 command.extend(["--max-filesize", str(max_filesize_bytes)])
             if inspected_info:
@@ -287,7 +325,7 @@ class YtDlpVideoDownloaderAdapter:
                     f"video duration exceeds the {max_duration_seconds} second limit"
                 )
             info_path = next((path for path in files if path.name.endswith(".info.json")), None)
-            info = json.loads(info_path.read_text()) if info_path else {}
+            info = sanitize_download_metadata(json.loads(info_path.read_text())) if info_path else {}
             thumbnail_path = next(
                 (path for path in files if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}),
                 None,

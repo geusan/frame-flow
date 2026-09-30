@@ -70,5 +70,5 @@ def test_r2_training_store_uploads_private_zip_and_returns_presigned_get_url():
 def test_r2_training_settings_require_bucket_scoped_credentials(monkeypatch):
     for key in ("R2_ACCOUNT_ID", "R2_TRAINING_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"):
         monkeypatch.delenv(key, raising=False)
-    with pytest.raises(R2TrainingStorageError, match="Settings → Cloudflare R2"):
+    with pytest.raises(R2TrainingStorageError, match="Settings → File storage"):
         R2TrainingSettings.from_env()

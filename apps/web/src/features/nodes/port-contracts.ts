@@ -7,6 +7,7 @@ import type { NodeDefinitionRecord, NodePortTypeRegistryRecord } from "@/lib/api
 type ConnectionCandidate = Pick<Edge, "source" | "target" | "sourceHandle" | "targetHandle">;
 
 export interface ResolvedTargetPort {
+  key: string;
   typeId: string;
   multiple: boolean;
 }
@@ -59,7 +60,7 @@ export function targetPortContract(
     })
     : inputs.length === 1 ? 0 : -1;
   const port = index >= 0 ? inputs[index] : undefined;
-  return port ? { typeId: port.type, multiple: port.multiple } : undefined;
+  return port ? { key: port.key, typeId: port.type, multiple: port.multiple } : undefined;
 }
 
 export function portTypesCompatible(sourceType: string, targetType: string, registry: NodePortTypeRegistryRecord): boolean {

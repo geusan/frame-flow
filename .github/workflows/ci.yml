@@ -21,6 +21,7 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run ui:check
+      - run: npm run test:workflow-contract --workspace apps/web
       - run: npm run build
 
   python:

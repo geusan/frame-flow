@@ -70,6 +70,7 @@ XAI_MODEL_REGISTRY = {
 }
 
 FAL_MODEL_REGISTRY = {
+    "fal.video.performance": "fal-ai/kling-video/v3/pro/motion-control",
     "fal.image.flux2-lora": "fal-ai/flux-2/lora",
     "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",
 }
@@ -81,6 +82,10 @@ TRIPO_MODEL_REGISTRY = {
     "tripo.rig.biped": "v1.0-20240301",
 }
 
+ELEVENLABS_MODEL_REGISTRY = {
+    "elevenlabs.audio.voice_change": "eleven_multilingual_sts_v2",
+}
+
 ALL_MODEL_REGISTRY = {
     **MODEL_REGISTRY,
     **OPENAI_MODEL_REGISTRY,
@@ -88,6 +93,7 @@ ALL_MODEL_REGISTRY = {
     **XAI_MODEL_REGISTRY,
     **FAL_MODEL_REGISTRY,
     **TRIPO_MODEL_REGISTRY,
+    **ELEVENLABS_MODEL_REGISTRY,
 }
 
 

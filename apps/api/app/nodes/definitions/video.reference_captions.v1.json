@@ -1,0 +1,165 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.reference_captions",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Restore reference captions",
+    "description": "Reference Analysis의 원본 화면 텍스트를 위치·시간·색상과 함께 별도 레이어로 렌더",
+    "category": "Video",
+    "icon": "subtitle",
+    "cost_label": "$0.00",
+    "keywords": [
+      "reference",
+      "caption",
+      "overlay",
+      "text"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "video",
+        "type": "media.video.v1",
+        "label": "Video",
+        "required": true
+      },
+      {
+        "key": "analysis",
+        "type": "data.reference_analysis.v1",
+        "label": "Reference text tracks",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "video",
+        "type": "media.video.v1",
+        "label": "Captioned Video"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "font_family",
+      "font_scale",
+      "outline_width",
+      "accent_color",
+      "outline_color",
+      "text_overrides",
+      "timing_overrides",
+      "accent_track_ids",
+      "boxed_track_ids",
+      "callout_anchor_id",
+      "callout_target_ids",
+      "extra_tracks"
+    ],
+    "properties": {
+      "font_family": {
+        "type": "string",
+        "default": "Noto Sans CJK JP",
+        "minLength": 1,
+        "maxLength": 120,
+        "title": "Font family"
+      },
+      "font_scale": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 1.5,
+        "default": 0.85,
+        "title": "Font scale"
+      },
+      "outline_width": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 8,
+        "default": 3,
+        "title": "Outline at 1080px"
+      },
+      "accent_color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "default": "#F28D80",
+        "title": "Accent color"
+      },
+      "outline_color": {
+        "type": "string",
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "default": "#626262",
+        "title": "Text outline"
+      },
+      "text_overrides": {
+        "type": "object",
+        "default": {},
+        "title": "Text corrections"
+      },
+      "timing_overrides": {
+        "type": "object",
+        "default": {},
+        "title": "Timing corrections (ms)"
+      },
+      "accent_track_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "title": "Accent text tracks"
+      },
+      "boxed_track_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "title": "Boxed text tracks"
+      },
+      "callout_anchor_id": {
+        "type": "string",
+        "default": "",
+        "title": "Callout anchor track"
+      },
+      "callout_target_ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": [],
+        "title": "Callout target tracks"
+      },
+      "extra_tracks": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        },
+        "default": [],
+        "title": "Additional verified text tracks",
+        "description": "Authoring corrections for tracks missed during reference analysis; use the same text track schema."
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "none"
+  },
+  "execution": {
+    "kind": "local",
+    "executor": "reference-captions",
+    "revision": "reference-captions.v1",
+    "provider": "local",
+    "model_alias": "local.reference-captions"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Video",
+    "schema_id": "video.reference_captioned.v1",
+    "input_roles": {
+      "media.video.v1": "source_video",
+      "data.reference_analysis.v1": "reference_text_tracks"
+    },
+    "output_role": "reference_captioned_video"
+  }
+}

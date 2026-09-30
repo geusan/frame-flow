@@ -28,9 +28,15 @@
       "skill.execute",
       "tts.generate",
       "video.generate",
-      "character.turnaround.generate"
+      "character.turnaround.generate",
+      "video.performance_transfer",
+      "audio.voice_convert"
     ],
     "local": [
+      "image.study_screen",
+      "audio.practice_track",
+      "image.practice_motion",
+      "subtitle.practice_guide",
       "audio.extract",
       "character.model.validate",
       "character.reference.multiview",
@@ -62,7 +68,8 @@
       "video.retime",
       "video.render",
       "video.blender_render",
-      "video.split"
+      "video.split",
+      "video.reference_captions"
     ],
     "human_gate": [
       "candidate.select",

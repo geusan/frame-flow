@@ -18,8 +18,10 @@ function pageTitle(pathname: string): { eyebrow: string; title: string } {
   if (pathname.startsWith("/asset/images")) return { eyebrow: "Workspace assets", title: "Image Gallery" };
   if (pathname.startsWith("/asset/videos")) return { eyebrow: "Workspace assets", title: "Video Gallery" };
   if (pathname.startsWith("/asset/audio")) return { eyebrow: "Workspace assets", title: "Audio Library" };
+  if (pathname === "/references") return { eyebrow: "Reference collection", title: "References" };
   if (pathname.startsWith("/reference-results")) return { eyebrow: "Reference intelligence", title: "Reference Results" };
   if (pathname === "/runs") return { eyebrow: "Execution & recovery", title: "Runs" };
+  if (pathname === "/settings/storage") return { eyebrow: "Storage providers", title: "File storage" };
   if (pathname === "/settings/models") return { eyebrow: "Provider abstraction", title: "Model Registry" };
   if (pathname === "/settings/skills") return { eyebrow: "Trusted execution", title: "Skill Registry" };
   return { eyebrow: "Workspace configuration", title: "Settings" };

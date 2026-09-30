@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
 from .font_registry import font_snapshots
-from .storage import get_storage, storage_location
+from .storage import get_artifact_storage, storage_location
 
 
 CAPTION_DOCUMENT_SCHEMA = "caption.document.v1"
@@ -262,11 +262,11 @@ def caption_document_to_ass(
 
 def materialize_caption_fonts(db: Session, document: dict[str, Any], directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    storage = get_storage()
     for index, snapshot in enumerate(document.get("fonts") or []):
         artifact = db.get(ArtifactRecord, str(snapshot.get("artifact_id") or ""))
         if not artifact or artifact.type != "Font" or artifact.sha256 != snapshot.get("sha256"):
             raise ValueError("caption document font snapshot is unavailable or changed")
+        storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
         bucket, key = storage_location(artifact.uri, artifact.metadata_json)
         suffix = Path(str((artifact.metadata_json or {}).get("filename") or "font.ttf")).suffix.lower()
         if suffix not in {".ttf", ".otf"}:

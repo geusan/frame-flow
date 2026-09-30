@@ -30,6 +30,11 @@ for (const file of sourceFiles(sourceRoot)) {
   }
 }
 
+const canvasModel = readFileSync(join(sourceRoot, "lib", "canvas-model.ts"), "utf8");
+if (/legacyNodeTemplates|export const nodeTemplates/.test(canvasModel)) violations.push("src/lib/canvas-model.ts: production catalogs must come exclusively from the Registry");
+const legacyLoader = readFileSync(join(sourceRoot, "features", "nodes", "legacy-canvas-loader.ts"), "utf8");
+if (/graph\.nodes\.filter|graph\.edges\.filter/.test(legacyLoader)) violations.push("legacy-canvas-loader.ts: load must preserve unknown Nodes and Edges");
+
 const globalsPath = join(sourceRoot, "app", "globals.css");
 if (readFileSync(globalsPath, "utf8").length > 2_000) violations.push("src/app/globals.css: keep the global entrypoint import-only");
 

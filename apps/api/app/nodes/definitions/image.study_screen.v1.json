@@ -1,0 +1,102 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.study_screen",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "학습 앱 화면",
+    "description": "검증된 학습 문장으로 실제 앱의 빈칸 또는 정답 화면을 PNG로 렌더합니다.",
+    "category": "Utilities",
+    "icon": "render",
+    "cost_label": "$0.00"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "lesson",
+        "type": "data.text.v1",
+        "label": "Lesson details",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "image",
+        "type": "media.image.v1",
+        "label": "Study screen",
+        "required": true
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "japanese",
+      "korean",
+      "state",
+      "renderer_revision"
+    ],
+    "properties": {
+      "japanese": {
+        "type": "string",
+        "default": "好きです。",
+        "title": "Japanese sentence",
+        "minLength": 1,
+        "maxLength": 180,
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "string"
+        }
+      },
+      "korean": {
+        "type": "string",
+        "default": "좋아해요.",
+        "title": "Korean meaning",
+        "minLength": 1,
+        "maxLength": 240,
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "string"
+        }
+      },
+      "state": {
+        "type": "string",
+        "default": "question",
+        "title": "Screen state",
+        "enum": [
+          "question",
+          "answer"
+        ]
+      },
+      "renderer_revision": {
+        "type": "string",
+        "default": "native-study-screen.v1",
+        "title": "Pinned renderer revision",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "local",
+    "executor": "study-screen",
+    "revision": "study-screen.v1",
+    "provider": "local",
+    "model_alias": "local.study-screen"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Image",
+    "schema_id": "image.study_screen.v1",
+    "input_roles": {
+      "data.text.v1": "lesson_details"
+    },
+    "output_role": "study_screen"
+  }
+}

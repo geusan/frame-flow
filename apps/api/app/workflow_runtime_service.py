@@ -176,6 +176,8 @@ def _artifact_payload(artifact: ArtifactRecord | None, artifact_id: str) -> dict
 
 
 def workflow_run_payload(db: Session, run: CanvasRunRecord) -> dict[str, Any]:
+    from .nodes import node_registry
+    from .nodes.output_ports import artifacts_for_output_port, selected_output_port
     version = db.get(WorkflowVersionRecord, run.workflow_version_id) if run.workflow_version_id else None
     definition = db.get(WorkflowDefinitionRecord, run.workflow_definition_id) if run.workflow_definition_id else None
     node_runs = {node.canvas_node_id: node for node in run.node_runs}
@@ -196,6 +198,16 @@ def workflow_run_payload(db: Session, run: CanvasRunRecord) -> dict[str, Any]:
         node_id = str(output.get("node_id") or "")
         node_run = node_runs.get(node_id)
         output_artifacts = list(node_run.output_artifact_ids or []) if node_run else []
+        # Older versions without a port selector retain their historical bundle.
+        # A selected port returns only artifacts of that port's declared type.
+        if output.get("port_key"):
+            frozen_node = next((node for node in (version.graph_json or {}).get("nodes", []) if node["id"] == node_id), {})
+            node_definition = node_registry.get(str(frozen_node.get("type_key") or ""), int(frozen_node.get("contract_version") or 1))
+            port = selected_output_port(node_definition, output["port_key"]) if node_definition else None
+            if port:
+                output_artifacts = artifacts_for_output_port(node_definition, port, [artifacts[artifact_id] for artifact_id in output_artifacts if artifact_id in artifacts])
+            else:
+                output_artifacts = []
         outputs[str(output.get("key") or node_id)] = {
             "label": str(output.get("label") or output.get("key") or node_id),
             "primary": output.get("primary") is True,

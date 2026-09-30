@@ -1,7 +1,8 @@
 import type { Edge } from "@xyflow/react";
 
 import type { StudioFlowNode } from "@/lib/canvas-model";
-import type { CanvasDocumentV1, NodeDefinitionRecord } from "@/lib/api";
+import type { CanvasDocumentV1, NodeDefinitionRecord, NodePortTypeRegistryRecord } from "@/lib/api";
+import { nodeTemplateFromDefinition } from "./contracts";
 
 export const LEGACY_CONFIG_DATA_FIELDS: Record<string, keyof StudioFlowNode["data"]> = {
   resolution: "resolution",
@@ -38,7 +39,7 @@ const runtimeFields = new Set([
 ]);
 const contractDerivedFields = new Set([
   "key", "label", "description", "icon", "kind", "inputTypes", "inputsRequired", "requiredInputTypes", "multiInputTypes",
-  "outputType", "cost", "contractVersion", "definitionDigest", "config", "parameters", "model", "provider", "executable",
+  "inputPorts", "outputPorts", "outputType", "cost", "contractVersion", "definitionDigest", "config", "parameters", "model", "provider", "executable",
 ]);
 const ephemeralReactFlowFields = new Set(["selected", "dragging", "measured", "width", "height", "positionAbsolute"]);
 const qualifiedModelPrefixes = ["google.", "openai.", "fal.", "xai.", "chatgpt.", "claude.", "local.", "reference-analysis."];
@@ -151,5 +152,40 @@ export function serializeCanvasDocument(nodes: StudioFlowNode[], edges: Edge[], 
       })),
     },
     runtime: { schema_version: "canvas.runtime.v1", nodes: runtimeNodes },
+  };
+}
+
+/** Canonical documents are projected into React Flow only at the Web boundary. */
+export function deserializeCanvasDocument(document: CanvasDocumentV1, definitions: NodeDefinitionRecord[], registry: NodePortTypeRegistryRecord): { nodes: StudioFlowNode[]; edges: Edge[] } {
+  const ordered: Array<{ order: number; node: StudioFlowNode }> = [];
+  for (const record of [...document.graph.nodes, ...document.graph.elements]) {
+    const ui = record.ui as { order: number; position: { x: number; y: number }; label: string; description: string; react_flow: Record<string, unknown> };
+    const editor = record.editor as { data?: Record<string, unknown>; legacy_data?: Record<string, unknown> };
+    const id = String(record.id);
+    const runtime = Object.fromEntries(Object.entries(document.runtime.nodes[id] ?? {}).filter(([key]) => runtimeFields.has(key)));
+    let data: Record<string, unknown>;
+    if (record.element_type) {
+      data = { ...editor.data, ...runtime, key: record.element_type, label: ui.label, description: ui.description };
+    } else {
+      const definition = definitions.find((item) => item.type_key === record.type_key && item.contract_version === record.contract_version);
+      const config = record.config as Record<string, unknown>;
+      const execution = record.execution as { model_alias: string; provider: string };
+      data = {
+        ...(definition ? nodeTemplateFromDefinition(definition, registry).data : { icon: "brief", kind: "logic", executable: false }),
+        ...editor.legacy_data, ...runtime,
+        key: record.type_key, contractVersion: record.contract_version, definitionDigest: record.definition_digest,
+        config, model: execution.model_alias, provider: execution.provider, label: ui.label, description: ui.description,
+      };
+      for (const [key, legacyKey] of Object.entries(LEGACY_CONFIG_DATA_FIELDS)) if (config[key] !== undefined) data[legacyKey] = config[key];
+      if (["prompt.input", "generation.brief"].includes(String(record.type_key))) data.configText = config.text;
+      if (record.type_key === "asset.select") { data.configText = config.artifact_id; data.outputType = config.artifact_type; }
+      if (record.type_key === "character.select") data.configText = config.character_id;
+      if (record.type_key === "format.profile") data.configText = config.format_id;
+    }
+    ordered.push({ order: ui.order, node: { ...ui.react_flow, id, type: "studio", position: ui.position, data } as StudioFlowNode });
+  }
+  return {
+    nodes: ordered.sort((a, b) => a.order - b.order).map((item) => item.node),
+    edges: document.graph.edges.map((edge) => ({ ...(edge.ui as object), id: String(edge.id), source: String(edge.source), target: String(edge.target), sourceHandle: edge.source_port as string | null, targetHandle: edge.target_port as string | null })),
   };
 }

@@ -25,6 +25,7 @@ CANVAS_OPERATIONS = {
 }
 
 WORKFLOW_OPERATIONS = {
+    ("POST", "/workflows/{workflow_id}/versions/{version_number}/restore-draft"),
     ("POST", "/workflows"),
     ("GET", "/workflows"),
     ("GET", "/workflows/{workflow_id}"),
@@ -107,6 +108,13 @@ GENERATION_OPERATIONS = {
 SETTINGS_OPERATIONS = {
     ("GET", "/settings/providers"),
     ("PUT", "/settings/providers/{provider}"),
+    ("GET", "/settings/storage"),
+    ("POST", "/settings/storage/profiles"),
+    ("POST", "/settings/storage/profiles/{profile_id}/test"),
+    ("POST", "/settings/storage/profiles/{profile_id}/activate"),
+    ("GET", "/settings/storage/profiles/{profile_id}/migration-plan"),
+    ("POST", "/settings/storage/migrate"),
+    ("PUT", "/settings/storage/profiles/{profile_id}/credentials"),
     ("GET", "/models"),
 }
 

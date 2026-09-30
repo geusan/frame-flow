@@ -17,7 +17,7 @@
 .canvas-shell.palette-hidden.with-inspector { grid-template-columns: minmax(0,1fr) 320px; }
 .canvas-shell.palette-hidden .flow-stage { grid-column: 1; }
 .canvas-shell.palette-hidden .node-inspector { grid-column: 2; }
-.canvas-toolbar { grid-column: 1 / -1; min-width: 0; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); background: #fff; display: flex; align-items: center; gap: 5px; z-index: 8; }
+.canvas-toolbar { overflow-x: auto; scrollbar-width: thin; grid-column: 1 / -1; min-width: 0; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); background: #fff; display: flex; align-items: center; gap: 5px; z-index: 8; }
 .workflow-switcher { height: 36px; min-width: 186px; padding: 0 8px 0 5px; display: grid; grid-template-columns: 29px minmax(0,1fr) auto; align-items: center; gap: 7px; border-radius: 7px; cursor: pointer; }
 .workflow-switcher:hover { background: var(--panel-soft); }
 .workflow-glyph { width: 29px; height: 29px; border-radius: 7px; display: grid; place-items: center; color: #5f55db; background: var(--brand-soft); }
@@ -322,3 +322,5 @@
 .node-detail-motion-track section span { padding: 14px 8px; border-radius: 8px; background: var(--panel-muted); display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .node-detail-motion-track section b { font-size: var(--text-lg); }
 .node-detail-motion-track section small, .node-detail-motion-track p { color: var(--ink-soft); font-size: var(--text-xs); }
+
+.canvas-toolbar > button { flex-shrink: 0; }

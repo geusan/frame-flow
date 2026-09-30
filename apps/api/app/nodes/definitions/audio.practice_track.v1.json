@@ -1,0 +1,129 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "audio.practice_track",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "듣기·따라 말하기 음성",
+    "description": "발음과 비트를 배치하고 정확한 구간 타이밍과 마지막 1.5초 무음을 출력합니다.",
+    "category": "Utilities",
+    "icon": "render",
+    "cost_label": "$0.00"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "voice",
+        "type": "media.audio.v1",
+        "label": "Single pronunciation",
+        "required": true
+      },
+      {
+        "key": "beat",
+        "type": "media.audio.v1",
+        "label": "Rhythm loop",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "audio",
+        "type": "media.audio.v1",
+        "label": "Practice audio",
+        "required": true
+      },
+      {
+        "key": "timing",
+        "type": "data.practice_timing.v1",
+        "label": "Practice timing",
+        "required": true
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "bpm",
+      "beats_per_bar",
+      "lead_seconds",
+      "voice_margin_seconds",
+      "ending_silence_seconds",
+      "beat_gain",
+      "fps"
+    ],
+    "properties": {
+      "bpm": {
+        "type": "number",
+        "default": 92,
+        "title": "BPM",
+        "minimum": 40,
+        "maximum": 200
+      },
+      "beats_per_bar": {
+        "type": "integer",
+        "default": 4,
+        "title": "Beats per bar",
+        "minimum": 1,
+        "maximum": 8
+      },
+      "lead_seconds": {
+        "type": "number",
+        "default": 0.1,
+        "title": "Voice lead-in",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "voice_margin_seconds": {
+        "type": "number",
+        "default": 0.25,
+        "title": "Voice margin",
+        "minimum": 0.1,
+        "maximum": 2
+      },
+      "ending_silence_seconds": {
+        "type": "number",
+        "default": 1.5,
+        "title": "Ending silence",
+        "minimum": 1.5,
+        "maximum": 5
+      },
+      "beat_gain": {
+        "type": "number",
+        "default": 0.08,
+        "title": "Beat gain",
+        "minimum": 0,
+        "maximum": 0.3
+      },
+      "fps": {
+        "type": "integer",
+        "default": 30,
+        "title": "Timing FPS",
+        "enum": [
+          30
+        ]
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "local",
+    "executor": "practice-track",
+    "revision": "practice-track.v1",
+    "provider": "local",
+    "model_alias": "local.practice-track"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Audio",
+    "schema_id": "audio.practice_track.v1",
+    "input_roles": {
+      "media.audio.v1": "practice_audio_source"
+    },
+    "output_role": "practice_track"
+  }
+}

@@ -55,6 +55,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
+import { importedAssetData, recoverInterruptedAssetImport, uploadedArtifactOutput } from "@/features/nodes/artifact-source";
 import { useStudioStore } from "@/lib/store";
 import type { NodeStatus, PortType } from "@/lib/types";
 import {
@@ -62,16 +63,14 @@ import {
   canvasElementTemplates,
   graphCost,
   inputHandleId,
-  legacyNodeTemplates,
+  inputPortMatches,
   refreshReadyStatuses,
   stepInputError,
   validateGraph,
   type CanvasOutput,
   type ConnectionCompatibilityValidator,
   type DrawingDocument,
-  type IconName,
   type NodeTemplate,
-  type ProviderName,
   type StickyColor,
   type StudioFlowNode,
 } from "@/lib/canvas-model";
@@ -88,15 +87,16 @@ import { modelPreviewUrl } from "@/features/nodes/model-preview";
 import { ReferenceResultDetail } from "@/components/views/reference-results-view";
 import { CandidateDialog, CompileDialog, type CandidateOption } from "@/features/workflows/components/workflow-dialogs";
 import { DrawingCanvasDialog } from "@/features/workflows/components/drawing-canvas-dialog";
+import { outputReachability } from "@/features/workflows/draft-contract";
 import { WorkflowInputsPanel } from "@/features/workflows/components/workflow-inputs-panel";
-import { latestNodeTemplates } from "@/features/nodes/contracts";
+import { latestNodeTemplates, nodeTemplateFromDefinition, nodeHumanGateMode } from "@/features/nodes/contracts";
+import { migrateStoredGraph } from "@/features/nodes/legacy-canvas-loader";
 import { canRestoreExperiment } from "@/features/nodes/experiment-restore";
-import { LEGACY_CONFIG_DATA_FIELDS, serializeCanvasDocument } from "@/features/nodes/canvas-document-adapter";
+import { LEGACY_CONFIG_DATA_FIELDS, deserializeCanvasDocument, serializeCanvasDocument } from "@/features/nodes/canvas-document-adapter";
 import { NodeInspectorEditor } from "@/features/nodes/node-inspector-editor";
 import { nodeConnectionCompatible, targetPortContract } from "@/features/nodes/port-contracts";
 import { CanvasNodeStatus, NodeActionsContext, icons, httpUrl, nodeTypes, storedAssetOutput, type CanvasSpaceHoldRequest, type NodeActions } from "@/features/workflows/components/workflow-node";
-import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type NodePortTypeRegistryRecord, type ProjectSkillRecord, type UploadedArtifact, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
-import { migrateLegacyGoogleTextModelAlias } from "@/lib/model-options";
+import { API_BASE, frameflowApi, type ArtifactListItem, type CanvasRunRecord, type CharacterRecord, type ExperimentRun, type ModelRecord, type NodeDefinitionRecord, type NodePortTypeRegistryRecord, type ProjectSkillRecord, type WorkflowDraftContract, type WorkflowInputDefinition } from "@/lib/api";
 
 const BACKUP_STORAGE_PREFIX = "frameflow.canvas.backup";
 const EDGE_TYPE = "adaptive";
@@ -341,84 +341,9 @@ function propagateConnectedPrompts(nodes: StudioFlowNode[], edges: Edge[], sourc
   });
 }
 
-function providerFromModel(model?: string): ProviderName {
-  return model?.startsWith("openai.") ? "openai" : model?.startsWith("xai.") ? "xai" : model?.startsWith("fal.") ? "fal" : "google";
-}
 
-function migrateStoredGraph(graph: GraphSnapshot, templates: NodeTemplate[] = legacyNodeTemplates): GraphSnapshot {
-  const isLegacyMockGraph = graph.nodes.some((node) => node.id === "brief" && node.data.description.includes("로마 도로"))
-    || graph.nodes.some((node) => node.id === "format" && node.data.label === "Contrarian History");
-  if (isLegacyMockGraph) return { ...graph, nodes: [], edges: [], activeRunId: undefined };
-  const migratedNodes = graph.nodes.filter((node) => node.data.key !== "video.frame_extract").map((node) => {
-    const completedUploadArtifactId = node.data.key === "asset.upload" ? node.data.outputArtifactIds?.[0] : undefined;
-    const legacyTextNote = node.data.key === "utility.text";
-    const migratedKey = completedUploadArtifactId ? "asset.select" : legacyTextNote ? "utility.sticky" : node.data.key;
-    const requestedVersion = node.data.contractVersion;
-    const template = requestedVersion
-      ? templates.find((item) => item.data.key === migratedKey && (item.data.contractVersion ?? 1) === requestedVersion)
-      : templates.find((item) => item.data.key === migratedKey);
-    if (!template) return node;
-    return {
-      ...node,
-      type: "studio" as const,
-      data: {
-        ...node.data,
-        key: migratedKey,
-        label: completedUploadArtifactId || legacyTextNote ? template.data.label : node.data.key === "asset.upload" ? "Upload" : node.data.label,
-        description: completedUploadArtifactId || legacyTextNote || ["character.generate", "lora.image.generate"].includes(node.data.key) ? template.data.description : node.data.description,
-        icon: completedUploadArtifactId || legacyTextNote ? template.data.icon : node.data.icon,
-        kind: template.data.kind,
-        inputTypes: template.data.inputTypes,
-        requiredInputTypes: template.data.requiredInputTypes,
-        multiInputTypes: template.data.multiInputTypes,
-        inputsRequired: template.data.inputsRequired,
-        outputType: ["asset.upload", "asset.select"].includes(migratedKey) ? node.data.outputType ?? template.data.outputType : template.data.outputType,
-        provider: node.data.kind === "generate" ? node.data.provider ?? providerFromModel(node.data.model ?? template.data.model) : node.data.provider,
-        model: template.data.model?.startsWith("local.") || node.data.key === "video.translate" ? template.data.model : migrateLegacyGoogleTextModelAlias(node.data.model ?? template.data.model),
-        resolution: node.data.resolution ?? template.data.resolution,
-        aspectRatio: node.data.aspectRatio ?? template.data.aspectRatio,
-        batchSize: node.data.batchSize ?? template.data.batchSize,
-        characterName: node.data.characterName ?? template.data.characterName,
-        shotCount: node.data.shotCount ?? template.data.shotCount,
-        durationSeconds: node.data.durationSeconds ?? template.data.durationSeconds,
-        loraUrl: node.data.loraUrl ?? template.data.loraUrl,
-        loraScale: node.data.loraScale ?? template.data.loraScale,
-        triggerWord: node.data.triggerWord ?? template.data.triggerWord,
-        executable: template.data.executable,
-        transition: node.data.transition ?? template.data.transition,
-        targetDurationSeconds: node.data.targetDurationSeconds ?? template.data.targetDurationSeconds,
-        sourceLanguage: node.data.sourceLanguage ?? template.data.sourceLanguage,
-        separateMusic: node.data.separateMusic ?? template.data.separateMusic,
-        sceneThreshold: node.data.sceneThreshold ?? template.data.sceneThreshold,
-        targetLanguage: node.data.targetLanguage ?? template.data.targetLanguage,
-        voiceName: node.data.voiceName ?? template.data.voiceName,
-        captionX: node.data.captionX ?? template.data.captionX,
-        captionY: node.data.captionY ?? template.data.captionY,
-        captionAlign: node.data.captionAlign ?? template.data.captionAlign,
-        captionFontSize: node.data.captionFontSize ?? template.data.captionFontSize,
-        waitForInput: node.data.waitForInput ?? template.data.waitForInput,
-        skillId: node.data.skillId ?? template.data.skillId,
-        stickyColor: node.data.stickyColor ?? template.data.stickyColor,
-        drawing: node.data.drawing ?? template.data.drawing,
-        configText: completedUploadArtifactId ?? (template.data.kind === "generate" ? undefined : node.data.configText ?? template.data.configText),
-        output: legacyTextNote || node.data.output?.url?.startsWith("blob:") ? undefined : node.data.output,
-      },
-    };
-  });
-  const nodeLookup = new Map(migratedNodes.map((node) => [node.id, node]));
-  const migratedEdges = graph.edges.map((edge) => {
-    const sourceType = nodeLookup.get(edge.source)?.data.outputType;
-    const target = nodeLookup.get(edge.target);
-    const index = sourceType && target?.data.inputTypes?.indexOf(sourceType);
-    const migratedEdge = edge.type === "smoothstep" || !edge.type ? { ...edge, type: EDGE_TYPE } : edge;
-    return sourceType && index !== undefined && index >= 0 ? {
-      ...migratedEdge,
-      sourceHandle: "output",
-      targetHandle: inputHandleId(sourceType, index),
-    } : migratedEdge;
-  });
-  return { ...graph, nodes: refreshReadyStatuses(migratedNodes, migratedEdges), edges: migratedEdges };
-}
+
+
 
 function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experiments: ExperimentRun[], definitions: NodeDefinitionRecord[]): { nodes: StudioFlowNode[]; changed: boolean } {
   const latestByNode = new Map<string, ExperimentRun>();
@@ -474,18 +399,6 @@ function reconcileExperimentState(nodes: StudioFlowNode[], edges: Edge[], experi
   return { nodes: refreshReadyStatuses(propagated, edges), changed: changed || promptChanged };
 }
 
-function uploadedArtifactOutput(filename: string, artifact: UploadedArtifact): CanvasOutput {
-  const kind: CanvasOutput["kind"] = artifact.type === "Image" ? "image" : artifact.type === "Video" ? "video" : artifact.type === "Audio" ? "audio" : artifact.type === "Model3D" ? "json" : "text";
-  return {
-    kind,
-    title: filename,
-    url: ["image", "video", "audio"].includes(kind) ? artifact.url : undefined,
-    text: kind === "json"
-      ? JSON.stringify({ schema_version: "model.gltf.v1", artifact_id: artifact.artifact_id, size_bytes: artifact.size_bytes })
-      : kind === "text" ? filename : `${(artifact.size_bytes / 1_000_000).toFixed(1)} MB`,
-    mimeType: artifact.content_type,
-  };
-}
 
 export function GenerationCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeDetail, onBack }: { canvasId: string; nodeDetailId?: string; onOpenNodeDetail: (nodeId: string) => void; onCloseNodeDetail: () => void; onBack: () => void }) {
   return <ReactFlowProvider><EditableCanvas canvasId={canvasId} nodeDetailId={nodeDetailId} onOpenNodeDetail={onOpenNodeDetail} onCloseNodeDetail={onCloseNodeDetail} onBack={onBack} /></ReactFlowProvider>;
@@ -513,6 +426,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const [draftContract, setDraftContract] = useState<WorkflowDraftContract>(EMPTY_WORKFLOW_DRAFT);
   const [inputsPanelOpen, setInputsPanelOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishReviewOpen, setPublishReviewOpen] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState("");
+  const [publishError, setPublishError] = useState("");
   const [saveState, setSaveState] = useState<"Saved" | "Unsaved" | "Saving">("Saved");
   const [toast, setToast] = useState<{ tone: "success" | "error" | "info"; message: string } | null>(null);
   const [graphRunning, setGraphRunning] = useState(false);
@@ -668,16 +584,19 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     ]).then(([document, experiments, definitions, availablePortTypes, availableModels]) => {
       if (!active) return;
       const manifestTemplates = latestNodeTemplates(definitions, availablePortTypes);
-      const templates = [...canvasElementTemplates, ...manifestTemplates];
+      const templates = [...canvasElementTemplates, ...definitions.map((definition) => nodeTemplateFromDefinition(definition, availablePortTypes))];
       setNodeDefinitions(definitions);
       setPortTypeRegistry(availablePortTypes);
       setModels(availableModels);
       setRegistryTemplates(manifestTemplates);
+      const flow = document.document ? deserializeCanvasDocument(document.document, definitions, availablePortTypes) : { nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[] };
       const migrated = migrateStoredGraph(
-        { id: document.id, name: document.name, nodes: document.nodes as StudioFlowNode[], edges: document.edges as Edge[], activeRunId: document.active_run_id },
-        [...legacyNodeTemplates, ...templates],
+        { id: document.id, name: document.name, ...flow, activeRunId: document.active_run_id },
+        templates,
       );
-      const reconciled = reconcileExperimentState(migrated.nodes, migrated.edges, experiments, definitions);
+      const recoveredNodes = migrated.nodes.map(recoverInterruptedAssetImport);
+      const recoveredImport = recoveredNodes.some((node, index) => node !== migrated.nodes[index]);
+      const reconciled = reconcileExperimentState(recoveredNodes, migrated.edges, experiments, definitions);
       setNodes(reconciled.nodes);
       setEdges(migrated.edges);
       setCanvasName(document.name);
@@ -687,7 +606,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setDraftContract(document.draft_contract ?? EMPTY_WORKFLOW_DRAFT);
       setActiveCanvasRunId(document.active_run_id ?? null);
       loadedRef.current = true;
-      if (reconciled.changed || migrated.nodes.length !== document.nodes.length || migrated.edges.length !== document.edges.length) setSaveState("Unsaved");
+      if (recoveredImport || reconciled.changed || migrated.nodes.length !== document.nodes.length || migrated.edges.length !== document.edges.length) setSaveState("Unsaved");
     }).catch(() => {
       try {
         const stored = window.localStorage.getItem(backupKey);
@@ -893,7 +812,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const target = nodesRef.current.find((node) => node.id === connection.target);
     const targetType = target?.data.inputTypes?.find((type, index) => connection.targetHandle === inputHandleId(type, index));
     if (!targetPort && targetType && target?.data.multiInputTypes?.includes(targetType)) return true;
-    return !edgesRef.current.some((edge) => edge.target === connection.target && edge.targetHandle === connection.targetHandle);
+    return !edgesRef.current.some((edge) => edge.target === connection.target && (targetPort ? targetPortContract(edge, nodesRef.current, nodeDefinitions, portTypeRegistry)?.key === targetPort.key : edge.targetHandle === connection.targetHandle));
   }, [nodeDefinitions, portTypeRegistry, registryConnectionCompatible]);
 
   const onConnect = useCallback((connection: Connection) => {
@@ -1114,32 +1033,12 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "RUNNING" as NodeStatus, preview: `Uploading ${file.name}…` } } : node));
     try {
       const artifact = await frameflowApi.uploadArtifact(file);
-      const output = uploadedArtifactOutput(file.name || artifact.filename, artifact);
-      const assetDefinition = nodeDefinitions
-        .filter((definition) => definition.type_key === "asset.select")
-        .sort((left, right) => right.contract_version - left.contract_version)[0];
+      const data = importedAssetData(artifact, registryTemplates, file.name || artifact.filename);
       setNodes((current) => {
         const invalidated = invalidateDescendants(current, edgesRef.current, nodeId);
         const updated = invalidated.map((node) => node.id === nodeId ? {
           ...node,
-          data: {
-            ...node.data,
-            key: "asset.select",
-            label: "Assets",
-            description: "저장된 이미지·비디오를 Popover에서 선택",
-            icon: "assets" as IconName,
-            status: "SUCCEEDED" as NodeStatus,
-            configText: artifact.artifact_id,
-            preview: file.name || artifact.filename,
-            output,
-            outputType: artifact.type as PortType,
-            outputArtifactIds: [artifact.artifact_id],
-            contractVersion: assetDefinition?.contract_version ?? 1,
-            definitionDigest: assetDefinition?.definition_digest,
-            config: { artifact_id: artifact.artifact_id, artifact_type: artifact.type },
-            model: assetDefinition?.execution.model_alias ?? "local.artifact-source",
-            provider: "local",
-          },
+          data: { ...node.data, ...data },
         } : node);
         return refreshReadyStatuses(updated, edgesRef.current);
       });
@@ -1149,47 +1048,37 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     } catch (error) {
       const message = error instanceof Error ? error.message : "Artifact upload failed";
       setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "FAILED" as NodeStatus, preview: undefined, logs: [...(node.data.logs ?? []), message] } } : node));
+      markUnsaved();
       notify(message, "error");
     }
-  }, [markUnsaved, nodeDefinitions, notify, setNodes]);
+  }, [markUnsaved, notify, registryTemplates, setNodes]);
 
   const importNodeAssetUrl = useCallback(async (nodeId: string, sourceUrl: string) => {
     setNodes((current) => current.map((node) => node.id === nodeId ? {
       ...node,
-      data: { ...node.data, status: "RUNNING" as NodeStatus, configText: sourceUrl, preview: "Downloading video from URL…" },
+      data: { ...node.data, status: "RUNNING" as NodeStatus, configText: sourceUrl, preview: "Downloading media from URL…" },
     } : node));
     try {
       const artifact = await frameflowApi.importArtifactUrl(sourceUrl);
-      const output = uploadedArtifactOutput(artifact.filename, artifact);
+      const data = importedAssetData(artifact, registryTemplates);
       setNodes((current) => {
         const invalidated = invalidateDescendants(current, edgesRef.current, nodeId);
         const updated = invalidated.map((node) => node.id === nodeId ? {
           ...node,
-          data: {
-            ...node.data,
-            key: "asset.select",
-            label: "Assets",
-            description: "저장된 이미지·비디오를 Popover에서 선택",
-            icon: "assets" as IconName,
-            status: "SUCCEEDED" as NodeStatus,
-            configText: artifact.artifact_id,
-            preview: artifact.filename,
-            output,
-            outputType: artifact.type as PortType,
-            outputArtifactIds: [artifact.artifact_id],
-          },
+          data: { ...node.data, ...data },
         } : node);
         return refreshReadyStatuses(updated, edgesRef.current);
       });
       markUnsaved();
       setAssetOptions((current) => [{ id: artifact.artifact_id, created_at: new Date().toISOString(), type: artifact.type, content_type: artifact.content_type, size_bytes: artifact.size_bytes, filename: artifact.filename, source: "canvas_url_import", duration_ms: 0, url: artifact.url }, ...current.filter((item) => item.id !== artifact.artifact_id)]);
-      notify(`${artifact.filename} 영상을 Asset으로 저장했습니다.`, "success");
+      notify(`${artifact.filename} 파일을 Asset으로 저장했습니다.`, "success");
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Video URL import failed";
+      const message = error instanceof Error ? error.message : "URL import failed";
       setNodes((current) => current.map((node) => node.id === nodeId ? { ...node, data: { ...node.data, status: "FAILED" as NodeStatus, preview: undefined, logs: [...(node.data.logs ?? []), message] } } : node));
+      markUnsaved();
       notify(message, "error");
     }
-  }, [markUnsaved, notify, setNodes]);
+  }, [markUnsaved, notify, registryTemplates, setNodes]);
 
   const selectStoredAsset = useCallback((nodeId: string, artifactId: string) => {
     const artifact = assetOptions.find((item) => item.id === artifactId);
@@ -1247,7 +1136,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     void uploadNodeAsset(node.id, file);
   }, [markUnsaved, pushHistory, screenToFlowPosition, selectNode, setNodes, uploadNodeAsset]);
 
-  const insertPastedVideoUrl = useCallback((sourceUrl: string) => {
+  const insertPastedAssetUrl = useCallback((sourceUrl: string) => {
     const bounds = flowStageRef.current?.getBoundingClientRect();
     const screenPoint = lastCanvasPointerRef.current ?? {
       x: bounds ? bounds.left + bounds.width / 2 : window.innerWidth / 2,
@@ -1256,7 +1145,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const position = screenToFlowPosition(screenPoint);
     const node = createNodeFromTemplate("upload", position, sequenceRef.current++, canvasElementTemplates);
     if (!node) return;
-    node.data = { ...node.data, label: "URL video", status: "RUNNING", configText: sourceUrl, preview: "Downloading video from URL…" };
+    node.data = { ...node.data, label: "URL media", status: "RUNNING", configText: sourceUrl, preview: "Downloading media from URL…" };
     pushHistory();
     setNodes((current) => [...current, node]);
     selectNode(node.id);
@@ -1282,11 +1171,11 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       const sourceUrl = httpUrl(event.clipboardData?.getData("text/plain") ?? "");
       if (!sourceUrl) return;
       event.preventDefault();
-      insertPastedVideoUrl(sourceUrl);
+      insertPastedAssetUrl(sourceUrl);
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [drawingNodeId, insertClipboardImage, insertPastedVideoUrl]);
+  }, [drawingNodeId, insertClipboardImage, insertPastedAssetUrl]);
 
   const runStep = useCallback(async (nodeId: string, automatic = false): Promise<boolean> => {
     const node = nodesRef.current.find((candidate) => candidate.id === nodeId);
@@ -1297,7 +1186,8 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       if (!automatic) notify(inputError, "error");
       return false;
     }
-    if (node.data.key === "candidate.select") {
+    const stepDefinition = nodeDefinitions.find((definition) => definition.type_key === node.data.key && definition.contract_version === (node.data.contractVersion ?? 1));
+    if (nodeHumanGateMode(stepDefinition) === "select_artifact") {
       setNodes((current) => current.map((candidate) => candidate.id === nodeId ? { ...candidate, data: { ...candidate.data, status: "WAITING_INPUT" } } : candidate));
       setCandidateNodeId(nodeId);
       setSelectedCandidate(0);
@@ -1335,7 +1225,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       notify(message, "error");
       return false;
     }
-  }, [canvasId, canvasName, markUnsaved, notify, saveNow, setNodes]);
+  }, [canvasId, canvasName, markUnsaved, nodeDefinitions, notify, saveNow, setNodes]);
 
   const validateAndOpen = useCallback(() => {
     const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
@@ -1346,26 +1236,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
 
   const publishDraft = useCallback(async () => {
     if (!workflowDefinitionId) return;
-    const errors = validateGraph(nodesRef.current, edgesRef.current, registryConnectionCompatible);
-    if (errors.length) {
-      setCompileErrors(errors);
-      setCompileOpen(true);
-      return;
-    }
-    const existingOutputs = draftContract.outputs;
-    const terminalNodes = nodesRef.current.filter((node) => node.data.outputType && !edgesRef.current.some((edge) => edge.source === node.id) && !["utility.sticky", "utility.drawing", "folder.group"].includes(node.data.key));
-    if (!existingOutputs.length && terminalNodes.length !== 1) {
-      notify(`Publish하려면 Primary output을 하나로 결정해야 합니다. 현재 terminal output은 ${terminalNodes.length}개입니다.`, "error");
-      return;
-    }
-    const outputContract = existingOutputs.length ? existingOutputs : [{
-      key: "primary_output",
-      label: terminalNodes[0].data.label,
-      node_id: terminalNodes[0].id,
-      port_type: terminalNodes[0].data.outputType!,
-      primary: true,
-    }];
-    const nextContract: WorkflowDraftContract = { ...draftContract, schema_version: "workflow.contract.draft.v1", outputs: outputContract };
+    if (!draftContract.outputs.length) { setInputsPanelOpen(true); return; }
+    const nextContract = draftContract;
+    setPublishError("");
     setPublishing(true);
     try {
       const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
@@ -1381,17 +1254,21 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       setSaveState("Saved");
       const version = await frameflowApi.publishWorkflow(workflowDefinitionId, {
         expected_canvas_revision: saved.revision,
-        release_notes: baseVersionId ? "Published Canvas changes" : "Initial Canvas publish",
+        release_notes: releaseNotes,
       });
       setBaseVersionId(version.id);
+      setPublishReviewOpen(false);
+      setReleaseNotes("");
       window.dispatchEvent(new Event("frameflow:workspace-changed"));
       notify(`Workflow v${version.version_number}을 게시했습니다.${version.warnings?.length ? ` ${version.warnings.length}개 미사용 Node를 제외했습니다.` : ""}`, "success");
-    } catch (publishError) {
-      notify(publishError instanceof Error ? publishError.message : "Workflow Publish failed", "error");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Workflow Publish failed";
+      setPublishError(message);
+      notify(message, "error");
     } finally {
       setPublishing(false);
     }
-  }, [activeCanvasRunId, baseVersionId, canvasId, canvasName, canvasRevision, draftContract, nodeDefinitions, notify, registryConnectionCompatible, workflowDefinitionId]);
+  }, [activeCanvasRunId, canvasId, canvasName, canvasRevision, draftContract, nodeDefinitions, notify, releaseNotes, workflowDefinitionId]);
 
   const applyCanvasRunUpdate = useCallback((run: CanvasRunRecord) => {
     const targetNodeId = typeof run.graph.target_node_id === "string" ? run.graph.target_node_id : undefined;
@@ -1739,9 +1616,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         <button className={`saved-indicator save-${saveState.toLowerCase()}`} type="button" onClick={() => void saveNow()} disabled={saveState === "Saving"}><Save size={13} /> {saveState}</button>
         <button className="tool-icon reset-canvas" type="button" onClick={clearCanvas} disabled={graphRunning || !nodes.length} aria-label="Clear canvas"><Trash2 size={15} /></button>
         <div className="canvas-toolbar-spacer" />
-        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => setInputsPanelOpen(true)}><Braces size={14} /> Inputs {draftContract.inputs.length}</Button>}
+        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => setInputsPanelOpen(true)}><Braces size={14} /> Inputs {draftContract.inputs.length} · Outputs {draftContract.outputs.length}</Button>}
         <Button variant="secondary" className="canvas-validate-button" type="button" onClick={validateAndOpen}><CircleGauge size={15} /> Validate</Button>
-        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => void publishDraft()} disabled={publishing || graphRunning}><GitFork size={14} /> {publishing ? "Publishing…" : baseVersionId ? "Publish next" : "Publish v1"}</Button>}
+        {workflowDefinitionId && <Button variant="secondary" type="button" onClick={() => { setPublishError(""); if (draftContract.outputs.length) setPublishReviewOpen(true); else setInputsPanelOpen(true); }} disabled={publishing || graphRunning}><GitFork size={14} /> {publishing ? "Publishing…" : baseVersionId ? "Publish next" : "Publish v1"}</Button>}
         <div className="cost-estimate"><span><CircleDollarSign size={13} /> Est. ${cost.toFixed(2)}</span><small>{nodes.length} steps · {edges.length} connections</small></div>
         {graphRunning && <Button variant="secondary" className="run-stop" type="button" onClick={stopGraph}><CircleStop size={15} /> Stop</Button>}
         <Button className="run-button" type="button" onClick={validateAndOpen} disabled={graphRunning}>
@@ -1847,8 +1724,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
             {selectedNode.data.model && selectedNode.data.kind !== "generate" && !selectedDefinition && <label className="field-label"><span>Runtime engine</span><Input value={selectedNode.data.model} readOnly /><small>로컬 실행 엔진과 버전이 실행 이력에 고정됩니다.</small></label>}
             <div className="inspector-section-title"><span>Input contracts</span><Braces size={14} /></div>
             {(selectedNode.data.inputTypes?.length ? selectedNode.data.inputTypes : ["Source node"]).map((type, index) => {
-              const handleId = type === "Source node" ? undefined : inputHandleId(type as PortType, index);
-              const connectionCount = type === "Source node" ? 0 : edges.filter((edge) => edge.target === selectedNode.id && (edge.targetHandle === handleId || (!edge.targetHandle && selectedNode.data.inputTypes?.length === 1))).length;
+              const connectionCount = type === "Source node" ? 0 : edges.filter((edge) => edge.target === selectedNode.id && inputPortMatches(selectedNode, edge.targetHandle, index)).length;
               const connected = connectionCount > 0;
               const required = selectedNode.data.requiredInputTypes?.includes(type as PortType) ?? selectedNode.data.inputsRequired !== false;
               const optional = !required;
@@ -1909,9 +1785,23 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
         onClose={() => setDrawingNodeId(null)}
         onSave={(drawing, image) => saveDrawing(drawingNode.id, drawing, image)}
       />}
+      <Dialog open={publishReviewOpen} onOpenChange={(open) => { if (!publishing) setPublishReviewOpen(open); }}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle>Publish Workflow version</DialogTitle>
+          <DialogDescription>선택한 결과에 필요한 Node 설정을 고정합니다. 게시 후에도 Canvas Draft를 계속 편집할 수 있습니다.</DialogDescription>
+          <ul className="space-y-2 text-sm">{draftContract.outputs.map((output) => <li key={output.key}><strong>{output.primary ? "Primary" : "Secondary"}</strong> · {output.label}</li>)}</ul>
+          <p className="text-xs text-[#777b72]">포함 예정: {outputReachability(draftContract.outputs, edges).size} Nodes · 실행 입력 {draftContract.inputs.length}개. 서버가 연결과 입력 계약을 검증합니다.</p>
+          <label className="field-label"><span>Release notes</span><Textarea value={releaseNotes} maxLength={10000} onChange={(event) => setReleaseNotes(event.target.value)} placeholder="이번 Version의 변경사항" /></label>
+          {publishError && <p role="alert" className="text-sm text-red-700">{publishError}</p>}
+          <div className="flex justify-end gap-2"><Button type="button" variant="secondary" disabled={publishing} onClick={() => { setPublishReviewOpen(false); setInputsPanelOpen(true); }}>Edit inputs & outputs</Button><Button type="button" disabled={publishing} onClick={() => void publishDraft()}>{publishing ? "Publishing…" : "Publish version"}</Button></div>
+        </DialogContent>
+      </Dialog>
       <WorkflowInputsPanel
         open={inputsPanelOpen}
         contract={draftContract}
+        nodes={nodes}
+        edges={edges}
+        definitions={nodeDefinitions}
         onOpenChange={setInputsPanelOpen}
         onChange={(contract) => { setDraftContract(contract); setSaveState("Unsaved"); }}
       />

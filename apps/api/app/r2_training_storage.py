@@ -48,7 +48,7 @@ class R2TrainingSettings:
         if missing:
             raise R2TrainingStorageError(
                 "Cloudflare R2 training storage is not configured. "
-                f"Configure Settings → Cloudflare R2 ({', '.join(missing)})."
+                f"Configure Settings → File storage ({', '.join(missing)})."
             )
         prefix = os.getenv("R2_TRAINING_PREFIX", "lora-training").strip().strip("/") or "lora-training"
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", prefix) or ".." in prefix:
@@ -68,6 +68,8 @@ class R2TrainingDataset:
     size_bytes: int
     download_url: str
     expires_at: str
+    provider: str = "r2"
+    profile_id: str | None = None
 
 
 def build_captioned_lora_archive(
@@ -134,5 +136,41 @@ class R2TrainingDatasetStore:
         )
 
 
-def get_r2_training_dataset_store() -> R2TrainingDatasetStore:
+class ObjectTrainingDatasetStore:
+    def __init__(self, storage):
+        self.storage = storage
+
+    def put_archive(self, *, character_id: str, archive: bytes) -> R2TrainingDataset:
+        from urllib.parse import urlparse
+        import ipaddress
+        endpoint = self.storage.settings.public_endpoint_url or self.storage.settings.endpoint_url
+        host = urlparse(endpoint or "").hostname
+        if host:
+            try:
+                private = not ipaddress.ip_address(host).is_global
+            except ValueError:
+                private = host in {"localhost", "minio"} or host.endswith(".localhost")
+            if private:
+                raise R2TrainingStorageError("External training requires a publicly reachable storage endpoint; choose R2, S3 or public MinIO")
+        digest = hashlib.sha256(archive).hexdigest()
+        safe_id = re.sub(r"[^A-Za-z0-9_-]+", "-", character_id).strip("-") or "character"
+        bucket = self.storage.settings.buckets.generation
+        key = f"lora-training/{safe_id}/{digest}.zip"
+        stored = self.storage.put_bytes(bucket=bucket, key=key, data=archive, content_type="application/zip")
+        return R2TrainingDataset(bucket, key, stored.uri, digest, len(archive),
+            self.storage.create_download_url(bucket=bucket, key=key),
+            (datetime.now(timezone.utc) + timedelta(seconds=self.storage.settings.signed_url_ttl_seconds)).isoformat(),
+            self.storage.settings.provider, self.storage.settings.profile_id)
+
+
+def get_training_dataset_store():
+    from .storage import get_storage
+    storage = get_storage()
+    if storage.settings.profile_id or storage.settings.provider in {"r2", "s3"}:
+        return ObjectTrainingDatasetStore(storage)
     return R2TrainingDatasetStore()
+
+
+def get_r2_training_dataset_store():
+    """Compatibility name for callers predating selectable file storage."""
+    return get_training_dataset_store()

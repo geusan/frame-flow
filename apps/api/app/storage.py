@@ -41,6 +41,9 @@ class StorageSettings:
     auto_create_buckets: bool
     signed_url_ttl_seconds: int
     buckets: StorageBuckets
+    profile_id: str | None = None
+    session_token: str | None = None
+    addressing_style: str = "path"
 
     @classmethod
     def from_env(cls) -> "StorageSettings":
@@ -64,7 +67,7 @@ class StorageSettings:
             endpoint = endpoint or (f"https://{account_id}.r2.cloudflarestorage.com" if account_id else None)
             public_endpoint = public_endpoint or endpoint
 
-        if provider != "memory" and (not endpoint or not access_key or not secret_key):
+        if provider not in {"memory", "s3"} and (not endpoint or not access_key or not secret_key):
             raise StorageError(
                 f"{provider} storage requires STORAGE_ENDPOINT (or R2_ACCOUNT_ID), "
                 "STORAGE_ACCESS_KEY, and STORAGE_SECRET_KEY"
@@ -85,6 +88,8 @@ class StorageSettings:
             region=region,
             auto_create_buckets=auto_create,
             signed_url_ttl_seconds=ttl,
+            session_token=os.getenv("STORAGE_SESSION_TOKEN") or None,
+            addressing_style=os.getenv("STORAGE_ADDRESSING_STYLE", "auto" if provider == "s3" else "path"),
             buckets=StorageBuckets(
                 reference=os.getenv("STORAGE_BUCKET_REFERENCE", "project-reference-private"),
                 formats=os.getenv("STORAGE_BUCKET_FORMATS", "project-derived-formats"),
@@ -104,6 +109,7 @@ class StoredObject:
     sha256: str
     content_type: str
     etag: str | None = None
+    profile_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -190,8 +196,9 @@ class S3CompatibleObjectStorage:
             endpoint_url=endpoint_url,
             aws_access_key_id=self.settings.access_key,
             aws_secret_access_key=self.settings.secret_key,
+            aws_session_token=self.settings.session_token,
             region_name=self.settings.region,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+            config=Config(connect_timeout=10, read_timeout=60, retries={"max_attempts": 2, "mode": "standard"}, signature_version="s3v4", s3={"addressing_style": self.settings.addressing_style}, request_checksum_calculation="when_required", response_checksum_validation="when_required"),
         )
 
     def initialize(self) -> None:
@@ -242,6 +249,7 @@ class S3CompatibleObjectStorage:
             digest,
             content_type,
             response.get("ETag", "").strip('"') or None,
+            self.settings.profile_id,
         )
 
     def get_bytes(self, *, bucket: str, key: str) -> bytes:
@@ -357,12 +365,36 @@ def artifact_content_url(artifact_id: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def get_storage() -> ObjectStorage:
+def _environment_storage() -> ObjectStorage:
     settings = StorageSettings.from_env()
     if settings.provider == "memory":
         return MemoryObjectStorage(settings)
     return S3CompatibleObjectStorage(settings)
 
 
+def get_storage() -> ObjectStorage:
+    if os.getenv("STORAGE_PROVIDER", "minio").strip().lower() == "memory":
+        return _environment_storage()
+    from .storage_profiles import selected_profile_id, storage_from_profile
+    profile_id = selected_profile_id()
+    return storage_from_profile(profile_id) if profile_id else _environment_storage()
+
+
+def get_artifact_storage(uri: str, metadata: dict[str, Any] | None = None) -> ObjectStorage:
+    location = (metadata or {}).get("storage") or {}
+    profile_id = location.get("profile_id")
+    if profile_id:
+        from .storage_profiles import storage_from_profile
+        return storage_from_profile(str(profile_id))
+    if os.getenv("STORAGE_PROVIDER", "minio").strip().lower() == "memory":
+        return _environment_storage()
+    from .storage_profiles import legacy_profile_id, storage_from_profile
+    legacy_id = legacy_profile_id()
+    storage = storage_from_profile(legacy_id) if legacy_id else _environment_storage()
+    if location.get("provider") and location["provider"] != storage.settings.provider:
+        raise StorageError("Original storage connection is unavailable; configure or migrate it before reading this artifact")
+    return storage
+
+
 def reset_storage_cache() -> None:
-    get_storage.cache_clear()
+    _environment_storage.cache_clear()

@@ -1,6 +1,7 @@
 {
   "schema_version": "port-types.v1",
   "types": [
+    { "id": "data.practice_timing.v1", "label": "Practice timing", "legacy_type": "PracticeTiming" },
     { "id": "artifact.character.v1", "label": "Character", "legacy_type": "Character" },
     { "id": "artifact.character_lora.v1", "label": "Character LoRA", "legacy_type": "Character" },
     { "id": "artifact.character_reference.v1", "label": "Character reference", "legacy_type": "CharacterReference" },

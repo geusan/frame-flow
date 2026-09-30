@@ -194,7 +194,7 @@ class FixtureProviderCapabilityExecutor:
         store = context.require_artifact_store()
         name = str(config.get("character_name") or "Generated character").strip() or "Generated character"
         shot_count = int(config.get("shot_count") or 6)
-        prompts = character_shot_prompts(context.prompt, shot_count)
+        prompts = character_shot_prompts(context.prompt, shot_count, shot_style=str(config.get("shot_style") or "story"))
         images: list[tuple[NodeArtifactRef, str, str]] = []
         for index, (role, prompt) in enumerate(prompts):
             content = render_image_svg(
@@ -295,15 +295,31 @@ class ReferenceAnalysisCapabilityExecutor:
         store = context.require_artifact_store()
         artifacts = store.read_inputs(typed_inputs)
         video = _require(artifacts, "Video", "Video", "FinalVideo", "ProxyVideo", "ReferenceOriginal")
+        analysis_options = {}
+        if context.model_alias.startswith(("openai.chat.", "openai.text.")):
+            analysis_options["analyzer_revision"] = context.definition.execution.revision
+            if os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower() == "live":
+                from ...reference_analysis_openai import OpenAIReferenceAnalyzer, OpenAIReferenceRecognizer
+                analysis_options.update(
+                    semantic_analyzer=OpenAIReferenceAnalyzer(
+                        logical_model=context.model_alias,
+                        sample_interval_seconds=float(config["sample_interval_seconds"]),
+                        max_frames=int(config["max_frames"]),
+                    ),
+                    speech_recognizer=OpenAIReferenceRecognizer(),
+                )
         bundle = analyze_reference_video(
             video.data,
             video.content_type,
             language_code=str(config.get("source_language") or "auto"),
             separate_music=bool(config.get("separate_music", True)),
             scene_threshold=float(config.get("scene_threshold") or 0.28),
+            **analysis_options,
         )
         source_id = video.record.id
         metadata = {
+            "definition_digest": context.definition.definition_digest,
+            "executor_revision": context.definition.execution.revision,
             "access_scope": "reference-analyzer-only",
             "storage_scope": "reference",
             "source_artifact_id": source_id,
@@ -362,7 +378,7 @@ class ReferenceAnalysisCapabilityExecutor:
             input_ids=manifest_inputs,
             input_roles=manifest_roles,
             provider_request_id=bundle.provider_request_id,
-            metadata={**metadata, "component_artifact_ids": bundle.manifest["artifacts"]},
+            metadata={**metadata, "component_artifact_ids": bundle.manifest["artifacts"], "runtime_snapshot": bundle.manifest["provenance"], "exact_model_id": bundle.manifest["provenance"]["semantic_model"], "cost_recording": "provider billing; no fabricated estimate"},
         )
 
 

@@ -223,9 +223,8 @@ as a separate user-requested job.
 - The current general Temporal activity timeout is 30 minutes even though final-render Config can
   request a longer process timeout. Dedicated Blender activities must align these limits before long
   production renders.
-- The Canvas compatibility layer exposes the first output handle. Secondary validation, skeleton,
-  motion metadata and `.blend` Artifacts are stored and passed with the node result, but do not yet
-  have independently selectable source handles.
+- The Canvas now exposes secondary Manifest output handles. Explicit port selections route typed
+  artifacts separately; older implicit first-output edges retain their historical result bundle.
 - Preview rendering intentionally caps output at 90 frames. Final quality renders the full baked
   range.
 

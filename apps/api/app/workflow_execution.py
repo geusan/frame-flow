@@ -14,7 +14,7 @@ from .database import (
 )
 from .domain import ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
-from .storage import get_storage, storage_location
+from .storage import get_artifact_storage, storage_location
 
 
 MODEL_BY_NODE = {
@@ -56,7 +56,7 @@ def _artifact_text(db, artifact_ids: list[str]) -> str:
     artifact = db.get(ArtifactRecord, artifact_ids[0])
     if not artifact:
         return ""
-    storage = get_storage()
+    storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
     bucket, key = storage_location(artifact.uri, artifact.metadata_json)
     return storage.get_bytes(bucket=bucket, key=key).decode("utf-8", errors="replace").strip()
 

@@ -413,3 +413,102 @@ def test_artifact_workflow_input_hydrates_a_typed_source_node(client):
     source = next(node for node in run["graph"]["nodes"] if node["id"] == "asset")
     assert source["data"]["outputArtifactIds"] == [uploaded["artifact_id"]]
     assert source["data"]["outputType"] == "Image"
+
+
+def _save_contract(client, canvas, contract, nodes=None, edges=None):
+    response = client.put(f"/canvases/{canvas['id']}", json={
+        "name": canvas["name"], "nodes": nodes if nodes is not None else canvas["nodes"],
+        "edges": edges if edges is not None else canvas["edges"],
+        "expected_revision": canvas["revision"], "draft_contract": contract,
+    })
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_template_inputs_resolve_once_and_preserve_frozen_version(client):
+    from app.database import SessionLocal, WorkflowDefinitionRecord, WorkflowVersionRecord
+    from app.domain import WorkflowVersionRunRequest
+    from app.workflow_definitions import resolve_workflow_execution
+
+    workflow, canvas = create_configured_workflow(client)
+    contract = deepcopy(canvas["draft_contract"])
+    contract["inputs"].append({"key": "place", "label": "Place", "type": "string", "default": "Seoul"})
+    contract["bindings"][0]["value"] = {"kind": "template", "template": "{{topic}} in {{place}} / {{topic}}", "input_keys": ["topic", "place"]}
+    canvas = _save_contract(client, canvas, contract)
+    response = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 201, response.text
+    version = response.json()
+    with SessionLocal() as db:
+        record = db.get(WorkflowVersionRecord, version["id"])
+        original = deepcopy(record.graph_json)
+        payload, _, _ = resolve_workflow_execution(db, db.get(WorkflowDefinitionRecord, workflow["id"]), record, WorkflowVersionRunRequest(inputs={"topic": "literal {{place}}"}))
+        prompt = next(node for node in payload.nodes if node["id"] == "prompt")
+        assert prompt["data"]["config"]["text"] == "literal {{place}} in Seoul / literal {{place}}"
+        assert record.graph_json == original
+
+
+def test_publish_rejects_undeclared_template_tokens_and_duplicate_outputs(client):
+    workflow, canvas = create_configured_workflow(client)
+    contract = deepcopy(canvas["draft_contract"])
+    contract["bindings"][0]["value"] = {"kind": "template", "template": "{{topic}} {{undeclared}}", "input_keys": ["topic"]}
+    canvas = _save_contract(client, canvas, contract)
+    response = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 422
+    assert "tokens" in response.text
+    contract["bindings"][0]["value"] = {"kind": "input", "key": "topic"}
+    contract["outputs"].append({**contract["outputs"][0], "primary": False})
+    canvas = _save_contract(client, canvas, contract)
+    response = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 422
+    assert "duplicate Workflow output" in response.text
+
+
+def test_secondary_output_includes_branch_and_unknown_unused_cycle_is_preserved(client):
+    workflow, canvas = create_configured_workflow(client)
+    nodes = deepcopy(canvas["nodes"])
+    nodes += [{"id": "unknown", "position": {}, "data": {"key": "plugin.missing", "config": {"opaque": [1, 2]}}}]
+    edges = [*canvas["edges"], {"id": "side", "source": "prompt", "target": "unused", "targetHandle": "input-Prompt-0"}, {"id": "ignored-cycle", "source": "unknown", "target": "unknown"}]
+    contract = deepcopy(canvas["draft_contract"])
+    contract["outputs"].append({"key": "summary", "label": "Summary", "node_id": "unused", "port_key": "text", "port_type": "data.text.v1", "primary": False})
+    canvas = _save_contract(client, canvas, contract, nodes, edges)
+    response = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 201, response.text
+    assert {node["id"] for node in response.json()["graph"]["nodes"]} == {"prompt", "image", "unused"}
+    assert response.json()["warnings"] == ["Unused Canvas Node excluded: unknown"]
+    draft = client.get(f"/canvases/{canvas['id']}").json()
+    assert any(node["id"] == "unknown" for node in draft["nodes"])
+    assert any(edge["id"] == "ignored-cycle" for edge in draft["edges"])
+
+
+def test_output_port_key_is_validated(client):
+    workflow, canvas = create_configured_workflow(client)
+    contract = deepcopy(canvas["draft_contract"])
+    contract["outputs"][0]["port_key"] = "missing"
+    canvas = _save_contract(client, canvas, contract)
+    response = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 422
+    assert "unknown port" in response.text
+
+
+def test_restore_version_creates_new_draft_and_preserves_previous_draft(client):
+    workflow, canvas = create_configured_workflow(client)
+    version = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]}).json()
+    old_nodes = deepcopy(canvas["nodes"])
+    old_nodes[0]["data"]["configText"] = "Unpublished edits must survive"
+    canvas = _save_contract(client, canvas, canvas["draft_contract"], old_nodes)
+    response = client.post(f"/workflows/{workflow['id']}/versions/1/restore-draft", json={"expected_canvas_id": canvas["id"], "expected_canvas_revision": canvas["revision"]})
+    assert response.status_code == 201, response.text
+    restored = client.get(f"/canvases/{response.json()['canvas_id']}").json()
+    assert restored["base_version_id"] == version["id"]
+    assert restored["id"] != canvas["id"]
+    assert restored["document"]["runtime"]["nodes"] == {}
+    assert restored["document"]["graph"]["nodes"][0]["config"]["text"] == "A cat making breakfast"
+    preserved = client.get(f"/canvases/{canvas['id']}").json()
+    assert preserved["nodes"][0]["data"]["configText"] == "Unpublished edits must survive"
+    assert preserved["workflow_definition_id"] is None
+    assert client.get(f"/workflows/{workflow['id']}/versions/1").json()["content_hash"] == version["content_hash"]
+    stale = client.post(f"/workflows/{workflow['id']}/versions/1/restore-draft", json={"expected_canvas_id": canvas["id"], "expected_canvas_revision": canvas["revision"]})
+    assert stale.status_code == 409
+    republished = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": restored["revision"]})
+    assert republished.status_code == 201, republished.text
+    assert republished.json()["content_hash"] == version["content_hash"]

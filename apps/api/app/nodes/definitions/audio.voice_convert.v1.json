@@ -1,0 +1,106 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "audio.voice_convert",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Voice performance conversion",
+    "description": "원본 음성의 발화·타이밍·감정을 유지하며 지정된 ElevenLabs Voice ID로 변환",
+    "category": "Audio",
+    "icon": "changeVoice",
+    "cost_label": "Provider billed",
+    "keywords": [
+      "audio",
+      "voice_convert"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "audio",
+        "type": "media.audio.v1",
+        "label": "Original speech",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "audio",
+        "type": "media.audio.v1",
+        "label": "Audio"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "voice_id",
+      "stability",
+      "similarity_boost",
+      "seed",
+      "remove_background_noise"
+    ],
+    "properties": {
+      "voice_id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "title": "ElevenLabs Voice ID",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "string"
+        },
+        "default": "JBFqnCBsd6RMkjVDRZzb"
+      },
+      "stability": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.5,
+        "title": "Stability"
+      },
+      "similarity_boost": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+        "default": 0.9,
+        "title": "Voice similarity"
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4294967295,
+        "default": 0,
+        "title": "Seed"
+      },
+      "remove_background_noise": {
+        "type": "boolean",
+        "default": true,
+        "title": "Remove background noise"
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "provider",
+    "executor": "voice-convert",
+    "revision": "voice-convert.v1",
+    "provider": "elevenlabs",
+    "model_alias": "elevenlabs.audio.voice_change"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Audio",
+    "schema_id": "audio.voice_converted.v1",
+    "input_roles": {
+      "media.audio.v1": "source_speech"
+    },
+    "output_role": "converted_speech"
+  }
+}

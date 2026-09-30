@@ -50,12 +50,14 @@ const workspaceNavigation: NavigationItem[] = [
   { href: "/asset/images", label: "Images", icon: ImageIcon, count: "images" },
   { href: "/asset/videos", label: "Videos", icon: Film, count: "videos" },
   { href: "/asset/audio", label: "Audio", icon: Headphones, count: "audio" },
+  { href: "/references", label: "References", icon: Film },
   { href: "/reference-results", label: "Reference results", icon: FileChartColumnIncreasing },
   { href: "/runs", label: "Runs", icon: Play, count: "runs" },
 ];
 
 const settingsNavigation: NavigationItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings/storage", label: "File storage", icon: Boxes },
   { href: "/settings/models", label: "Models", icon: Boxes },
   { href: "/settings/fonts", label: "Fonts", icon: Type },
   { href: "/settings/skills", label: "Skills", icon: WandSparkles },

@@ -272,3 +272,28 @@ def test_canvas_record_writes_do_not_introduce_legacy_graph_literals():
             if "nodes" in keys or "edges" in keys:
                 violations.append(str(path.relative_to(app_root)))
     assert violations == []
+
+
+def test_canonical_config_cannot_be_overridden_by_runtime_or_editor(client):
+    from app.canvas_documents import normalize_canvas_document
+    document = canonicalize_canvas_document([{"id": "prompt", "data": {"key": "prompt.input", "configText": "authoritative"}}], [])
+    document["runtime"]["nodes"]["prompt"] = {"status": "SUCCEEDED", "configText": "runtime override", "config": {"text": "bad"}, "key": "image.generate"}
+    document["graph"]["nodes"][0]["editor"]["legacy_data"] = {"configText": "editor override"}
+    normalized = normalize_canvas_document(document)
+    assert normalized["graph"]["nodes"][0]["config"] == {"text": "authoritative"}
+    assert normalized["runtime"]["nodes"]["prompt"] == {"status": "SUCCEEDED"}
+    assert legacy_canvas_graph(normalized)["nodes"][0]["data"]["configText"] == "authoritative"
+    created = client.post("/canvases", json={"name": "Direct", "document": normalized})
+    assert created.status_code == 201, created.text
+    assert created.json()["document"] == normalized
+
+
+def test_canonical_digest_mismatch_rejected_and_unknown_roundtrip_preserved(client):
+    from app.canvas_documents import normalize_canvas_document
+    import pytest
+    document = canonicalize_canvas_document([{"id": "prompt", "data": {"key": "prompt.input", "configText": "hi"}}], [])
+    document["graph"]["nodes"][0]["definition_digest"] = "sha256:wrong"
+    with pytest.raises(ValueError, match="digest mismatch"):
+        normalize_canvas_document(document)
+    unknown = canonicalize_canvas_document([{"id": "unknown", "data": {"key": "video.frame_extract", "config": {"future": True}}}], [{"id": "edge", "source": "unknown", "target": "missing", "sourceHandle": "future-output", "targetHandle": "future-input"}])
+    assert normalize_canvas_document(unknown) == unknown

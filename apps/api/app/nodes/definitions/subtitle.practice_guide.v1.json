@@ -1,0 +1,91 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "subtitle.practice_guide",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "학습 안내 자막",
+    "description": "음성 타이밍으로 따라 말하기/다시 듣기 안내 문서를 만듭니다. 마지막 쉼에는 자막이 없습니다.",
+    "category": "Utilities",
+    "icon": "render",
+    "cost_label": "$0.00"
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "timing",
+        "type": "data.practice_timing.v1",
+        "label": "Practice timing",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "document",
+        "type": "data.caption_document.v1",
+        "label": "Caption document",
+        "required": true
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "repeat_label",
+      "listen_label",
+      "font_size",
+      "color"
+    ],
+    "properties": {
+      "repeat_label": {
+        "type": "string",
+        "default": "정답을 보고 따라 해요",
+        "title": "Practice cue",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "listen_label": {
+        "type": "string",
+        "default": "한 번 더 들어보세요",
+        "title": "Replay cue",
+        "minLength": 1,
+        "maxLength": 80
+      },
+      "font_size": {
+        "type": "integer",
+        "default": 72,
+        "title": "Font size",
+        "minimum": 20,
+        "maximum": 120
+      },
+      "color": {
+        "type": "string",
+        "default": "#FFFFFF",
+        "title": "Text color",
+        "pattern": "^#[0-9A-Fa-f]{6}$"
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "local",
+    "executor": "practice-guide",
+    "revision": "practice-guide.v1",
+    "provider": "local",
+    "model_alias": "local.practice-guide"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "CaptionDocument",
+    "schema_id": "caption.document.v1",
+    "input_roles": {
+      "data.practice_timing.v1": "practice_timing"
+    },
+    "output_role": "practice_guide"
+  }
+}

@@ -40,6 +40,7 @@ def test_provider_settings_are_created_and_secrets_are_write_only(client: TestCl
         "fal.ai",
         "Tripo",
         "Cloudflare R2",
+        "YouTube",
     ]
     initial_openai = initial.json()[0]
     assert initial_openai["auth_method"] == "api_key"
@@ -317,7 +318,7 @@ def test_tripo_provider_uses_write_only_api_key_and_lists_models(client: TestCli
     assert client.get("/health").json()["tripo_configured"] is True
     models = [model for model in client.get("/models").json() if model["provider"] == "Tripo"]
     assert {model["logical_alias"] for model in models} == {
-        "tripo.3d.p1", "tripo.3d.h3.1", "tripo.rig.biped",
+        "tripo.3d.p1", "tripo.3d.h3.1", "tripo.rig.biped", "tripo.image.multiview",
     }
     assert all(model["configured"] for model in models)
 

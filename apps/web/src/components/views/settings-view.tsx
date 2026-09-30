@@ -61,6 +61,7 @@ function providerIcon(provider: ProviderSetting["provider"]): ReactNode {
   if (provider === "xai") return <Zap size={19} />;
   if (provider === "google") return <Sparkles size={19} />;
   if (provider === "claude") return <Bot size={19} />;
+  if (provider === "youtube") return <Video size={19} />;
   if (provider === "elevenlabs") return <Volume2 size={19} />;
   if (provider === "seedance") return <Film size={19} />;
   if (provider === "kling") return <WandSparkles size={19} />;
@@ -76,7 +77,7 @@ function authCommand(provider: ProviderSetting["provider"], method: ProviderAuth
   return null;
 }
 
-export function SettingsView() {
+export function SettingsView({ legacyStorage = false }: { legacyStorage?: boolean }) {
   const [providers, setProviders] = useState<ProviderSetting[]>([]);
   const [drafts, setDrafts] = useState<Record<string, ProviderDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -86,13 +87,14 @@ export function SettingsView() {
   const [savedProvider, setSavedProvider] = useState<string | null>(null);
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const [selectedSecretFiles, setSelectedSecretFiles] = useState<Record<string, string>>({});
-  const [expandedProvider, setExpandedProvider] = useState<string | null>("openai");
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(legacyStorage ? "r2" : "openai");
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const records = await frameflowApi.listProviderSettings();
+      const allRecords = await frameflowApi.listProviderSettings();
+      const records = allRecords.filter((provider) => legacyStorage ? provider.provider === "r2" : provider.provider !== "r2");
       setProviders(records);
       setDrafts(Object.fromEntries(records.map((provider) => [provider.provider, draftFor(provider)])));
       setExpandedProvider((current) => current && records.some((provider) => provider.provider === current) ? current : records[0]?.provider ?? null);
@@ -101,7 +103,7 @@ export function SettingsView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [legacyStorage]);
 
   useEffect(() => { void loadProviders(); }, [loadProviders]);
 
@@ -171,17 +173,17 @@ export function SettingsView() {
   };
 
   return (
-    <div className="view-page settings-page">
-      <PageHeader
-        title="Provider connections"
-        description="생성과 에이전트 실행에 사용할 모델 프로바이더와 인증 방식을 관리합니다."
-        actions={<><Button variant="secondary" asChild><Link className="settings-model-link" href="/settings/models">Model registry <ExternalLink size={13} /></Link></Button><Button type="button" variant="secondary" onClick={() => void loadProviders()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button></>}
-      />
+    <div className={legacyStorage ? "settings-page" : "view-page settings-page"}>
+      {!legacyStorage && <PageHeader
+        title="AI & service connections"
+        description="생성·에이전트 실행·영상 가져오기에 사용할 프로바이더와 로그인 세션을 관리합니다."
+        actions={<><Button variant="secondary" asChild><Link href="/settings/storage">File storage <Database size={13} /></Link></Button><Button variant="secondary" asChild><Link className="settings-model-link" href="/settings/models">Model registry <ExternalLink size={13} /></Link></Button><Button type="button" variant="secondary" onClick={() => void loadProviders()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh</Button></>}
+      />}
 
-      <Card className="settings-callout">
+      {!legacyStorage && <Card className="settings-callout">
         <span><Database size={18} /></span>
         <div><strong>Credentials stay on the server</strong><p>저장한 secret은 이 화면에서 다시 읽을 수 없습니다. `.env` 값은 프로바이더가 처음 생성될 때만 가져오며 이후에는 DB 설정이 우선합니다.</p></div>
-      </Card>
+      </Card>}
 
       {error && <p className="experiment-history-state error">{error}</p>}
       {!error && loading && <p className="experiment-history-state">Loading provider connections…</p>}
@@ -203,7 +205,7 @@ export function SettingsView() {
                   className="provider-accordion-trigger"
                 >
                   <span className={`provider-logo ${provider.provider}`}>{providerIcon(provider.provider)}</span>
-                  <span className="provider-accordion-copy"><strong>{provider.label}</strong><small>{provider.description}</small></span>
+                  <span className="provider-accordion-copy"><strong>{legacyStorage ? "이전 LoRA 학습용 R2 연결" : provider.label}</strong><small>{legacyStorage ? "이전 버전의 학습 ZIP 업로드를 위한 호환 설정" : provider.description}</small></span>
                   <span className={`provider-accordion-status ${ready ? "ready" : "incomplete"}`}>
                     {ready ? <Check size={12} /> : <CircleAlert size={12} />}
                     {ready ? "Ready" : "Setup required"}
@@ -276,7 +278,8 @@ export function SettingsView() {
                 <div className="provider-fields">
                   {visibleFields.map((field) => {
                     const required = selectedAuth?.required_fields.includes(field.key) ?? field.required;
-                    if (field.input_kind === "service_account_json") {
+                    if (field.input_kind === "service_account_json" || field.input_kind === "cookies_txt") {
+                      const isCookies = field.input_kind === "cookies_txt";
                       const selectedFile = selectedSecretFiles[provider.provider];
                       return (
                         <Label className="provider-field provider-service-account-field" key={field.key} htmlFor={`${provider.provider}-${field.key}`}>
@@ -285,24 +288,30 @@ export function SettingsView() {
                             <Input
                               id={`${provider.provider}-${field.key}`}
                               type="file"
-                              accept="application/json,.json"
+                              accept={isCookies ? "text/plain,.txt" : "application/json,.json"}
                               autoComplete="off"
                               onChange={(event) => {
                                 const file = event.target.files?.[0];
                                 if (!file) return;
+                                if (isCookies && file.size > 256 * 1024) {
+                                  setProviderErrors((current) => ({ ...current, [provider.provider]: "cookies.txt는 256 KB 이하로 등록하세요." }));
+                                  return;
+                                }
+                                setProviderErrors((current) => ({ ...current, [provider.provider]: "" }));
                                 void file.text().then((value) => {
                                   setDrafts((current) => ({
                                     ...current,
-                                    [provider.provider]: { ...draft, values: { ...draft.values, [field.key]: value } },
+                                    [provider.provider]: { ...(current[provider.provider] ?? draft), values: { ...(current[provider.provider]?.values ?? draft.values), [field.key]: value } },
                                   }));
                                   setSelectedSecretFiles((current) => ({ ...current, [provider.provider]: file.name }));
-                                }).catch(() => setProviderErrors((current) => ({ ...current, [provider.provider]: "Service Account JSON 파일을 읽지 못했습니다." })));
+                                }).catch(() => setProviderErrors((current) => ({ ...current, [provider.provider]: `${field.label} 파일을 읽지 못했습니다.` })));
                               }}
                             />
-                            <span>{selectedFile ? `${selectedFile} · 저장 준비됨` : field.has_value ? "Service Account가 저장되어 있습니다." : "다운로드한 JSON 키 파일을 선택하세요."}</span>
-                            {field.has_value && <ConfirmAction trigger={<Button type="button" variant="danger" size="icon" className="provider-secret-remove" aria-label={`Remove ${field.label}`} disabled={saving === provider.provider}><Trash2 size={13} /></Button>} title={`Remove ${field.label}?`} description="저장된 Service Account 개인 키를 데이터베이스에서 제거합니다." confirmLabel="Remove credential" onConfirm={() => removeSecret(provider, field.key)} />}
+                            <span>{selectedFile ? `${selectedFile} · 저장 준비됨` : field.has_value ? "인증 파일이 저장되어 있습니다. 새 파일로 교체할 수 있습니다." : isCookies ? "YouTube cookies.txt 파일을 선택하세요." : "다운로드한 JSON 키 파일을 선택하세요."}</span>
+                            {field.has_value && <ConfirmAction trigger={<Button type="button" variant="danger" size="icon" className="provider-secret-remove" aria-label={`Remove ${field.label}`} disabled={saving === provider.provider}><Trash2 size={13} /></Button>} title={`Remove ${field.label}?`} description="저장된 인증 파일을 데이터베이스에서 제거합니다." confirmLabel="Remove credential" onConfirm={() => removeSecret(provider, field.key)} />}
                           </div>
-                          <small><code>{field.env_var}</code>{field.help_text && ` · ${field.help_text}`}</small>
+                          <small>{isCookies ? field.help_text : <><code>{field.env_var}</code>{field.help_text && ` · ${field.help_text}`}</>}</small>
+                          {isCookies && <a href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies" target="_blank" rel="noreferrer" className="settings-model-link">로그인 쿠키 내보내기 안내 <ExternalLink size={13} /></a>}
                         </Label>
                       );
                     }

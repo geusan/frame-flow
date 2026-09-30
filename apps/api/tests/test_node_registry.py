@@ -44,15 +44,10 @@ def test_node_inventory_characterizes_every_canvas_key_and_registry_definition()
     canvas_model = Path(__file__).parents[2] / "web/src/lib/canvas-model.ts"
     template_keys = re.findall(r'key: "([a-z][a-z0-9_.-]+)"', canvas_model.read_text())
     counts = Counter(template_keys)
-    legacy_adapter_keys = {
-        definition.type_key
-        for definition in node_registry.list()
-        if definition.contract_version == 1 and definition.editor.kind == "legacy"
-    }
-    assert set(template_keys) == legacy_adapter_keys | canvas_only
-    assert inventory["library_duplicates"] == {
-        key: count for key, count in sorted(counts.items()) if count > 1
-    }
+    assert set(template_keys) == canvas_only - {"utility.text"}
+    assert all(count == 1 for count in counts.values())
+    # library_duplicates is the historical pre-Registry inventory, not a live catalog.
+    assert not set(template_keys) & production
 
     registered = {definition.type_key for definition in node_registry.list()}
     assert registered <= production
@@ -308,7 +303,7 @@ def test_node_definition_api_exposes_active_contracts_only(client):
 
 
 def test_port_type_registry_covers_legacy_canvas_contracts():
-    assert len(port_type_registry.ids) == 49
+    assert len(port_type_registry.ids) == 50
     assert port_type_registry.compatible("media.video.v1", "media.video.v1") is True
     assert port_type_registry.compatible("media.video.v1", "media.image.v1") is False
     assert port_type_registry.get("data.motion_track.v1").legacy_type == "MotionTrack"
@@ -724,3 +719,52 @@ def test_temporal_canvas_activity_uses_the_same_canvas_node_dispatch(monkeypatch
     result = asyncio.run(canvas_activities.execute_canvas_node_activity("run_1", "control_1"))
     assert result == {"artifact_ids": ["video_1"]}
     assert calls == [("run_1", "control_1")]
+
+
+def test_output_port_selection_keeps_auxiliary_artifacts_separate():
+    from types import SimpleNamespace
+    from app.nodes.output_ports import artifacts_for_output_port, selected_output_port
+    definition = node_registry.get("character.auto_rig", 1)
+    artifacts = [SimpleNamespace(id="rig", type="CharacterRigged"), SimpleNamespace(id="skeleton", type="MetadataJSON")]
+    rig = selected_output_port(definition, "rigged_3d_asset")
+    skeleton = selected_output_port(definition, "output-skeleton_metadata")
+    assert artifacts_for_output_port(definition, rig, artifacts) == ["rig"]
+    assert artifacts_for_output_port(definition, skeleton, artifacts) == ["skeleton"]
+    assert selected_output_port(definition, "missing") is None
+
+
+def test_registry_rejects_blocked_and_retired_execution_but_keeps_lookup():
+    import pytest
+    definition = node_registry.get("image.generate", 1)
+    for lifecycle in ("BLOCKED", "RETIRED"):
+        blocked = definition.model_copy(update={"lifecycle": lifecycle})
+        with pytest.raises(ValueError, match=lifecycle):
+            node_registry.assert_runnable(blocked)
+    node_registry.assert_runnable(definition.model_copy(update={"lifecycle": "DEPRECATED"}))
+    assert node_registry.get("image.generate", 1) is definition
+
+
+def test_registry_api_can_load_historical_contracts_without_listing_them_by_default(client):
+    active = client.get("/node-definitions").json()
+    all_definitions = client.get("/node-definitions?include_inactive=true").json()
+    assert all(item["lifecycle"] == "ACTIVE" for item in active)
+    assert any(item["lifecycle"] == "DEPRECATED" for item in all_definitions)
+    assert len(all_definitions) == len(node_registry.list())
+
+
+def test_execution_inputs_keep_distinct_ports_from_the_same_source():
+    from types import SimpleNamespace
+    from app.canvas_runs import _experiment_payload
+    artifacts = {"rig": SimpleNamespace(id="rig", type="CharacterRigged"), "skeleton": SimpleNamespace(id="skeleton", type="MetadataJSON")}
+    source = SimpleNamespace(canvas_node_id="source", node_key="character.auto_rig", output_artifact_ids=["rig", "skeleton"], output_payload={})
+    target = SimpleNamespace(canvas_node_id="target", node_key="llm.assistant", output_artifact_ids=[], output_payload={})
+    run = SimpleNamespace(canvas_id="test-ports", node_runs=[source, target], graph_snapshot={
+        "source": "stored_canvas",
+        "nodes": [{"id": "source", "data": {"key": "character.auto_rig", "contractVersion": 1, "outputType": "CharacterRigged"}}, {"id": "target", "data": {"key": "llm.assistant"}}],
+        "edges": [{"source": "source", "target": "target", "sourceHandle": "rigged_3d_asset", "targetHandle": "model"}, {"source": "source", "target": "target", "sourceHandle": "skeleton_metadata", "targetHandle": "metadata"}],
+    })
+    db = SimpleNamespace(get=lambda _type, artifact_id: artifacts[artifact_id])
+    result = _experiment_payload(db, run, target, {"key": "llm.assistant", "contractVersion": 1, "config": {}})
+    assert [item["artifact_ids"] for item in result.inputs] == [["rig"], ["skeleton"]]
+    assert [item["type"] for item in result.inputs] == ["CharacterRigged", "MetadataJSON"]
+    assert [item["target_port"] for item in result.inputs] == ["model", "metadata"]

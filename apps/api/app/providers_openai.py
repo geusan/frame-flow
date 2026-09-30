@@ -20,6 +20,11 @@ from .providers_generation import (
 OPENAI_LIVE_REVISION = "openai-live.v1"
 
 
+class StudioCharacterGenerationError(RuntimeError):
+    # A previous view may already have been billed; retry requires an explicit new run.
+    retryable = False
+
+
 @dataclass(frozen=True)
 class OpenAIProviderConfig:
     api_key: str
@@ -84,12 +89,12 @@ class OpenAIGenerationServices:
             "model": exact_model,
             "prompt": prompt,
             "n": max(1, min(4, count)),
-            "size": _image_size(aspect_ratio),
+            "size": _image_size(aspect_ratio, exact_model),
             "quality": quality,
             "output_format": "png",
         }
         response = self.client.images.edit(
-            image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(reference_images[:4], start=1)],
+            image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(reference_images[:16], start=1)],
             **common,
         ) if reference_images else self.client.images.generate(**common)
         images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
@@ -108,25 +113,40 @@ class OpenAIGenerationServices:
         aspect_ratio: str,
         quality: str,
         reference_images: list[InputMedia],
+        shot_style: str = "story",
     ) -> CharacterGenerationResult:
-        shots = character_shot_prompts(synopsis, shot_count)
+        shots = character_shot_prompts(synopsis, shot_count, shot_style=shot_style)
         generated_assets: list[CharacterImageAsset] = []
         canonical = reference_images[0] if reference_images else None
         supporting_references = reference_images[1:3] if reference_images else []
         request_id = ""
         for index, (role, shot_prompt) in enumerate(shots):
             image_inputs = [*([canonical] if canonical else []), *supporting_references][:4]
-            images, current_request_id = self.generate_images(
-                logical_model=logical_model,
-                prompt=shot_prompt,
-                count=1,
-                aspect_ratio=aspect_ratio,
-                quality=quality,
-                reference_images=image_inputs,
-            )
+            if shot_style == "studio":
+                image_inputs = reference_images[:4] if index == 0 else [canonical, *reference_images[:4]]
+                if index:
+                    shot_prompt += (
+                        "\n\nThe FIRST supplied image is the generated studio baseline. "
+                        "Render that exact same character again; do not synthesize another identity. "
+                        "The remaining images are the original inspiration references and must not override the baseline's face, hair or outfit."
+                    )
+            try:
+                images, current_request_id = self.generate_images(
+                    logical_model=logical_model,
+                    prompt=shot_prompt,
+                    count=1,
+                    aspect_ratio=aspect_ratio,
+                    quality=quality,
+                    reference_images=image_inputs,
+                )
+            except Exception as exc:
+                if shot_style == "studio":
+                    raise StudioCharacterGenerationError(f"Studio character view {index + 1}/{len(shots)} failed: {exc}") from exc
+                raise
             data = images[0]
             request_id = request_id or current_request_id
-            canonical = canonical or InputMedia("generated-canonical", "Image", data, "image/png")
+            if canonical is None or (shot_style == "studio" and index == 0):
+                canonical = InputMedia("generated-canonical", "Image", data, "image/png")
             generated_assets.append(CharacterImageAsset(data, "image/png", f"character-{index + 1:02d}-{role}.png", role, shot_prompt))
         return CharacterGenerationResult(
             {"kind": "image", "title": f"{name} · {len(generated_assets)} views", "mimeType": "image/png"},
@@ -165,7 +185,9 @@ class OpenAIGenerationServices:
         return audio, request_id, exact_model
 
 
-def _image_size(aspect_ratio: str) -> str:
+def _image_size(aspect_ratio: str, exact_model: str = "") -> str:
+    if exact_model == "gpt-image-2" or exact_model.startswith("gpt-image-2-"):
+        return {"9:16": "1152x2048", "16:9": "2048x1152", "4:5": "1024x1280", "1:1": "1024x1024"}.get(aspect_ratio, "1024x1536")
     if aspect_ratio == "16:9":
         return "1536x1024"
     if aspect_ratio == "1:1":

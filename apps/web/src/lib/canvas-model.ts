@@ -60,6 +60,8 @@ export interface StudioNodeContractData {
   description: string;
   icon: IconName;
   kind: NodeKind;
+  inputPorts?: Array<{ key: string; type: string; label: string; required?: boolean; multiple?: boolean }>;
+  outputPorts?: Array<{ key: string; type: string; label: string; legacyType: PortType }>;
   inputTypes?: PortType[];
   inputsRequired?: boolean;
   requiredInputTypes?: PortType[];
@@ -138,106 +140,16 @@ export interface NodeTemplate {
   label: string;
   group: "Quick" | "References" | "Image" | "Video" | "Audio" | "Utilities" | "Advanced";
   visible?: boolean;
-  data: {
-    key: string;
-    label: string;
-    description: string;
-    icon: IconName;
-    kind: NodeKind;
-    inputTypes?: PortType[];
-    inputsRequired?: boolean;
-    requiredInputTypes?: PortType[];
-    multiInputTypes?: PortType[];
-    outputType?: PortType;
-    model?: string;
-    provider?: ProviderName;
-    cost?: string;
-    duration?: string;
-    preview?: string;
-    fanout?: string;
-    configText?: string;
-    resolution?: string;
-    aspectRatio?: string;
-    batchSize?: number;
-    characterName?: string;
-    shotCount?: number;
-    durationSeconds?: number;
-    loraUrl?: string;
-    loraScale?: number;
-    triggerWord?: string;
-    contractVersion?: number;
-    definitionDigest?: string;
-    config?: Record<string, unknown>;
-    executable?: boolean;
-    transition?: string;
-    targetDurationSeconds?: number;
-    sourceLanguage?: string;
-    separateMusic?: boolean;
-    sceneThreshold?: number;
-    motionSampleFps?: number;
-    motionMaxWidth?: number;
-    motionMinConfidence?: number;
-    motionFaceBlendshapes?: boolean;
-    targetLanguage?: string;
-    voiceName?: string;
-    captionX?: number;
-    captionY?: number;
-    captionAlign?: CaptionAlignment;
-    captionFontSize?: number;
-    waitForInput?: boolean;
-    skillId?: string;
-    stickyColor?: StickyColor;
-    drawing?: DrawingDocument;
-  };
+  data: StudioNodeContractData & LegacyStudioNodeFields;
 }
 
-/** Read-only compatibility catalog for Canvas documents created before the Registry API. */
-export const legacyNodeTemplates: NodeTemplate[] = [
-  { id: "prompt", label: "Prompt", group: "Quick", data: { key: "prompt.input", label: "Prompt", description: "직접 입력하거나 상위 Prompt를 받아 이미지 참조와 함께 편집", icon: "brief", kind: "input", inputTypes: ["Prompt", "Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Prompt", configText: "", executable: false } },
+/** Canvas-only authoring tools; production Nodes come exclusively from the Registry. */
+export const canvasElementTemplates: NodeTemplate[] = [
   { id: "drawing-canvas", label: "Drawing Canvas", group: "Quick", data: { key: "utility.drawing", label: "Drawing canvas", description: "이미지를 배치하고 펜으로 지시사항을 표시", icon: "drawing", kind: "input", outputType: "Image", executable: false, drawing: { version: 1, width: 1280, height: 720, images: [], strokes: [] } } },
-  { id: "image", label: "Image Generator", group: "Quick", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
-  { id: "lora-image", label: "LoRA Image Generator", group: "Quick", data: { key: "lora.image.generate", label: "LoRA image generator", description: "학습 완료 Character 또는 FLUX.2 LoRA로 캐릭터가 고정된 이미지를 생성", icon: "lora", kind: "generate", inputTypes: ["Prompt", "Character"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "fal", model: "fal.image.flux2-lora", cost: "$0.07", resolution: "2K", aspectRatio: "9:16", batchSize: 1, loraUrl: "", loraScale: 0.9, triggerWord: "" } },
-  { id: "character", label: "Character Generator", group: "Quick", data: { key: "character.generate", label: "Character generator", description: "Prompt 또는 기준 이미지에서 동일 캐릭터의 여러 단일 장면을 생성", icon: "character", kind: "generate", inputTypes: ["Prompt", "Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Character", provider: "google", model: "image.fast", cost: "$0.40", resolution: "2K", aspectRatio: "9:16", characterName: "New character", shotCount: 6 } },
-  { id: "video", label: "Video Generator", group: "Quick", data: { key: "video.generate", label: "Video generator", description: "Prompt·Character·LoRA Image·Reference Video로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt", "Character", "Image", "Video"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.omni", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", durationSeconds: 6, batchSize: 1 } },
-  { id: "voice", label: "Voiceover", group: "Quick", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
-  { id: "assistant", label: "LLM Assistant", group: "Quick", data: { key: "llm.assistant", label: "LLM assistant", description: "연결된 Prompt를 분석·변환", icon: "assistant", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Text", provider: "google", model: "text.3.1-pro-preview", cost: "$0.03", contractVersion: 2 } },
-  { id: "skill-executor", label: "Skill Executor", group: "Quick", data: { key: "skill.execute", label: "Skill executor", description: "프로젝트 Skill로 입력을 실행 가능한 Prompt로 변환", icon: "skill", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Prompt", provider: "google", model: "text.3.1-pro-preview", cost: "$0.03", skillId: "nottalggak-prompt-machine", contractVersion: 2 } },
   { id: "folder", label: "Folders", group: "Advanced", visible: false, data: { key: "folder.group", label: "Folder", description: "Canvas 노드를 시각적으로 정리", icon: "folder", kind: "input", configText: "New folder", executable: false } },
-
   { id: "upload", label: "Upload", group: "References", data: { key: "asset.upload", label: "Upload", description: "로컬 이미지·영상·오디오 업로드", icon: "upload", kind: "input", outputType: "ReferenceAsset", executable: false } },
-  { id: "assets", label: "Assets", group: "References", data: { key: "asset.select", label: "Assets", description: "저장된 이미지·비디오·오디오를 Popover에서 선택", icon: "assets", kind: "input", outputType: "ReferenceAsset", configText: "", executable: false } },
-  { id: "character-select", label: "Character", group: "References", data: { key: "character.select", label: "Character", description: "Characters 보관함에서 재사용할 캐릭터 묶음을 선택", icon: "character", kind: "input", outputType: "Character", configText: "", executable: false } },
-  { id: "reference-analyzer", label: "Video Reference Analyzer", group: "References", data: { key: "reference.decompose", label: "Video reference analyzer", description: "STT·음악·컷·액션·화면 자막·효과음을 하나의 타임라인으로 분석", icon: "reference", kind: "logic", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "ReferenceAnalysis", model: "reference-analysis.pipeline.v1", cost: "$0.03", sourceLanguage: "auto", separateMusic: true, sceneThreshold: 0.28 } },
-  { id: "motion-extractor", label: "Motion Extractor", group: "References", data: { key: "motion.extract", label: "Holistic motion extractor", description: "MediaPipe Holistic로 얼굴·포즈·양손 모션을 MotionTrack으로 추출", icon: "motion", kind: "logic", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "MotionTrack", model: "local.mediapipe.holistic", cost: "$0.00", motionSampleFps: 12, motionMaxWidth: 640, motionMinConfidence: 0.5, motionFaceBlendshapes: true } },
-
-  { id: "image-category", label: "Image Generator", group: "Image", data: { key: "image.generate", label: "Image generator", description: "연결된 Prompt로 이미지를 생성", icon: "image", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "google", model: "image.fast", cost: "$0.21", resolution: "2K", aspectRatio: "9:16", batchSize: 1 } },
-  { id: "lora-image-category", label: "LoRA Image Generator", group: "Image", data: { key: "lora.image.generate", label: "LoRA image generator", description: "학습 완료 Character 또는 FLUX.2 LoRA로 캐릭터가 고정된 이미지를 생성", icon: "lora", kind: "generate", inputTypes: ["Prompt", "Character"], requiredInputTypes: ["Prompt"], outputType: "Image", provider: "fal", model: "fal.image.flux2-lora", cost: "$0.07", resolution: "2K", aspectRatio: "9:16", batchSize: 1, loraUrl: "", loraScale: 0.9, triggerWord: "" } },
-  { id: "character-category", label: "Character Generator", group: "Image", data: { key: "character.generate", label: "Character generator", description: "Prompt 또는 기준 이미지에서 동일 캐릭터의 여러 단일 장면을 생성", icon: "character", kind: "generate", inputTypes: ["Prompt", "Image"], requiredInputTypes: [], multiInputTypes: ["Image"], outputType: "Character", provider: "google", model: "image.fast", cost: "$0.40", resolution: "2K", aspectRatio: "9:16", characterName: "New character", shotCount: 6 } },
-  { id: "video-category", label: "Video Generator", group: "Video", data: { key: "video.generate", label: "Video generator", description: "Prompt·Character·LoRA Image·Reference Video로 비디오를 생성", icon: "video", kind: "generate", inputTypes: ["Prompt", "Character", "Image", "Video"], requiredInputTypes: ["Prompt"], outputType: "Video", provider: "google", model: "video.omni", cost: "$1.40", resolution: "1080p", aspectRatio: "9:16", durationSeconds: 6, batchSize: 1 } },
-  { id: "video-editor", label: "Video Editor", group: "Video", data: { key: "video.edit", label: "Video editor", description: "여러 Video를 연결 순서대로 합성하고 트랜지션·길이를 적용", icon: "timeline", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00", resolution: "1080p", aspectRatio: "9:16", transition: "hard_cut", targetDurationSeconds: 30 } },
-
-  { id: "voice-category", label: "Voiceover", group: "Audio", data: { key: "tts.generate", label: "Voiceover", description: "연결된 Prompt를 음성으로 생성", icon: "voice", kind: "generate", inputTypes: ["Prompt"], requiredInputTypes: ["Prompt"], outputType: "Audio", provider: "google", model: "tts.fast", cost: "$0.12", resolution: "24kHz", aspectRatio: "Audio", batchSize: 1 } },
-  { id: "audio-assets", label: "Audio Assets", group: "Audio", data: { key: "asset.select", label: "Audio assets", description: "Reference stem을 포함한 저장된 오디오를 선택", icon: "assets", kind: "input", outputType: "Audio", configText: "", executable: false } },
-  { id: "change-voice", label: "Replace Audio", group: "Audio", data: { key: "video.change_voice", label: "Replace video audio", description: "Video의 기존 오디오를 연결된 Audio로 실제 교체", icon: "changeVoice", kind: "compose", inputTypes: ["Video", "Audio"], requiredInputTypes: ["Video", "Audio"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },
-  { id: "translate", label: "Translate Video", group: "Audio", data: { key: "video.translate", label: "Translate video", description: "Chirp 3 음성인식·Gemini 번역·Gemini TTS로 영상 현지화", icon: "translate", kind: "compose", inputTypes: ["Video"], requiredInputTypes: ["Video"], outputType: "Video", model: "google.localization.pipeline", cost: "$0.35", sourceLanguage: "auto", targetLanguage: "ko-KR", voiceName: "Kore" } },
-
-  { id: "text", label: "Text", group: "Utilities", visible: false, data: { key: "utility.text", label: "Text", description: "Legacy text note", icon: "text", kind: "input", outputType: "Text", configText: "", executable: false } },
   { id: "sticky", label: "Sticky Note", group: "Utilities", data: { key: "utility.sticky", label: "Sticky note", description: "실행과 무관한 Canvas 메모", icon: "sticky", kind: "input", configText: "", stickyColor: "yellow", executable: false } },
-
-  { id: "brief", label: "Generation brief", group: "Advanced", visible: false, data: { key: "generation.brief", label: "Generation brief", description: "주제, 메시지, 시청자와 목표 길이", icon: "brief", kind: "input", outputType: "Text", configText: "", executable: false } },
-  { id: "format", label: "Format profile", group: "Advanced", visible: false, data: { key: "format.profile", label: "Format profile", description: "생성에 사용할 FormatCoreV1", icon: "format", kind: "input", outputType: "FormatProfile", preview: "Select a format", executable: false } },
-  { id: "resolve", label: "Resolve spec", group: "Advanced", visible: false, data: { key: "generation.resolve", label: "Resolve specification", description: "Brief와 Format을 실행 명세로 해석", icon: "resolve", kind: "logic", inputTypes: ["Text", "FormatProfile"], outputType: "GenerationSpec", model: "local.policy", cost: "$0.00" } },
-  { id: "script", label: "Generate script", group: "Advanced", visible: false, data: { key: "script.generate", label: "Script generator", description: "연결된 Prompt로 내레이션 대본 생성", icon: "script", kind: "generate", inputTypes: ["Prompt", "GenerationSpec"], requiredInputTypes: ["Prompt"], outputType: "Script", provider: "google", model: "text.3.1-pro-preview", cost: "$0.06", contractVersion: 2 } },
-  { id: "fit-script", label: "Fit duration", group: "Advanced", visible: false, data: { key: "script.fit_duration", label: "Fit script duration", description: "목표 길이에 맞춰 발화 시간을 보정", icon: "script", kind: "logic", inputTypes: ["Script"], outputType: "Script", model: "local.script-fit", cost: "$0.00" } },
-  { id: "shot-plan", label: "Shot planner", group: "Advanced", visible: false, data: { key: "shot.plan", label: "Plan shots", description: "4·6·8초 단위의 Shot Plan", icon: "shot", kind: "logic", inputTypes: ["Script"], outputType: "ShotPlan", model: "local.shot-plan", cost: "$0.00" } },
-  { id: "candidate", label: "Candidate select", group: "Advanced", visible: false, data: { key: "candidate.select", label: "Choose candidate", description: "연결된 실제 Video 후보 중 하나를 선택", icon: "select", kind: "review", inputTypes: ["Video"], requiredInputTypes: ["Video"], multiInputTypes: ["Video"], outputType: "Video" } },
-  { id: "subtitle", label: "Speech subtitles", group: "Audio", data: { key: "subtitle.align", label: "Speech subtitles", description: "TTS Audio를 인식해 타임스탬프가 포함된 SRT 자막 생성", icon: "subtitle", kind: "compose", inputTypes: ["Audio"], requiredInputTypes: ["Audio"], outputType: "Subtitle", model: "google.stt.default", cost: "$0.00", sourceLanguage: "auto" } },
-  { id: "timeline", label: "Caption layout", group: "Video", data: { key: "timeline.compose", label: "Caption layout", description: "영상 위에서 자막을 드래그하고 위치·정렬을 저장", icon: "timeline", kind: "compose", inputTypes: ["Video", "Subtitle"], requiredInputTypes: ["Video", "Subtitle"], outputType: "Timeline", model: "local.timeline", captionX: 0.5, captionY: 0.82, captionAlign: "center", captionFontSize: 54, waitForInput: true } },
-  { id: "render", label: "Render captions", group: "Video", data: { key: "video.render", label: "Render captioned video", description: "설정한 위치의 자막을 영상에 렌더", icon: "render", kind: "compose", inputTypes: ["Timeline"], requiredInputTypes: ["Timeline"], outputType: "Video", model: "local.ffmpeg", cost: "$0.00" } },
-  { id: "qc", label: "Quality control", group: "Advanced", visible: false, data: { key: "media.qc", label: "Quality control", description: "ffprobe 기반 Codec·Pixel Format·Audio·Duration 검사", icon: "qc", kind: "review", inputTypes: ["Video"], outputType: "QCReport", model: "local.ffprobe", cost: "$0.00" } },
 ];
-
-export const canvasElementTemplates = legacyNodeTemplates.filter((template) => ["utility.sticky", "folder.group", "asset.upload", "utility.drawing"].includes(template.data.key));
 
 export const inputHandleId = (type: PortType, index: number) => `input-${type}-${index}`;
 
@@ -265,6 +177,13 @@ function targetType(edge: Pick<Edge, "targetHandle">, target: StudioFlowNode): P
   return types.length === 1 ? types[0] : undefined;
 }
 
+export function inputPortMatches(node: StudioFlowNode, handle: string | null | undefined, index: number): boolean {
+  if (index < 0) return false;
+  if (!handle) return node.data.inputTypes?.length === 1;
+  const key = node.data.inputPorts?.[index]?.key;
+  return handle === inputHandleId(node.data.inputTypes![index], index) || Boolean(key && (handle === key || handle === `input-${key}`));
+}
+
 export type ConnectionCompatibilityValidator = (connection: Pick<Edge, "source" | "target" | "sourceHandle" | "targetHandle">, nodes: StudioFlowNode[]) => boolean;
 
 export function isConnectionCompatible(connection: Pick<Edge, "source" | "target" | "sourceHandle" | "targetHandle">, nodes: StudioFlowNode[]): boolean {
@@ -286,22 +205,22 @@ export function validateGraph(nodes: StudioFlowNode[], edges: Edge[], connection
     const allInputs = node.data.inputTypes ?? [];
     if (node.data.key === "lora.image.generate" && !node.data.loraUrl?.trim()) {
       const characterIndex = allInputs.indexOf("Character");
-      const hasCharacter = edges.some((edge) => edge.target === node.id && edge.targetHandle === inputHandleId("Character", characterIndex));
+      const hasCharacter = edges.some((edge) => edge.target === node.id && inputPortMatches(node, edge.targetHandle, characterIndex));
       if (!hasCharacter) errors.push(`${node.data.label}: LoRA weights URL 또는 학습 완료 Character 입력이 필요합니다.`);
     }
     if (node.data.key === "character.generate") {
       const hasCharacterSource = edges.some((edge) => edge.target === node.id && ["Prompt", "Image"].some((type) => {
         const index = allInputs.indexOf(type as PortType);
-        return edge.targetHandle === inputHandleId(type as PortType, index);
+        return inputPortMatches(node, edge.targetHandle, index);
       }));
       if (!hasCharacterSource) errors.push(`${node.data.label}: Prompt 또는 Image 입력이 필요합니다.`);
     }
     const requiredInputs = node.data.requiredInputTypes ?? (node.data.inputsRequired === false ? [] : allInputs);
     for (const type of requiredInputs) {
       const index = allInputs.indexOf(type);
-      const connected = edges.some((edge) => edge.target === node.id && (edge.targetHandle === inputHandleId(type, index) || (!edge.targetHandle && node.data.inputTypes?.length === 1)));
+      const connected = edges.some((edge) => edge.target === node.id && inputPortMatches(node, edge.targetHandle, index));
       if (!connected) errors.push(`${node.data.label}: ${type} 입력이 필요합니다.`);
-      const inputEdge = edges.find((edge) => edge.target === node.id && (edge.targetHandle === inputHandleId(type, index) || (!edge.targetHandle && node.data.inputTypes?.length === 1)));
+      const inputEdge = edges.find((edge) => edge.target === node.id && inputPortMatches(node, edge.targetHandle, index));
       const source = nodes.find((candidate) => candidate.id === inputEdge?.source);
       if (type === "Prompt" && source?.data.key === "prompt.input" && !source.data.configText?.trim()) errors.push(`${node.data.label}: 연결된 Prompt가 비어 있습니다.`);
     }
@@ -337,7 +256,7 @@ export function stepInputError(node: StudioFlowNode, nodes: StudioFlowNode[], ed
   const allInputs = node.data.inputTypes ?? [];
   if (node.data.key === "lora.image.generate" && !node.data.loraUrl?.trim()) {
     const characterIndex = allInputs.indexOf("Character");
-    const characterEdge = edges.find((edge) => edge.target === node.id && edge.targetHandle === inputHandleId("Character", characterIndex));
+    const characterEdge = edges.find((edge) => edge.target === node.id && inputPortMatches(node, edge.targetHandle, characterIndex));
     const characterSource = nodes.find((candidate) => candidate.id === characterEdge?.source);
     if (!characterSource) return "LoRA weights URL 또는 학습 완료 Character를 연결하세요.";
     if (characterSource.data.status !== "SUCCEEDED") return "연결된 Character Step을 먼저 준비하세요.";
@@ -345,7 +264,7 @@ export function stepInputError(node: StudioFlowNode, nodes: StudioFlowNode[], ed
   if (node.data.key === "character.generate") {
     const candidateEdges = edges.filter((edge) => edge.target === node.id && ["Prompt", "Image"].some((type) => {
       const index = allInputs.indexOf(type as PortType);
-      return edge.targetHandle === inputHandleId(type as PortType, index);
+      return inputPortMatches(node, edge.targetHandle, index);
     }));
     if (!candidateEdges.length) return "Prompt 또는 기준 Image를 연결하세요.";
     const hasUsableSource = candidateEdges.some((edge) => {
@@ -358,7 +277,7 @@ export function stepInputError(node: StudioFlowNode, nodes: StudioFlowNode[], ed
   const requiredInputs = node.data.requiredInputTypes ?? (node.data.inputsRequired === false ? [] : allInputs);
   for (const type of requiredInputs) {
     const index = allInputs.indexOf(type);
-    const matchingEdges = edges.filter((candidate) => candidate.target === node.id && (candidate.targetHandle === inputHandleId(type, index) || (!candidate.targetHandle && node.data.inputTypes?.length === 1)));
+    const matchingEdges = edges.filter((candidate) => candidate.target === node.id && inputPortMatches(node, candidate.targetHandle, index));
     if (!matchingEdges.length) return `${type} 입력을 먼저 연결하세요.`;
     for (const edge of matchingEdges) {
       const source = nodes.find((candidate) => candidate.id === edge.source);

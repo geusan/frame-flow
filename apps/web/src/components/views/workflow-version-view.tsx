@@ -117,6 +117,21 @@ function WorkflowVersionFlow({ workflowId, versionNumber, onBack, onEditDraft, o
   }, [setNodes]);
   const actions = useMemo(() => ({ update: updateAnnotation, remove: removeAnnotation }), [removeAnnotation, updateAnnotation]);
 
+  const [restoring, setRestoring] = useState(false);
+  const editAsDraft = async () => {
+    if (!version) return;
+    setRestoring(true);
+    try {
+      const workflow = await frameflowApi.getWorkflow(workflowId);
+      const draft = await frameflowApi.getCanvas(workflow.draft_canvas_id);
+      const restored = await frameflowApi.restoreWorkflowDraft(workflowId, version.version_number, { expected_canvas_id: draft.id, expected_canvas_revision: draft.revision });
+      window.dispatchEvent(new Event("frameflow:workspace-changed"));
+      onEditDraft(restored.canvas_id);
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : "Draft restore failed");
+    } finally { setRestoring(false); }
+  };
+
   const addMemo = async () => {
     try {
       const annotation = await frameflowApi.createWorkflowVersionAnnotation(workflowId, versionNumber, { body: "New memo", position: { x: 60, y: 420 }, color: "yellow" });
@@ -129,7 +144,7 @@ function WorkflowVersionFlow({ workflowId, versionNumber, onBack, onEditDraft, o
   return <div className="view-page flex h-[calc(100vh-106px)] min-h-[620px] flex-col gap-3">
     <PageHeader title={version ? `Workflow v${version.version_number}` : "Workflow Version"} description={version ? `Frozen graph · ${version.content_hash.slice(0, 16)} · memos remain editable` : "Loading immutable graph…"} actions={<>
       <Button type="button" variant="secondary" onClick={onBack}><ArrowLeft size={14} /> Workflow</Button>
-      {version && <Button type="button" variant="secondary" onClick={() => onEditDraft(version.source_canvas_id)}><Pencil size={14} /> Edit as draft</Button>}
+      {version && <Button type="button" variant="secondary" disabled={restoring} title="이 Version으로 새 Draft를 만듭니다. 기존 Draft는 별도 Canvas로 보존됩니다." onClick={() => void editAsDraft()}><Pencil size={14} /> {restoring ? "Creating draft…" : "Edit as draft"}</Button>}
       <Button type="button" variant="secondary" onClick={() => void addMemo()}><MessageSquarePlus size={14} /> Add memo</Button>
       <Button type="button" onClick={onRun}><Play size={14} fill="currentColor" /> Run</Button>
     </>} />

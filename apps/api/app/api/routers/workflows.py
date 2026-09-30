@@ -8,6 +8,7 @@ from ...contexts.workflows.application import (
     CreateAnnotationCommand,
     CreateWorkflowCommand,
     PublishWorkflowCommand,
+    RestoreWorkflowDraftCommand,
     StartWorkflowRunCommand,
     UpdateAnnotationCommand,
     UpdateWorkflowCommand,
@@ -24,6 +25,7 @@ from ...domain import (
     WorkflowAnnotationUpdateRequest,
     WorkflowCreateRequest,
     WorkflowPublishRequest,
+    WorkflowRestoreDraftRequest,
     WorkflowUpdateRequest,
     WorkflowVersionRunRequest,
 )
@@ -311,3 +313,11 @@ def list_workflow_runs(
     application: WorkflowApplication = Depends(get_workflow_application),
 ) -> list[dict[str, Any]]:
     return application.list_runs()
+
+
+@router.post("/workflows/{workflow_id}/versions/{version_number}/restore-draft", status_code=status.HTTP_201_CREATED)
+def restore_workflow_draft(workflow_id: str, version_number: int, payload: WorkflowRestoreDraftRequest, application: WorkflowApplication = Depends(get_workflow_application)) -> dict[str, Any]:
+    try:
+        return application.restore_draft(RestoreWorkflowDraftCommand(workflow_id, version_number, payload.expected_canvas_id, payload.expected_canvas_revision))
+    except (WorkflowConflictError, WorkflowNotFoundError, WorkflowValidationError) as exc:
+        _raise_workflow_http_error(exc)

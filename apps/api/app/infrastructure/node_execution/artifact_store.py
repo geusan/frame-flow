@@ -13,7 +13,7 @@ from ...nodes.contracts import (
 )
 from ...nodes.port_types import port_type_registry
 from ...service import create_artifact
-from ...storage import artifact_content_url, get_storage, storage_location
+from ...storage import artifact_content_url, get_artifact_storage, storage_location
 
 
 class SqlAlchemyNodeArtifactStore:
@@ -27,7 +27,6 @@ class SqlAlchemyNodeArtifactStore:
         *,
         expand_characters: bool = True,
     ) -> tuple[list[NodeInputMedia], list[str], dict[str, str]]:
-        storage = get_storage()
         media: list[NodeInputMedia] = []
         artifact_ids: list[str] = []
         roles: dict[str, str] = {}
@@ -38,6 +37,7 @@ class SqlAlchemyNodeArtifactStore:
             artifact = self._session.get(ArtifactRecord, artifact_id)
             if artifact is None:
                 raise ValueError(f"input artifact does not exist: {artifact_id}")
+            storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
             bucket, key = storage_location(artifact.uri, artifact.metadata_json)
             content_type = str(
                 (artifact.metadata_json.get("storage") or {}).get("content_type")
@@ -67,7 +67,8 @@ class SqlAlchemyNodeArtifactStore:
                 (
                     candidate
                     for candidate in definition.ports.inputs
-                    if port_type_registry.get(candidate.type).legacy_type == legacy_type
+                    if candidate.key == item.get("target_port")
+                    or port_type_registry.get(candidate.type).legacy_type == legacy_type
                 ),
                 None,
             )
@@ -91,7 +92,7 @@ class SqlAlchemyNodeArtifactStore:
         artifact = self._session.get(ArtifactRecord, artifact_id)
         if artifact is None:
             raise ValueError(f"input artifact does not exist: {artifact_id}")
-        storage = get_storage()
+        storage = get_artifact_storage(artifact.uri, artifact.metadata_json)
         bucket, key = storage_location(artifact.uri, artifact.metadata_json)
         content_type = str(
             (artifact.metadata_json.get("storage") or {}).get("content_type")

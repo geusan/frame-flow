@@ -12,9 +12,8 @@ from sqlalchemy.orm import Session
 
 from .canvas_documents import (
     canonicalize_canvas_document,
+    canonical_canvas_graph,
     legacy_canvas_graph,
-    legacy_node_config,
-    logical_model_alias,
 )
 from .database import (
     ArtifactRecord,
@@ -34,7 +33,7 @@ from .domain import (
     utc_now,
 )
 from .nodes import node_registry
-from .nodes.inventory import canvas_only_keys
+from .nodes.human_gates import human_gate_mode
 from .nodes.port_types import port_type_registry
 from .project_skills import snapshot_skill_parameters
 from .service import audit, new_id
@@ -42,6 +41,7 @@ from .service import audit, new_id
 
 WORKFLOW_COMPILER_VERSION = "workflow-compiler.v1"
 INPUT_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+TEMPLATE_TOKEN_PATTERN = re.compile(r"\{\{([a-z][a-z0-9_]{0,63})\}\}")
 DEFAULT_DRAFT_CONTRACT = {
     "schema_version": "workflow.contract.draft.v1",
     "inputs": [],
@@ -178,9 +178,9 @@ def update_workflow_definition(db: Session, record: WorkflowDefinitionRecord, pa
 
 def _normalize_contract(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     contract = raw or DEFAULT_DRAFT_CONTRACT
-    inputs = list(contract.get("inputs") or [])
-    bindings = list(contract.get("bindings") or [])
-    outputs = list(contract.get("outputs") or [])
+    inputs = deepcopy(list(contract.get("inputs") or []))
+    bindings = deepcopy(list(contract.get("bindings") or []))
+    outputs = deepcopy(list(contract.get("outputs") or []))
     input_keys: set[str] = set()
     for item in inputs:
         key = str(item.get("key") or "")
@@ -191,6 +191,12 @@ def _normalize_contract(raw: dict[str, Any] | None) -> tuple[dict[str, Any], dic
         if item.get("required") is True and "default" in item:
             raise WorkflowContractError(f"required Workflow input cannot have a default: {key}")
         input_keys.add(key)
+    output_keys: set[str] = set()
+    for output in outputs:
+        key = str(output.get("key") or "")
+        if not INPUT_KEY_PATTERN.fullmatch(key) or key in output_keys:
+            raise WorkflowContractError(f"invalid or duplicate Workflow output key: {key}")
+        output_keys.add(key)
     return (
         {"schema_version": "workflow.inputs.v1", "inputs": inputs},
         {"schema_version": "workflow.bindings.v1", "bindings": bindings},
@@ -232,9 +238,10 @@ def _validate_bindings(bindings: dict[str, Any], input_schema: dict[str, Any], n
             if field.get("type") != "string":
                 raise WorkflowContractError(f"Template binding requires a string field: {node_id}{path}")
             template = str(value.get("template") or "")
-            missing_tokens = [key for key in referenced if f"{{{{{key}}}}}" not in template]
-            if missing_tokens:
-                raise WorkflowContractError(f"Template binding is missing tokens: {', '.join(missing_tokens)}")
+            tokens = set(TEMPLATE_TOKEN_PATTERN.findall(template))
+            remainder = TEMPLATE_TOKEN_PATTERN.sub("", template)
+            if "{{" in remainder or "}}" in remainder or tokens != set(referenced) or len(referenced) != len(set(referenced)) or not tokens:
+                raise WorkflowContractError("Template binding tokens must exactly match declared input_keys")
         else:
             raise WorkflowContractError("unsupported Workflow binding expression")
 
@@ -314,107 +321,88 @@ def _validate_graph_ports(graph: dict[str, Any]) -> None:
 
 
 def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflowVersion:
-    raw_graph = legacy_canvas_graph(canvas.graph_json)
-    raw_nodes = list(raw_graph.get("nodes") or [])
-    raw_edges = list(raw_graph.get("edges") or [])
-    raw_ids = [str(node.get("id") or "") for node in raw_nodes]
+    source_graph = canonical_canvas_graph(canvas.graph_json)
+    source_nodes = deepcopy(source_graph["nodes"])
+    source_edges = list(source_graph["edges"])
+    annotations: list[dict[str, Any]] = []
+    runtime = (canvas.graph_json or {}).get("runtime", {}).get("nodes", {})
+    for element in source_graph["elements"]:
+        kind, node_id = element["element_type"], element["id"]
+        data, ui = element["editor"]["data"], element["ui"]
+        if kind in {"utility.sticky", "utility.text"}:
+            annotations.append({"body": str(data.get("configText") or ui.get("description") or "").strip() or "Memo", "position": dict(ui.get("position") or {}), "color": str(data.get("stickyColor") or "yellow")})
+        elif kind in {"asset.upload", "utility.drawing"}:
+            artifact_ids = list(runtime.get(node_id, {}).get("outputArtifactIds") or [])
+            if not artifact_ids:
+                # Old documents have a separate compatibility read path.
+                legacy = next((item for item in legacy_canvas_graph(canvas.graph_json)["nodes"] if item["id"] == node_id), {})
+                artifact_ids = list(legacy.get("data", {}).get("outputArtifactIds") or [])
+            if not artifact_ids:
+                raise WorkflowContractError(f"{kind} must be saved as an Artifact before Publish")
+            definition = node_registry.get("asset.select", 1)
+            source_nodes.append({"id": node_id, "type_key": "asset.select", "contract_version": 1,
+                "definition_digest": definition.definition_digest,
+                "config": {"artifact_id": str(artifact_ids[0]), "artifact_type": data.get("outputType") or ("Image" if kind == "utility.drawing" else "ReferenceAsset")},
+                "execution": {"model_alias": definition.execution.model_alias, "provider": definition.execution.provider}, "ui": ui})
+    source_nodes.sort(key=lambda node: node.get("ui", {}).get("order", 0))
+    raw_ids = [str(node.get("id") or "") for node in source_nodes]
     if any(not node_id for node_id in raw_ids) or len(raw_ids) != len(set(raw_ids)):
         raise WorkflowContractError("Canvas Node IDs must be present and unique")
-    _assert_acyclic(set(raw_ids), raw_edges)
-
-    annotations: list[dict[str, Any]] = []
+    input_schema, bindings, output_schema = _normalize_contract(canvas.draft_contract_json)
+    outputs = output_schema["outputs"]
+    if sum(item.get("primary") is True for item in outputs) != 1:
+        raise WorkflowContractError("Workflow must declare exactly one Primary output")
+    output_ids = {str(item.get("node_id") or "") for item in outputs}
+    if not output_ids or not output_ids <= set(raw_ids):
+        raise WorkflowContractError("Workflow output references a missing or Canvas-only Node")
+    incoming: dict[str, list[str]] = {}
+    for edge in source_edges:
+        incoming.setdefault(edge["target"], []).append(edge["source"])
+    reachable = set(output_ids)
+    queue = list(output_ids)
+    while queue:
+        for source in incoming.get(queue.pop(), []):
+            if source not in reachable:
+                reachable.add(source)
+                queue.append(source)
+    missing = reachable - set(raw_ids)
+    if missing:
+        raise WorkflowContractError(f"Execution graph references missing or Canvas-only Nodes: {', '.join(sorted(missing))}")
+    warnings = [f"Unused Canvas Node excluded: {node_id}" for node_id in raw_ids if node_id not in reachable]
+    canonical_edges = [deepcopy(edge) for edge in source_edges if edge["source"] in reachable and edge["target"] in reachable]
+    canonical_edges = [{key: edge.get(key) for key in ("id", "source", "target", "source_port", "target_port")} for edge in canonical_edges]
+    _assert_acyclic(reachable, canonical_edges)
     canonical_by_id: dict[str, dict[str, Any]] = {}
-    for raw_node in raw_nodes:
-        node_id = str(raw_node["id"])
-        data = dict(raw_node.get("data") or {})
-        type_key = str(data.get("key") or "")
-        if type_key in {"utility.sticky", "utility.text"}:
-            annotations.append({
-                "body": str(data.get("configText") or data.get("description") or "").strip() or "Memo",
-                "position": dict(raw_node.get("position") or {}),
-                "color": str(data.get("stickyColor") or "yellow"),
-            })
+    for node in source_nodes:
+        node_id, type_key, contract_version = node["id"], node["type_key"], node["contract_version"]
+        if node_id not in reachable:
             continue
-        if type_key == "folder.group":
-            continue
-        if type_key in {"asset.upload", "utility.drawing"}:
-            artifact_ids = list(data.get("outputArtifactIds") or [])
-            if not artifact_ids:
-                raise WorkflowContractError(f"{type_key} must be saved as an Artifact before Publish")
-            type_key = "asset.select"
-            data = {
-                **data,
-                "key": type_key,
-                "configText": str(artifact_ids[0]),
-                "outputArtifactIds": artifact_ids,
-                "outputType": data.get("outputType") or ("Image" if str(data.get("key")) == "utility.drawing" else "ReferenceAsset"),
-            }
-        if type_key in canvas_only_keys():
-            continue
-        contract_version = int(data.get("contractVersion") or 1)
         definition = node_registry.get(type_key, contract_version)
         if not definition:
             raise WorkflowContractError(f"Node Definition was not found: {type_key}@{contract_version}")
         if definition.lifecycle in {"RETIRED", "BLOCKED"}:
             raise WorkflowContractError(f"Node cannot be published: {type_key}@{contract_version} is {definition.lifecycle}")
-        config = node_registry.resolve_config(definition, legacy_node_config(data, type_key))
+        if node.get("definition_digest") not in (None, definition.definition_digest):
+            raise WorkflowContractError(f"Node Definition digest mismatch: {node_id}")
+        config = node_registry.resolve_config(definition, node["config"])
         if type_key == "skill.execute":
             config = snapshot_skill_parameters(config, db)
-        if type_key == "asset.select" and config.get("artifact_id"):
-            if not db.get(ArtifactRecord, str(config["artifact_id"])):
-                raise WorkflowContractError(f"input Artifact was not found: {config['artifact_id']}")
-        if type_key == "character.select" and config.get("character_id"):
-            if not db.get(ArtifactRecord, str(config["character_id"])):
-                raise WorkflowContractError(f"Character Artifact was not found: {config['character_id']}")
+        for field in ("artifact_id", "character_id") if type_key in {"asset.select", "character.select"} else ():
+            if config.get(field) and not db.get(ArtifactRecord, str(config[field])):
+                raise WorkflowContractError(f"input Artifact was not found: {config[field]}")
         canonical_by_id[node_id] = {
-            "id": node_id,
-            "type_key": type_key,
-            "contract_version": contract_version,
-            "definition_digest": definition.definition_digest,
-            "config": config,
-            "runtime": {
-                "model_alias": logical_model_alias(data, definition.execution.model_alias, definition.execution.provider),
-                "provider": str(data.get("provider") or definition.execution.provider),
-            },
-            "ui": {
-                "position": dict(raw_node.get("position") or {}),
-                "label": str(data.get("label") or definition.display.label),
-                "description": str(data.get("description") or definition.display.description),
-            },
+            "id": node_id, "type_key": type_key, "contract_version": contract_version,
+            "definition_digest": definition.definition_digest, "config": config,
+            "runtime": deepcopy(node["execution"]),
+            "ui": {key: deepcopy(node["ui"].get(key)) for key in ("position", "label", "description")},
         }
-
-    input_schema, bindings, output_schema = _normalize_contract(canvas.draft_contract_json)
-    outputs = output_schema["outputs"]
-    primary = [item for item in outputs if item.get("primary") is True]
-    if len(primary) != 1:
-        raise WorkflowContractError("Workflow must declare exactly one Primary output")
-    output_ids = {str(item.get("node_id") or "") for item in outputs}
-    if not output_ids or not output_ids <= set(canonical_by_id):
-        raise WorkflowContractError("Workflow output references a missing or Canvas-only Node")
-
-    canonical_edges = [
-        {
-            "id": str(edge.get("id") or f"{edge.get('source')}->{edge.get('target')}"),
-            "source": str(edge.get("source")),
-            "target": str(edge.get("target")),
-            "source_port": edge.get("sourceHandle"),
-            "target_port": edge.get("targetHandle"),
-        }
-        for edge in raw_edges
-        if str(edge.get("source")) in canonical_by_id and str(edge.get("target")) in canonical_by_id
-    ]
-    incoming: dict[str, list[str]] = {node_id: [] for node_id in canonical_by_id}
-    for edge in canonical_edges:
-        incoming[edge["target"]].append(edge["source"])
-    reachable = set(output_ids)
-    queue = list(output_ids)
-    while queue:
-        target = queue.pop()
-        for source in incoming.get(target, []):
-            if source not in reachable:
-                reachable.add(source)
-                queue.append(source)
-    warnings = [f"Unused Canvas Node excluded: {node_id}" for node_id in canonical_by_id if node_id not in reachable]
+    excluded_bindings = [binding for binding in bindings["bindings"] if binding.get("target", {}).get("node_id") in set(raw_ids) - reachable]
+    if excluded_bindings:
+        bindings["bindings"] = [binding for binding in bindings["bindings"] if binding not in excluded_bindings]
+        def referenced_keys(items):
+            return {key for binding in items for key in ([binding["value"].get("key")] if binding["value"].get("kind") == "input" else binding["value"].get("input_keys", []))}
+        unused_keys = referenced_keys(excluded_bindings) - referenced_keys(bindings["bindings"])
+        input_schema["inputs"] = [item for item in input_schema["inputs"] if item["key"] not in unused_keys]
     graph = {
         "schema_version": "workflow.graph.v1",
         "nodes": [canonical_by_id[node_id] for node_id in raw_ids if node_id in reachable],
@@ -426,11 +414,14 @@ def compile_canvas_version(db: Session, canvas: CanvasRecord) -> CompiledWorkflo
     for output in outputs:
         node = graph_nodes[str(output["node_id"])]
         definition = node_registry.get(node["type_key"], int(node["contract_version"]))
+        if output.get("port_key") and not any(port.key == output["port_key"] for port in definition.ports.outputs):
+            raise WorkflowContractError(f"Workflow output references an unknown port: {output.get('key')}")
+        ports = [port for port in definition.ports.outputs if not output.get("port_key") or port.key == output["port_key"]]
         requested_type = str(output.get("port_type") or "")
         allowed_types = {
-            port.type for port in definition.ports.outputs
+            port.type for port in ports
         } | {
-            port_type_registry.get(port.type).legacy_type for port in definition.ports.outputs if port_type_registry.get(port.type)
+            port_type_registry.get(port.type).legacy_type for port in ports if port_type_registry.get(port.type)
         }
         if requested_type and requested_type not in allowed_types:
             raise WorkflowContractError(f"Workflow output type does not match Node contract: {output.get('key')}")
@@ -597,12 +588,14 @@ def resolve_workflow_execution(
         node = nodes[str(target["node_id"])]
         property_name = str(target["path"]).removeprefix("/config/")
         expression = dict(binding.get("value") or {})
+        keys = [str(expression.get("key"))] if expression.get("kind") == "input" else expression.get("input_keys") or []
+        missing = [key for key in keys if key not in resolved_inputs]
+        if missing:
+            raise WorkflowContractError(f"Bound Workflow inputs have no value: {', '.join(missing)}")
         if expression.get("kind") == "input":
             value = resolved_inputs[str(expression["key"])]
         elif expression.get("kind") == "template":
-            value = str(expression.get("template") or "")
-            for key in expression.get("input_keys") or []:
-                value = value.replace(f"{{{{{key}}}}}", str(resolved_inputs[str(key)]))
+            value = TEMPLATE_TOKEN_PATTERN.sub(lambda match: str(resolved_inputs[match.group(1)]) if match.group(1) in keys else match.group(0), str(expression.get("template") or ""))
         else:
             raise WorkflowContractError("unsupported Workflow binding expression")
         node["config"][property_name] = value
@@ -615,6 +608,10 @@ def resolve_workflow_execution(
         node_definition = node_registry.get(type_key, contract_version)
         if not node_definition or node_definition.definition_digest != node.get("definition_digest"):
             raise WorkflowContractError(f"Node Definition digest is unavailable: {type_key}@{contract_version}")
+        try:
+            node_registry.assert_runnable(node_definition)
+        except ValueError as exc:
+            raise WorkflowContractError(str(exc)) from exc
         config = node_registry.resolve_config(node_definition, dict(node.get("config") or {}))
         runtime = dict(node.get("runtime") or {})
         model_alias = str(runtime.get("model_alias") or node_definition.execution.model_alias)
@@ -638,7 +635,7 @@ def resolve_workflow_execution(
             "config": config,
             "executable": node_definition.execution.kind != "source",
         }
-        if node_definition.execution.kind == "human_gate" and type_key == "timeline.compose":
+        if human_gate_mode(node_definition) == "approve":
             data["waitForInput"] = True
         if type_key in {"prompt.input", "generation.brief"}:
             data["configText"] = str(config.get("text") or "")

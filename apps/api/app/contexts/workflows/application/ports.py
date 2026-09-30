@@ -7,6 +7,7 @@ from .use_cases import (
     CreateAnnotationCommand,
     CreateWorkflowCommand,
     PublishWorkflowCommand,
+    RestoreWorkflowDraftCommand,
     StartWorkflowRunCommand,
     UpdateAnnotationCommand,
     UpdateWorkflowCommand,
@@ -25,6 +26,8 @@ class WorkflowOperations(Protocol):
     def update(self, command: UpdateWorkflowCommand) -> dict[str, Any]: ...
 
     def publish(self, command: PublishWorkflowCommand) -> dict[str, Any]: ...
+
+    def restore_draft(self, command: RestoreWorkflowDraftCommand) -> dict[str, Any]: ...
 
     async def start_run(self, command: StartWorkflowRunCommand) -> CanvasRunResponse: ...
 

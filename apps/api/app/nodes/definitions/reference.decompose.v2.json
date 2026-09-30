@@ -1,0 +1,124 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "reference.decompose",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Video reference analyzer",
+    "description": "ChatGPT로 화면·자막·동작, OpenAI로 음성·음악·효과음 분석",
+    "category": "References",
+    "icon": "reference",
+    "cost_label": "$0.03",
+    "keywords": [
+      "reference",
+      "analysis",
+      "stt",
+      "shots",
+      "openai",
+      "chatgpt"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "video",
+        "type": "media.video.v1",
+        "label": "Video",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "analysis",
+        "type": "data.reference_analysis.v1",
+        "label": "Reference analysis"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "source_language",
+      "separate_music",
+      "scene_threshold",
+      "sample_interval_seconds",
+      "max_frames"
+    ],
+    "properties": {
+      "source_language": {
+        "type": "string",
+        "default": "auto",
+        "maxLength": 32,
+        "title": "Speech language",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "string"
+        }
+      },
+      "separate_music": {
+        "type": "boolean",
+        "default": true,
+        "title": "Create music stems",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "boolean"
+        }
+      },
+      "scene_threshold": {
+        "type": "number",
+        "minimum": 0.01,
+        "maximum": 1,
+        "default": 0.28,
+        "title": "Scene sensitivity",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "number"
+        }
+      },
+      "sample_interval_seconds": {
+        "type": "number",
+        "minimum": 0.5,
+        "maximum": 10,
+        "default": 2,
+        "title": "Frame sampling interval (seconds)",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "number"
+        }
+      },
+      "max_frames": {
+        "type": "integer",
+        "minimum": 10,
+        "maximum": 180,
+        "default": 120,
+        "title": "Maximum sampled frames"
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "composite",
+    "executor": "legacy-compatibility",
+    "revision": "reference-analysis.openai.v2",
+    "provider": "openai",
+    "model_alias": "openai.chat.latest",
+    "model_families": [
+      "openai.chat.",
+      "openai.text."
+    ]
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "ReferenceAnalysis",
+    "schema_id": "reference.decomposition.v1",
+    "input_roles": {
+      "media.video.v1": "source_video"
+    },
+    "output_role": "reference_analysis"
+  }
+}

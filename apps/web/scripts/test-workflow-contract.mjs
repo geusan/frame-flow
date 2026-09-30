@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { renameWorkflowInput, bindingValue, workflowOutputOptions, workflowTargets, outputReachability } from '../src/features/workflows/draft-contract.ts';
+import { migrateStoredGraph } from '../src/features/nodes/legacy-canvas-loader.ts';
+import { latestNodeTemplates, nodeTemplateFromDefinition } from '../src/features/nodes/contracts.ts';
+
+const root = new URL('../../api/app/nodes/', import.meta.url);
+const definitions = readdirSync(new URL('definitions/', root)).filter(name => name.endsWith('.json')).flatMap(name => JSON.parse(readFileSync(new URL(`definitions/${name}`, root))));
+const ports = JSON.parse(readFileSync(new URL('port_types.v1.json', root)));
+const contract = { schema_version: 'workflow.contract.draft.v1', inputs: [{key:'topic', type:'prompt'}, {key:'place', type:'string'}], bindings: [
+  {target:{node_id:'a',path:'/config/text'},value:{kind:'template',template:'{{topic}} / {{topic}} at {{place}}',input_keys:['topic','place']}},
+  {target:{node_id:'b',path:'/config/text'},value:{kind:'input',key:'topic'}},
+], outputs: [] };
+const renamed = renameWorkflowInput(contract,0,{key:'subject'});
+assert.equal(renamed.bindings[0].value.template, '{{subject}} / {{subject}} at {{place}}');
+assert.deepEqual(renamed.bindings[0].value.input_keys,['subject','place']);
+assert.equal(renamed.bindings[1].value.key,'subject');
+assert.equal(contract.inputs[0].key,'topic');
+assert.deepEqual(bindingValue('template','{{a}} {{b}} {{a}}').input_keys,['a','b']);
+const templates = definitions.map(definition => nodeTemplateFromDefinition(definition, ports));
+const saved = {nodes:[{id:'old',position:{x:5,y:8},data:{key:'image.motion',contractVersion:1,config:{duration_seconds:8}}}, {id:'unknown',position:{x:8,y:9},data:{key:'video.frame_extract',config:{opaque:true}}}], edges:[{id:'edge',source:'unknown',target:'old',sourceHandle:'future-output',targetHandle:'future-input'}]};
+const loaded = migrateStoredGraph(saved,templates);
+assert.equal(loaded.nodes.length,2);
+assert.equal(loaded.nodes[0].data.contractVersion,1);
+assert.equal(loaded.nodes[0].data.config.duration_seconds,8);
+assert.deepEqual(loaded.nodes[1].data.config,{opaque:true});
+assert.equal(loaded.nodes[1].data.executable,false);
+assert.equal(loaded.edges[0].sourceHandle,'future-output');
+assert.equal(loaded.edges[0].targetHandle,'future-input');
+assert.ok(latestNodeTemplates(definitions,ports).every(template => definitions.some(definition => definition.type_key===template.data.key && definition.contract_version===template.data.contractVersion && definition.lifecycle==='ACTIVE')));
+const prompt = {id:'prompt',data:{...templates.find(item=>item.data.key==='prompt.input').data}};
+assert.ok(workflowTargets([prompt],definitions).some(target=>target.path==='/config/text'));
+const options = workflowOutputOptions([prompt],definitions);
+assert.equal(options[0].portType,'prompt.text.v1');
+assert.deepEqual([...outputReachability([{node_id:'a'},{node_id:'b'}],[{source:'root',target:'a'},{source:'root',target:'b'},{source:'unused',target:'unused'}])].sort(),['a','b','root']);
+console.log('Workflow authoring: shared inputs, token rename, typed outputs, reachability, pinned versions and lossless unknown graph load passed.');
+const {workflowVersionDiff}=await import('../src/features/workflows/version-diff.ts');
+const before={graph:{nodes:[{id:'a',config:{text:'old'}}],edges:[]}, input_schema:{inputs:[]},bindings:{bindings:[]},output_schema:{outputs:[]}};
+const after=structuredClone(before);after.graph.nodes[0].config.text='new';
+assert.deepEqual(workflowVersionDiff(before,after),[{path:'nodes.a.config.text',before:'old',after:'new'}]);
+assert.deepEqual(workflowVersionDiff(before,structuredClone(before)),[]);
+console.log('Frozen version diff compares stored configs without consulting registry defaults.');
+const {inputPortMatches}=await import('../src/lib/canvas-model.ts');
+const modelNode={id:'model',data:templates.find(item=>item.data.key==='character.auto_rig' && item.data.contractVersion===1).data};
+assert.equal(modelNode.data.outputPorts.length,2);
+assert.ok(inputPortMatches(modelNode,modelNode.data.inputPorts[0].key,0));
+assert.ok(inputPortMatches(modelNode,`input-${modelNode.data.inputTypes[0]}-0`,0));
+assert.ok(!inputPortMatches(modelNode,'missing',0));
+console.log('Manifest port metadata includes all outputs and supports canonical/legacy input handles.');
+const {nodeHumanGateMode}=await import('../src/features/nodes/contracts.ts');
+assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='candidate.select')),'select_artifact');
+assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='timeline.compose' && d.contract_version===1)),'approve');
+assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='image.generate')),undefined);
+console.log('Manifest human gate policy preserves legacy approval and candidate-selection semantics.');

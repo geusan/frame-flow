@@ -1,0 +1,154 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "character.generate",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Studio character",
+    "description": "OpenAI로 첫 참조 이미지의 인물을 유지하고 나머지는 스타일 참고로 사용해 일관된 스튜디오 촬영 세트를 생성",
+    "category": "Image",
+    "icon": "character",
+    "cost_label": "$0.40",
+    "keywords": [
+      "character",
+      "studio",
+      "identity",
+      "reference",
+      "photography"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "prompt",
+        "type": "prompt.text.v1",
+        "label": "Prompt"
+      },
+      {
+        "key": "images",
+        "type": "media.image.v1",
+        "label": "Images",
+        "multiple": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "character",
+        "type": "artifact.character.v1",
+        "label": "Character"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "resolution",
+      "aspect_ratio",
+      "character_name",
+      "shot_count",
+      "shot_style",
+      "quality"
+    ],
+    "properties": {
+      "resolution": {
+        "type": "string",
+        "enum": [
+          "1080p",
+          "2K",
+          "4K"
+        ],
+        "default": "2K",
+        "title": "Resolution"
+      },
+      "aspect_ratio": {
+        "type": "string",
+        "enum": [
+          "9:16",
+          "16:9",
+          "1:1",
+          "4:5"
+        ],
+        "default": "9:16",
+        "title": "Aspect ratio",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "enum"
+        }
+      },
+      "character_name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 160,
+        "default": "New character",
+        "title": "Character name",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "string"
+        }
+      },
+      "shot_count": {
+        "type": "integer",
+        "enum": [
+          4,
+          6,
+          8
+        ],
+        "default": 8,
+        "title": "Generated views",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "integer"
+        }
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "title": "Seed"
+      },
+      "quality": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "default": "high",
+        "title": "Quality"
+      },
+      "shot_style": {
+        "type": "string",
+        "enum": [
+          "studio"
+        ],
+        "default": "studio",
+        "title": "Shot plan",
+        "description": "Eight views in one studio: full body, front, left/right three-quarter, left/right profile, back and smiling portrait."
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "provider",
+    "executor": "character-generation",
+    "revision": "character-openai.v2",
+    "provider": "openai",
+    "model_alias": "openai.image.default",
+    "model_families": [
+      "openai.image."
+    ]
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Character",
+    "schema_id": "character.v1",
+    "input_roles": {
+      "media.image.v1": "reference_image"
+    },
+    "output_role": "generated_character"
+  }
+}

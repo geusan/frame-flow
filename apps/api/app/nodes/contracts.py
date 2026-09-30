@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from jsonschema import Draft202012Validator
 
 from .port_types import port_type_registry
 
@@ -102,6 +103,9 @@ class NodeDefinition(BaseModel):
         if unknown_ports:
             raise ValueError(f"unregistered port types: {', '.join(sorted(set(unknown_ports)))}")
         schema = self.config_schema
+        Draft202012Validator.check_schema(schema)
+        if self.execution.approval_schema:
+            Draft202012Validator.check_schema(self.execution.approval_schema)
         if schema.get("type") != "object" or schema.get("additionalProperties") is not False:
             raise ValueError("config_schema must be a closed object schema")
         properties = schema.get("properties")
@@ -333,6 +337,15 @@ class NodeCharacterMotionRuntime(Protocol):
     ) -> tuple[str | None, str | None]: ...
 
 
+class ProviderTaskStateError(RuntimeError):
+    retryable = False
+
+
+class NodeProviderTasks(Protocol):
+    def claim(self, provider: str, stage: str, *, resumable: bool) -> str | None: ...
+    def remember(self, provider: str, stage: str, task_id: str) -> None: ...
+
+
 @dataclass(frozen=True)
 class NodeExecutionContext:
     definition: NodeDefinition
@@ -346,6 +359,7 @@ class NodeExecutionContext:
     media_runtime: NodeMediaRuntime | None = None
     character_lora_runtime: NodeCharacterLoraRuntime | None = None
     character_motion_runtime: NodeCharacterMotionRuntime | None = None
+    provider_tasks: NodeProviderTasks | None = None
 
     def report_progress(self, progress: int, message: str) -> None:
         if self.progress_callback:
@@ -375,6 +389,11 @@ class NodeExecutionContext:
         if self.character_motion_runtime is None:
             raise RuntimeError("Node Executor requires CharacterMotionRuntime")
         return self.character_motion_runtime
+
+    def require_provider_tasks(self) -> NodeProviderTasks:
+        if self.provider_tasks is None:
+            raise RuntimeError("Node Executor requires ProviderTasks")
+        return self.provider_tasks
 
 @dataclass(frozen=True)
 class NodeExecutionResult:

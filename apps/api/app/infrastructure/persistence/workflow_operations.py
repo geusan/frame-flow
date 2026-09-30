@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Callable
+from copy import deepcopy
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from ...contexts.workflows.application import (
     CreateAnnotationCommand,
     CreateWorkflowCommand,
     PublishWorkflowCommand,
+    RestoreWorkflowDraftCommand,
     StartWorkflowRunCommand,
     UpdateAnnotationCommand,
     UpdateWorkflowCommand,
@@ -22,6 +24,7 @@ from ...contexts.workflows.domain import (
 )
 from ...database import (
     CanvasRunRecord,
+    CanvasRecord,
     RunRecord,
     SessionLocal,
     WorkflowAnnotationRecord,
@@ -38,7 +41,7 @@ from ...domain import (
     WorkflowVersionRunRequest,
     utc_now,
 )
-from ...service import audit
+from ...service import audit, new_id
 from ...workflow_definitions import (
     WORKFLOW_COMPILER_VERSION,
     WorkflowContractError,
@@ -157,6 +160,46 @@ class LegacySqlAlchemyWorkflowOperations:
             except WorkflowContractError as exc:
                 raise _translate_contract_error(exc) from exc
             return {**workflow_version_payload(version), "warnings": warnings}
+
+    def restore_draft(self, command: RestoreWorkflowDraftCommand) -> dict[str, Any]:
+        with self._session_factory() as db:
+            definition = db.get(WorkflowDefinitionRecord, command.workflow_id, with_for_update=True)
+            if not definition:
+                raise WorkflowNotFoundError("Workflow was not found")
+            version = self._version_or_error(db, command.workflow_id, command.version_number)
+            previous = db.get(CanvasRecord, definition.draft_canvas_id, with_for_update=True)
+            if not previous or previous.id != command.expected_canvas_id or previous.revision != command.expected_canvas_revision:
+                raise WorkflowConflictError("Canvas revision conflict: reload the current draft before restoring")
+            nodes = []
+            for index, node in enumerate(version.graph_json["nodes"]):
+                nodes.append({
+                    "id": node["id"], "type_key": node["type_key"], "contract_version": node["contract_version"],
+                    "definition_digest": node["definition_digest"], "config": deepcopy(node["config"]),
+                    "execution": deepcopy(node["runtime"]),
+                    "ui": {"order": index, "position": deepcopy(node.get("ui", {}).get("position") or {}),
+                           "label": node.get("ui", {}).get("label") or node["type_key"],
+                           "description": node.get("ui", {}).get("description") or "", "react_flow": {}},
+                    "editor": {"legacy_data": {}},
+                })
+            edges = [{**deepcopy(edge), "ui": {}} for edge in version.graph_json["edges"]]
+            restored = CanvasRecord(
+                id=new_id("canvas"), name=f"{definition.name} · Based on v{version.version_number}",
+                graph_json={"schema_version": "canvas.document.v1", "graph": {"schema_version": "canvas.graph.v1", "nodes": nodes, "elements": [], "edges": edges}, "runtime": {"schema_version": "canvas.runtime.v1", "nodes": {}}},
+                revision=1, workflow_definition_id=definition.id, base_version_id=version.id,
+                draft_contract_json={"schema_version": "workflow.contract.draft.v1", "inputs": deepcopy(version.input_schema_json["inputs"]), "bindings": deepcopy(version.bindings_json["bindings"]), "outputs": deepcopy(version.output_schema_json["outputs"])},
+                updated_at=utc_now(),
+            )
+            db.add(restored)
+            db.flush()
+            # Preserve the previous draft as an independent Canvas; never overwrite it.
+            previous.workflow_definition_id = None
+            previous.revision += 1
+            previous.updated_at = utc_now()
+            definition.draft_canvas_id = restored.id
+            definition.updated_at = utc_now()
+            audit(db, "workflow.draft_restored", definition.id, {"version_id": version.id, "canvas_id": restored.id, "preserved_canvas_id": previous.id})
+            db.commit()
+            return {"canvas_id": restored.id, "preserved_canvas_id": previous.id, "base_version_id": version.id}
 
     async def start_run(self, command: StartWorkflowRunCommand) -> Any:
         with self._session_factory() as db:

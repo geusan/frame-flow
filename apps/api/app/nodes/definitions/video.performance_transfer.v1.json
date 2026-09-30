@@ -1,0 +1,100 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.performance_transfer",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {
+    "label": "Character performance transfer",
+    "description": "이미지 캐릭터에 레퍼런스 영상의 동작·손·표정·입모양을 전사하며 음성은 별도로 결합",
+    "category": "Video",
+    "icon": "motion",
+    "cost_label": "Provider billed",
+    "keywords": [
+      "video",
+      "performance_transfer"
+    ]
+  },
+  "ports": {
+    "inputs": [
+      {
+        "key": "image",
+        "type": "media.image.v1",
+        "label": "Character image",
+        "required": true
+      },
+      {
+        "key": "video",
+        "type": "media.video.v1",
+        "label": "Driving video",
+        "required": true
+      }
+    ],
+    "outputs": [
+      {
+        "key": "video",
+        "type": "media.video.v1",
+        "label": "Video"
+      }
+    ]
+  },
+  "config_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "prompt",
+      "character_orientation",
+      "timeout_seconds"
+    ],
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "default": "Transfer the complete reference performance, including body and hand motion, head turns, blinking, facial expressions and mouth movement. Preserve the image character identity, body proportions, hairstyle and clothing. No new text, extra people, cuts or camera motion.",
+        "maxLength": 2500,
+        "title": "Performance instruction",
+        "x-workflow-input": {
+          "enabled": true,
+          "type": "prompt"
+        }
+      },
+      "character_orientation": {
+        "type": "string",
+        "enum": [
+          "video",
+          "image"
+        ],
+        "default": "video",
+        "title": "Motion orientation",
+        "description": "Video follows the driving performance for up to 30 seconds; image mode is limited to 10 seconds."
+      },
+      "timeout_seconds": {
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 1800,
+        "default": 1500,
+        "title": "Wait limit (seconds)"
+      }
+    }
+  },
+  "binding_policy": {
+    "workflow_inputs": "schema"
+  },
+  "execution": {
+    "kind": "provider",
+    "executor": "performance-transfer",
+    "revision": "performance-transfer.v1",
+    "provider": "fal",
+    "model_alias": "fal.video.performance"
+  },
+  "editor": {
+    "kind": "generic"
+  },
+  "artifact_contract": {
+    "primary_type": "Video",
+    "schema_id": "video.performance_transferred.v1",
+    "input_roles": {
+      "media.image.v1": "character_identity",
+      "media.video.v1": "driving_performance"
+    },
+    "output_role": "character_performance"
+  }
+}

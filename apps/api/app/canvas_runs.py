@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .canvas_documents import legacy_canvas_graph
-from .database import CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, SessionLocal
+from .database import ArtifactRecord, CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, SessionLocal
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
 from .nodes import node_registry
@@ -111,6 +111,11 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
         graph_source = "stored_canvas"
     if not nodes:
         raise ValueError("Canvas graph has no nodes")
+    for raw_node in nodes:
+        data = raw_node.get("data") or {}
+        definition = node_registry.get(str(data.get("key") or ""), int(data.get("contractVersion") or 1))
+        if definition:
+            node_registry.assert_runnable(definition)
     if graph_source == "stored_canvas":
         unknown = [
             str(node.get("data", {}).get("key") or "unknown")
@@ -407,28 +412,47 @@ def canvas_run_parameters(run: CanvasRunRecord, data: dict[str, Any]) -> dict[st
 
 def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRecord, data: dict[str, Any]) -> ExperimentRunRequest:
     inputs: list[dict[str, Any]] = []
-    seen_input_ids: set[str] = set()
+    seen_input_ids: set[tuple[str, str | None, str | None]] = set()
     prompt = str(data.get("configText") or data.get("description") or "")
     node_by_canvas_id = {item.canvas_node_id: item for item in run.node_runs}
     graph_nodes = {str(item.get("id")): dict(item.get("data") or {}) for item in (run.graph_snapshot or {}).get("nodes", [])}
 
-    def append_input(source_id: str) -> None:
-        if source_id in seen_input_ids:
+    def append_input(source_id: str, source_handle: str | None = None, target_handle: str | None = None) -> None:
+        from .nodes.output_ports import artifacts_for_output_port, selected_output_port
+        from .nodes.port_types import port_type_registry
+
+        input_key = (source_id, source_handle, target_handle)
+        if input_key in seen_input_ids:
             return
-        seen_input_ids.add(source_id)
+        seen_input_ids.add(input_key)
         source = node_by_canvas_id[source_id]
         source_data = graph_nodes[source_id]
+        artifact_ids = list(source.output_artifact_ids or [])
+        output_type = source_data.get("outputType") or "Any"
+        if source_handle and source_handle != "output":
+            definition = node_registry.get(source.node_key, int(source_data.get("contractVersion") or 1))
+            port = selected_output_port(definition, source_handle) if definition else None
+            if not port:
+                raise ValueError(f"Unknown output port: {source_id}.{source_handle}")
+            artifacts = [db.get(ArtifactRecord, artifact_id) for artifact_id in artifact_ids]
+            artifact_ids = artifacts_for_output_port(definition, port, [artifact for artifact in artifacts if artifact])
+            output_type = port_type_registry.get(port.type).legacy_type
+            if output_type in {"ReferenceAsset", "Any"}:
+                concrete_types = {artifact.type for artifact in artifacts if artifact and artifact.id in artifact_ids}
+                if len(concrete_types) == 1:
+                    output_type = next(iter(concrete_types))
         inputs.append({
             "node_id": source_id,
             "node_key": source.node_key,
-            "type": source_data.get("outputType") or "Any",
+            "type": output_type,
             "label": source_data.get("label") or source_id,
             "description": source_data.get("description"),
             "config_text": source_data.get("configText"),
             "output_title": (source.output_payload or {}).get("title"),
             "output_text": (source.output_payload or {}).get("text"),
             "mime_type": (source.output_payload or {}).get("mimeType"),
-            "artifact_ids": source.output_artifact_ids or [],
+            "artifact_ids": artifact_ids,
+            **({"source_port": source_handle, "target_port": target_handle} if source_handle or target_handle else {}),
         })
 
     def append_prompt_ancestors(source_id: str) -> None:
@@ -470,7 +494,7 @@ def _experiment_payload(db: Session, run: CanvasRunRecord, node: CanvasNodeRunRe
             prompt = resolve_prompt_text(source_id)
         if source_data.get("outputType") == "Prompt":
             append_prompt_ancestors(source_id)
-        append_input(source_id)
+        append_input(source_id, edge.get("sourceHandle"), edge.get("targetHandle"))
     parameters = canvas_run_parameters(run, data)
     return ExperimentRunRequest(
         canvas_id=run.canvas_id,

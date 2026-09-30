@@ -84,6 +84,7 @@ def create_artifact(
     )
     artifact_metadata["storage"] = {
         "provider": stored.provider,
+        **({"profile_id": stored.profile_id} if stored.profile_id else {}),
         "bucket": stored.bucket,
         "key": stored.key,
         "content_type": stored.content_type,
