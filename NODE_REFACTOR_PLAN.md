@@ -6,6 +6,18 @@ Status: Core implementation complete; historical compatibility adapters retained
 
 ## 구현 상태
 
+2026-10-02 공통 입력 비교: `video.animate_image@2`를 Omni 이미지+Prompt 전용
+계약으로 추가하고 기존 Veo V1과 영상 편집 계약은 유지했다. 세 비교 Draft에서 생성
+모델의 영상·음성 입력을 제거하고 동일 이미지와 공통 동작 지시를 사용한다. 과거
+Run/Artifact를 보존하는 Draft 교체 Diff와 검증은
+[이미지 기반 비교 워크플로우](docs/comparison-image-only-workflow.md)에 기록한다.
+
+2026-10-02 Omni 비교: `video.performance_transfer@2`에 source-video 편집 계약과
+Vertex service-account 기반 `performance-edit` Executor를 추가했다. 3–10초 원본의
+인물 교체만 담당하며 구간 추출·립싱크·자막·음성 결합은 분리한다. 기존 FAL V1과
+과거 Run/Artifact는 유지하며 Draft 수동 교체 Diff, 비용/재개 계약과 검증은
+[Omni 비교 워크플로우](docs/omni-comparison-workflow.md)에 기록한다.
+
 2026-10-02 비용 관측성: 공통 `billing` scope와 Provider 호출 원장을 추가했다.
 사용량·요금표 근거와 확정/계산/미확정/추가 과금 없음 상태를 Run 조회로 전달하며,
 실패한 후처리와 비동기 재개에서도 비용 증거를 유지하고 중복 합산을 막는다.

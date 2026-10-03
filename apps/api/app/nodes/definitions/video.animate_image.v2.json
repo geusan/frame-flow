@@ -1,0 +1,18 @@
+{
+  "schema_version":"node.definition.v1",
+  "type_key":"video.animate_image",
+  "contract_version":2,
+  "lifecycle":"ACTIVE",
+  "display":{"label":"Animate image with motion prompt","description":"이미지 1장과 동작 Prompt만으로 Omni 영상을 생성. 영상·음성 참조 입력 없이 시작 프레임과 3–10초 길이를 지시하고 실제 출력 길이를 검증","category":"Video","icon":"video","cost_label":"Provider billed","keywords":["image to video","first frame","Omni","Vertex"]},
+  "ports":{"inputs":[{"key":"prompt","type":"prompt.text.v1","label":"Motion prompt","required":true},{"key":"image","type":"media.image.v1","label":"Starting image","required":true}],"outputs":[{"key":"video","type":"media.video.v1","label":"Animated video"}]},
+  "config_schema":{"type":"object","additionalProperties":false,"required":["resolution","aspect_ratio","duration_seconds","timeout_seconds"],"properties":{
+    "resolution":{"type":"string","enum":["720p","1080p"],"default":"1080p","title":"Resolution","x-workflow-input":{"enabled":true,"type":"enum"}},
+    "aspect_ratio":{"type":"string","enum":["9:16","16:9"],"default":"9:16","title":"Aspect ratio","x-workflow-input":{"enabled":true,"type":"enum"}},
+    "duration_seconds":{"type":"integer","minimum":3,"maximum":10,"default":8,"title":"Requested duration (seconds)","description":"프롬프트로 길이를 지시하고 실제 결과가 요청 길이 -250ms/+1000ms 범위인지 검증합니다. 정확한 편집 길이는 별도 구간 추출에서 결정합니다.","x-workflow-input":{"enabled":true,"type":"integer"}},
+    "timeout_seconds":{"type":"integer","minimum":30,"maximum":3600,"default":1800,"title":"Wait limit (seconds)"}
+  }},
+  "binding_policy":{"workflow_inputs":"schema"},
+  "execution":{"kind":"provider","executor":"omni-image-animation","revision":"omni-image-animation.v2","provider":"google","model_alias":"google.video.omni.vertex"},
+  "editor":{"kind":"generic"},
+  "artifact_contract":{"primary_type":"Video","schema_id":"video.image_animation.v2","input_roles":{"prompt.text.v1":"motion_prompt","media.image.v1":"first_frame"},"output_role":"animated_video"}
+}

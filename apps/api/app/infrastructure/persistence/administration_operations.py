@@ -200,7 +200,7 @@ class SqlAlchemyAdministrationOperations:
                     "exact_model_id": model_id_for_alias(alias) or model_id,
                     "provider": "Google",
                     "modality": alias.split(".")[1],
-                    "region": speech_location if ".stt." in alias else "global" if alias == "google.tts.latest" else location,
+                    "region": speech_location if ".stt." in alias else "global" if alias in {"google.tts.latest", "google.video.omni.vertex"} else location,
                     "status": "active" if google_ready else "disabled",
                     "configured": google_ready,
                     "configuration": project or "Google Service Account is not configured",

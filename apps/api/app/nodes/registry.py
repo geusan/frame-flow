@@ -10,9 +10,11 @@ from .editor_refs import node_editor_ref_registry
 from .executors.character_turnaround import CharacterTurnaroundExecutor, TurnaroundTo3DExecutor
 from .executors.practice import StudyScreenExecutor, PracticeTrackExecutor, PracticeMotionExecutor, PracticeGuideExecutor
 from .executors.performance_transfer import PerformanceTransferExecutor, VoiceConvertExecutor
+from .executors.performance_edit import PerformanceEditExecutor
 from .executors.reference_captions import ReferenceCaptionsExecutor
 from .executors.frame_extract import FrameExtractExecutor
 from .executors.image_animation import ImageAnimationExecutor
+from .executors.omni_animation import OmniAnimationExecutor
 from .executors.image_description import ImageDescriptionExecutor
 from .executors.prompt_section import PromptSectionExecutor
 from .executors.prompt_combine import PromptCombineExecutor
@@ -217,10 +219,12 @@ node_registry = NodeRegistry(
         "practice-guide": PracticeGuideExecutor(),
         "audio-extract": AudioExtractExecutor(),
         "performance-transfer": PerformanceTransferExecutor(),
+        "performance-edit": PerformanceEditExecutor(),
         "voice-convert": VoiceConvertExecutor(),
         "reference-captions": ReferenceCaptionsExecutor(),
         "frame-extract": FrameExtractExecutor(),
         "image-animation": ImageAnimationExecutor(),
+        "omni-image-animation": OmniAnimationExecutor(),
         "image-description": ImageDescriptionExecutor(),
         "prompt-section": PromptSectionExecutor(),
         "prompt-combine": PromptCombineExecutor(),

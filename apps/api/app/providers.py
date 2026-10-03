@@ -34,6 +34,7 @@ MODEL_REGISTRY = {
     "google.video.fast": "veo-3.1-fast-generate-001",
     "google.video.quality": "veo-3.1-generate-001",
     "google.video.omni": "gemini-omni-1.1-flash",
+    "google.video.omni.vertex": "gemini-omni-1.1-flash-preview",
     "google.tts.latest": "gemini-3.1-flash-tts-preview",
     "google.tts.fast": "gemini-2.5-flash-tts",
     "google.tts.quality": "gemini-2.5-pro-tts",

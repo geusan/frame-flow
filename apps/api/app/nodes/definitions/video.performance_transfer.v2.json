@@ -1,0 +1,17 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.performance_transfer",
+  "contract_version": 2,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Edit character performance", "description": "3–10초 원본 영상의 인물을 이미지 캐릭터로 교체. 동작·표정·시간축을 유지하고 음성·립싱크는 별도 처리", "category": "Video", "icon": "motion", "cost_label": "Provider billed", "keywords": ["performance", "character", "edit", "Omni", "Vertex"]},
+  "ports": {"inputs": [{"key": "image", "type": "media.image.v1", "label": "Character image", "required": true}, {"key": "video", "type": "media.video.v1", "label": "Source performance (3–10s)", "required": true}], "outputs": [{"key": "video", "type": "media.video.v1", "label": "Edited performance"}]},
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["prompt", "resolution", "timeout_seconds"], "properties": {
+    "prompt": {"type": "string", "minLength": 1, "maxLength": 2500, "default": "Replace only the person with the adult character in the image. Preserve the full performance timing, gestures, gaze and facial expressions. Keep the image character's face, body, hair, wardrobe and lighting unchanged. No captions or extra people.", "title": "Performance edit", "x-workflow-input": {"enabled": true, "type": "prompt"}},
+    "resolution": {"type": "string", "enum": ["720p", "1080p"], "default": "1080p", "title": "Resolution", "x-workflow-input": {"enabled": true, "type": "enum"}},
+    "timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 3600, "default": 1800, "title": "Wait limit (seconds)"}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "provider", "executor": "performance-edit", "revision": "performance-edit.v2", "provider": "google", "model_alias": "google.video.omni.vertex"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Video", "schema_id": "video.performance_transferred.v2", "input_roles": {"media.image.v1": "character_identity", "media.video.v1": "driving_performance"}, "output_role": "character_performance"}
+}
