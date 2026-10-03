@@ -511,20 +511,21 @@ def _render_timeline(db: Session, timeline_artifact: ArtifactData) -> bytes:
     width = int(timeline.get("width") or 1080)
     height = int(timeline.get("height") or 1920)
     caption_document = caption_tracks[0].get("document")
-    ass_content = (
-        caption_document_to_ass(caption_document, width=width, height=height, track_style=caption_style)
-        if isinstance(caption_document, dict)
-        else _srt_to_ass(subtitle.data, width=width, height=height, style=caption_style)
-    )
     # Burn the positioned caption into the image so social players render it consistently.
     with tempfile.TemporaryDirectory(prefix="frameflow-caption-mux-") as temp_dir:
         directory = Path(temp_dir)
         video_path = _write_artifact(directory, rendered_artifact, 0)
         subtitle_path = directory / "captions.ass"
-        subtitle_path.write_text(ass_content, encoding="utf-8")
         fonts_directory = directory / "fonts"
+        font_family_names = {}
         if isinstance(caption_document, dict) and caption_document.get("fonts"):
-            materialize_caption_fonts(db, caption_document, fonts_directory)
+            font_family_names = materialize_caption_fonts(db, caption_document, fonts_directory)
+        ass_content = (
+            caption_document_to_ass(caption_document, width=width, height=height, track_style=caption_style, font_family_names=font_family_names)
+            if isinstance(caption_document, dict)
+            else _srt_to_ass(subtitle.data, width=width, height=height, style=caption_style)
+        )
+        subtitle_path.write_text(ass_content, encoding="utf-8")
         output = directory / "final.mp4"
         ass_filter = f"ass={subtitle_path}"
         if fonts_directory.is_dir():

@@ -6,6 +6,13 @@ Status: Core implementation complete; historical compatibility adapters retained
 
 ## 구현 상태
 
+2026-10-03 폰트 호환 버그 수정: 눈누 다운로드 경로 전수 확인 중 일부 폰트의
+typographic family와 libass가 찾는 legacy family가 달라 대체 글꼴이 렌더되는 문제를
+확인했다. 고정된 Font Artifact 바이트에서 렌더링 이름을 읽고 실제 SHA-256을 검사한다.
+Caption/Timeline renderer의 Runtime revision에 `ass-font-family.v1`을 추가해 캐시를
+분리하며, 기존 Node Definition/digest, Config/Port, CaptionDocument와 과거 Snapshot은
+변경하지 않는다. Local/Temporal은 같은 Media Runtime과 Executor 경로를 사용한다.
+
 2026-10-02 공통 입력 비교: `video.animate_image@2`를 Omni 이미지+Prompt 전용
 계약으로 추가하고 기존 Veo V1과 영상 편집 계약은 유지했다. 세 비교 Draft에서 생성
 모델의 영상·음성 입력을 제거하고 동일 이미지와 공통 동작 지시를 사용한다. 과거

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -7,11 +8,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from .database import ArtifactRecord
-from .font_registry import font_snapshots
+from .font_registry import font_snapshots, renderer_font_family
 from .storage import get_artifact_storage, storage_location
 
 
 CAPTION_DOCUMENT_SCHEMA = "caption.document.v1"
+CAPTION_FONT_FAMILY_REVISION = "ass-font-family.v1"
 TIMESTAMP_PREFIX = re.compile(r"^\s*\[\s*([0-9:.]+)\s*-\s*([0-9:.]+)\s*\]\s*")
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -189,13 +191,15 @@ def caption_document_to_ass(
     width: int,
     height: int,
     track_style: dict[str, Any],
+    font_family_names: dict[str, str] | None = None,
 ) -> str:
     if document.get("schema_version") != CAPTION_DOCUMENT_SCHEMA or not document.get("cues"):
         raise ValueError("timeline contains an invalid canonical caption document")
     fonts = {str(item["font_id"]): item for item in document.get("fonts") or []}
     default_style = dict(document.get("default_style") or {})
     default_font = fonts.get(str(default_style.get("font_id") or ""))
-    base_font = _safe_font_name(str((default_font or {}).get("family_name") or track_style.get("font_family") or "Noto Sans CJK KR"))
+    family_names = font_family_names or {}
+    base_font = _safe_font_name(str(family_names.get(str((default_font or {}).get("font_id") or "")) or (default_font or {}).get("family_name") or track_style.get("font_family") or "Noto Sans CJK KR"))
     base_size = float(default_style.get("font_size") or track_style.get("font_size") or 54)
     base_color = str(default_style.get("color") or track_style.get("color") or "#FFFFFF").upper()
     scale = min(width, height) / 1080
@@ -230,10 +234,15 @@ def caption_document_to_ass(
         rendered_runs: list[str] = []
         for run in cue.get("runs") or []:
             font = fonts.get(str(run.get("font_id") or ""), default_font)
-            family = _safe_font_name(str((font or {}).get("family_name") or base_font))
+            family = _safe_font_name(str(family_names.get(str((font or {}).get("font_id") or "")) or (font or {}).get("family_name") or base_font))
             font_size = max(8, round(float(run.get("font_size") or base_size) * scale * float((font or {}).get("size_adjust") or 1), 2))
             color = _ass_color(str(run.get("color") or base_color))
-            tags = f"\\fn{family}\\fs{font_size}\\c{color}\\b{1 if run.get('bold') else 0}\\i{1 if run.get('italic') else 0}"
+            weight = int((font or {}).get("weight") or 400)
+            if run.get("bold"):
+                weight = max(700, weight)
+            bold = 0 if weight == 400 else 1 if weight == 700 and run.get("bold") else weight
+            italic = bool(run.get("italic") or (font or {}).get("style") == "italic")
+            tags = f"\\fn{family}\\fs{font_size}\\c{color}\\b{bold}\\i{1 if italic else 0}"
             rendered_runs.append(f"{{{tags}}}{_ass_text(str(run.get('text') or ''))}")
         events.append(
             "Dialogue: 0,"
@@ -260,8 +269,9 @@ def caption_document_to_ass(
     ])
 
 
-def materialize_caption_fonts(db: Session, document: dict[str, Any], directory: Path) -> None:
+def materialize_caption_fonts(db: Session, document: dict[str, Any], directory: Path) -> dict[str, str]:
     directory.mkdir(parents=True, exist_ok=True)
+    family_names = {}
     for index, snapshot in enumerate(document.get("fonts") or []):
         artifact = db.get(ArtifactRecord, str(snapshot.get("artifact_id") or ""))
         if not artifact or artifact.type != "Font" or artifact.sha256 != snapshot.get("sha256"):
@@ -271,4 +281,9 @@ def materialize_caption_fonts(db: Session, document: dict[str, Any], directory: 
         suffix = Path(str((artifact.metadata_json or {}).get("filename") or "font.ttf")).suffix.lower()
         if suffix not in {".ttf", ".otf"}:
             suffix = ".ttf"
-        (directory / f"{index:03d}-{artifact.sha256[:12]}{suffix}").write_bytes(storage.get_bytes(bucket=bucket, key=key))
+        content = storage.get_bytes(bucket=bucket, key=key)
+        if hashlib.sha256(content).hexdigest() != snapshot.get("sha256"):
+            raise ValueError("caption document font bytes do not match the pinned snapshot")
+        family_names[str(snapshot["font_id"])] = renderer_font_family(content)
+        (directory / f"{index:03d}-{artifact.sha256[:12]}{suffix}").write_bytes(content)
+    return family_names

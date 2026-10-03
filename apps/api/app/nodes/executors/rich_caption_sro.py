@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from ...caption_documents import caption_document_to_ass
+from ...caption_documents import CAPTION_FONT_FAMILY_REVISION, caption_document_to_ass
 from ...image_story_video import output_dimensions
 from ..contracts import NodeArtifactContent, NodeArtifactRef, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
@@ -269,20 +269,17 @@ def _render_captioned_video(
         if width != int(canvas["width"]) or height != int(canvas["height"]):
             raise ValueError("Caption Layout dimensions do not match the source Video")
         frame = dict(layout["caption_frame"] if layout["schema_version"] == "subtitle.layout.v3" else layout["frame"])
+        fonts_directory = directory / "fonts"
+        font_family_names = db_context.require_media_runtime().materialize_caption_fonts(document, fonts_directory) if document.get("fonts") else {}
         ass_content = caption_document_to_ass(
             document,
             width=width,
             height=height,
             track_style={"align": layout["align"], "frame": frame},
+            font_family_names=font_family_names,
         )
         subtitle_path = directory / "captions.ass"
         subtitle_path.write_text(ass_content, encoding="utf-8")
-        fonts_directory = directory / "fonts"
-        if document.get("fonts"):
-            db_context.require_media_runtime().materialize_caption_fonts(
-                document,
-                fonts_directory,
-            )
         ass_filter = f"ass={subtitle_path.as_posix()}"
         if fonts_directory.is_dir():
             ass_filter += f":fontsdir={fonts_directory.as_posix()}"
@@ -300,7 +297,7 @@ class VideoCaptionBurnExecutor:
     @staticmethod
     def runtime_revision(definition: Any, resolved_config: dict[str, Any]) -> str:
         del resolved_config
-        return f"{definition.execution.revision}+{CAPTION_ASS_WORD_WRAP_REVISION}"
+        return f"{definition.execution.revision}+{CAPTION_ASS_WORD_WRAP_REVISION}+{CAPTION_FONT_FAMILY_REVISION}"
 
     def execute(
         self,

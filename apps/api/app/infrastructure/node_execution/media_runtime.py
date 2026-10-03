@@ -69,5 +69,5 @@ class SqlAlchemyNodeMediaRuntime:
     def canonical_caption_document(self, document: dict) -> dict:
         return canonical_caption_document(self._session, document)
 
-    def materialize_caption_fonts(self, document: dict, directory: object) -> None:
-        materialize_caption_fonts(self._session, document, directory)  # type: ignore[arg-type]
+    def materialize_caption_fonts(self, document: dict, directory: object) -> dict[str, str]:
+        return materialize_caption_fonts(self._session, document, directory)  # type: ignore[arg-type]

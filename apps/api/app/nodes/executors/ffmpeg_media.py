@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...caption_documents import CAPTION_FONT_FAMILY_REVISION
+
 from ..contracts import NodeArtifactContent, NodeArtifactWrite, NodeExecutionContext, NodeExecutionResult
 from .text_support import input_lineage
 
@@ -18,6 +20,13 @@ def _require(
 
 
 class FFmpegMediaCapabilityExecutor:
+    @staticmethod
+    def runtime_revision(definition: Any, resolved_config: dict[str, Any]) -> str:
+        del resolved_config
+        if any(port.type == "data.timeline.v2" for port in definition.ports.inputs):
+            return f"{definition.execution.revision}+{CAPTION_FONT_FAMILY_REVISION}"
+        return str(definition.execution.revision)
+
     def supports(self, context: NodeExecutionContext) -> bool:
         input_types = {port.type for port in context.definition.ports.inputs}
         return (
@@ -69,7 +78,7 @@ class FFmpegMediaCapabilityExecutor:
                 metadata={
                     "experiment_id": context.experiment_id,
                     "request_hash": context.request_hash,
-                    "execution_mode": context.definition.execution.revision,
+                    "execution_mode": self.runtime_revision(context.definition, resolved_node_config),
                     "immutable": True,
                     "source": "node_executor_registry",
                     "provider": "local",
@@ -94,6 +103,6 @@ class FFmpegMediaCapabilityExecutor:
                 "input_artifact_ids": input_artifact_ids,
                 "lineage_roles": input_roles,
                 "retryable": False,
-                "executor_revision": context.definition.execution.revision,
+                "executor_revision": self.runtime_revision(context.definition, resolved_node_config),
             },
         )

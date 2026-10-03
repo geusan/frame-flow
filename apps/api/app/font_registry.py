@@ -173,6 +173,12 @@ def inspect_font_license(content: bytes) -> dict[str, str]:
     return {key: names[name_id] for key, name_id in (("copyright", 0), ("text", 13), ("url", 14)) if name_id in names}
 
 
+def renderer_font_family(content: bytes) -> str:
+    """libass matches the legacy family (name ID 1), not the UI's ID 16 group."""
+    names = _name_values(_font_tables(content)["name"])
+    return names.get(1) or names.get(16) or inspect_font(content).family_name
+
+
 def font_response(font: FontRecord, artifact: ArtifactRecord) -> dict[str, Any]:
     storage = artifact.metadata_json.get("storage") or {}
     return {

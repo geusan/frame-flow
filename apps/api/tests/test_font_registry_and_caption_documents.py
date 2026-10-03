@@ -1,14 +1,44 @@
 from __future__ import annotations
 
 import struct
+import io
+from copy import deepcopy
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.canvas_runs import record_canvas_approval
-from app.caption_documents import canonical_caption_document, caption_document_to_ass
+from app.caption_documents import canonical_caption_document, caption_document_to_ass, materialize_caption_fonts
 from app.database import CanvasNodeRunRecord, CanvasRunRecord, FontRecord, SessionLocal
 from app.domain import NodeStatus
+
+
+def test_renderer_uses_file_family_without_mutating_frozen_font_snapshot(client: TestClient, tmp_path):
+    from fontTools.ttLib import TTFont
+    with TTFont(io.BytesIO(minimal_font()), recalcTimestamp=False, recalcBBoxes=False) as font_file:
+        font_file["name"].setName("Renderer Fixture Medium", 1, 3, 1, 0x0409)
+        font_file["OS/2"].usWeightClass = 500
+        output = io.BytesIO()
+        font_file.save(output)
+    response = client.post("/fonts", files={"file": ("face.ttf", output.getvalue(), "font/ttf")})
+    assert response.status_code == 201
+    font = response.json()
+    assert font["family_name"] == "Frameflow Test Sans"
+    with SessionLocal() as db:
+        document = canonical_caption_document(db, {
+            "schema_version": "caption.document.v1",
+            "default_style": {"font_id": font["id"], "font_size": 54, "color": "#FFFFFF"},
+            "content": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "[00:00-00:03] 실제 글꼴"}]}]},
+        })
+        before = deepcopy(document)
+        aliases = materialize_caption_fonts(db, document, tmp_path / "fonts")
+        ass = caption_document_to_ass(document, width=640, height=360, track_style={"align": "center"}, font_family_names=aliases)
+    assert aliases[font["id"]] == "Renderer Fixture Medium"
+    assert r"\fnRenderer Fixture Medium" in ass
+    assert r"\b500\i0" in ass
+    assert "Style: Caption,Renderer Fixture Medium," in ass
+    assert document == before
+    assert next((tmp_path / "fonts").glob("*.ttf")).read_bytes() == output.getvalue()
 
 
 def _name_table() -> bytes:
