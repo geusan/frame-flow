@@ -80,6 +80,11 @@ class LegacySqlAlchemyRunOperations:
                 raise RunValidationError(str(exc)) from exc
             return experiment_response(record)
 
+    def list_costs(self, owner_id: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
+        from ...billing import list_costs
+        with self._session_factory() as db:
+            return list_costs(db, owner_id, limit, offset)
+
     async def start_canvas_run(self, command: StartCanvasRunCommand) -> Any:
         with self._session_factory() as db:
             payload = CanvasRunRequest.model_validate(command.values)

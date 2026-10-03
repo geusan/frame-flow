@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from .billing import submit_with_cost, record_fal_result
 
 FAL_LIVE_REVISION = "fal-live.v1"
 FAL_FLUX2_LORA_MODEL = "fal-ai/flux-2/lora"
@@ -71,7 +72,7 @@ class FalGenerationServices:
             "loras": [{"path": lora_path, "scale": scale}],
         }
         headers = {"Authorization": f"Key {self.config.api_key}", "Content-Type": "application/json"}
-        submitted = self.client.post(
+        submitted = submit_with_cost("fal", "image_generation", FAL_FLUX2_LORA_MODEL, self.client.post,
             f"{self.config.queue_base_url}/{FAL_FLUX2_LORA_MODEL}",
             headers=headers,
             json=request_body,
@@ -98,6 +99,7 @@ class FalGenerationServices:
             raise RuntimeError(f"fal LoRA generation timed out: {request_id}")
         result_response = self.client.get(response_url, headers=headers)
         result_response.raise_for_status()
+        record_fal_result(result_response, FAL_FLUX2_LORA_MODEL, request_id, self.client, headers)
         result_payload = result_response.json()
         result = result_payload.get("data") if isinstance(result_payload.get("data"), dict) else result_payload
         images = result.get("images") or []
@@ -120,7 +122,7 @@ class FalGenerationServices:
         if not image_data_url.startswith(("http://", "https://")):
             raise ValueError("fal LoRA training requires a downloadable HTTP(S) dataset URL")
         headers = self._headers()
-        submitted = self.client.post(
+        submitted = submit_with_cost("fal", "lora_training", FAL_FLUX2_TRAINER_MODEL, self.client.post,
             f"{self.config.queue_base_url}/{FAL_FLUX2_TRAINER_MODEL}",
             headers=headers,
             json={
@@ -151,6 +153,7 @@ class FalGenerationServices:
     def get_queue_result(self, response_url: str) -> dict[str, Any]:
         response = self.client.get(response_url, headers=self._headers())
         response.raise_for_status()
+        record_fal_result(response, FAL_FLUX2_TRAINER_MODEL, response_url.rstrip("/").rsplit("/", 1)[-1], self.client, self._headers())
         payload = response.json()
         return dict(payload.get("data") if isinstance(payload.get("data"), dict) else payload)
 

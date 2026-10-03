@@ -188,6 +188,8 @@ Provider Adapter는 UI Node key를 기준으로 분기하지 않는다. Provider
 
 Human input이 필요한 Node는 특정 `node_key` 조건문 대신 Manifest의 `execution.kind=human_gate`와 versioned approval schema를 사용한다.
 
+Provider 비용은 `app.billing`의 공통 호출 계측을 사용한다. 공급사 호출 전에 미확정 원장을 저장하고, 응답을 검증하거나 미디어를 다운로드하기 전에 실제 usage와 요청 ID를 기록한다. 금액 미수집을 `0`으로 처리하거나 실행당 고정값을 실제 비용으로 기록하지 않는다. 공급사 확정 금액과 버전이 있는 요금표 계산액을 구분하고, 비동기 요청 재개는 같은 Provider request ID를 한 번만 합산한다. 상세 계약은 `docs/cost-accounting.md`를 따른다.
+
 ## Web rules for Nodes
 
 - Node Library의 Source of Truth를 `nodeTemplates` 같은 별도 수동 목록에 추가하지 않는다.

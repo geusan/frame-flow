@@ -265,7 +265,8 @@ def workflow_run_payload(db: Session, run: CanvasRunRecord) -> dict[str, Any]:
         "status": str(run.status),
         "progress": run.progress,
         "inputs": run.input_snapshot or {},
-        "cost_usd": sum(node.cost_usd for node in run.node_runs),
+        "cost_usd": float(response.cost_summary.get("known_cost_usd", sum(node.cost_usd for node in run.node_runs))),
+        "cost_summary": response.cost_summary,
         "required_actions": required_actions,
         "outputs": outputs,
         "node_runs": [

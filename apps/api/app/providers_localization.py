@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .billing import call_with_cost
+
 import json
 import math
 import os
@@ -216,7 +218,7 @@ class GoogleChirp3Recognizer:
                 config=config,
                 content=chunk.data,
             )
-            response = self.client.recognize(request=request)
+            response = call_with_cost("google", "speech.recognize", self.client.recognize, _cost_context={"model": "chirp_3", "location": self.location, "channel": "speech_v2"}, request=request)
             raw_results = [result for result in response.results if result.alternatives]
             cursor = 0
             fallback_duration = max(1, chunk.duration_ms // max(1, len(raw_results)))

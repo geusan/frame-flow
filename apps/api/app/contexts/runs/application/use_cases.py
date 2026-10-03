@@ -57,6 +57,9 @@ class RunApplication:
     def create_experiment(self, command: CreateExperimentCommand) -> ExperimentRunResponse:
         return self._operations.create_experiment(command)
 
+    def list_costs(self, owner_id: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
+        return self._operations.list_costs(owner_id, limit, offset)
+
     async def start_canvas_run(self, command: StartCanvasRunCommand) -> CanvasRunResponse:
         return await self._operations.start_canvas_run(command)
 

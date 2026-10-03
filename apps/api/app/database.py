@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Iterator
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine, text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from .domain import utc_now
@@ -153,6 +154,36 @@ class ExperimentRunRecord(Timestamped, Base):
     cached_from_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    billing_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    billing_node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    cost_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class ProviderCostRecord(Timestamped, Base):
+    """Independent receipts survive failed execution transactions and task resumes."""
+    __tablename__ = "provider_costs"
+    __table_args__ = (UniqueConstraint("provider", "provider_request_id", name="uq_provider_cost_request"),)
+    experiment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(32), index=True)
+    operation: Mapped[str] = mapped_column(String(128))
+    requested_model: Mapped[str] = mapped_column(String(255))
+    model: Mapped[str] = mapped_column(String(255))
+    provider_request_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    outcome: Mapped[str] = mapped_column(String(32), default="pending")
+    amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(24, 12), nullable=True)
+    usage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    pricing: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+class ProviderCostObservation(Timestamped, Base):
+    __tablename__ = "provider_cost_observations"
+    cost_id: Mapped[str] = mapped_column(ForeignKey("provider_costs.id"), index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 
 class CanvasRecord(Timestamped, Base):

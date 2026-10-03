@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ...canvas_runs import canvas_run_response, create_canvas_run
+from ...billing import CostReadModel
 from ...contexts.workflows.application import (
     CreateAnnotationCommand,
     CreateWorkflowCommand,
@@ -367,6 +368,7 @@ class LegacySqlAlchemyWorkflowOperations:
     def list_runs(self) -> list[dict[str, Any]]:
         with self._session_factory() as db:
             rows: list[dict[str, Any]] = []
+            billing = CostReadModel(db)
             regular_runs = db.scalars(
                 select(RunRecord).order_by(RunRecord.created_at.desc())
             ).unique().all()
@@ -380,6 +382,7 @@ class LegacySqlAlchemyWorkflowOperations:
                         "status": run.status,
                         "progress": run.progress,
                         "cost_usd": run.actual_cost_usd,
+                        "cost_summary": billing.run(run),
                         "estimated_cost_usd": run.estimated_cost_usd,
                         "nodes_done": sum(
                             node.status == NodeStatus.SUCCEEDED
@@ -409,6 +412,7 @@ class LegacySqlAlchemyWorkflowOperations:
                         "status": run.status,
                         "progress": run.progress,
                         "cost_usd": sum(node.cost_usd for node in run.node_runs),
+                        "cost_summary": billing.run(run),
                         "estimated_cost_usd": None,
                         "nodes_done": sum(
                             node.status == NodeStatus.SUCCEEDED
@@ -425,4 +429,8 @@ class LegacySqlAlchemyWorkflowOperations:
                         "workflow_version_id": run.workflow_version_id,
                     }
                 )
+            rows.extend(billing.standalone_rows())
+            for row in rows:
+                if row["cost_summary"]["status"] != "legacy":
+                    row["cost_usd"] = float(row["cost_summary"]["known_cost_usd"])
             return sorted(rows, key=lambda row: row["created_at"], reverse=True)

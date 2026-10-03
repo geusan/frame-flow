@@ -23,6 +23,7 @@ from .provider_settings import (
 from .project_skills import ensure_bundled_skills
 from .storage import get_storage
 from .service import backfill_artifact_edges
+from .billing import request_cost_scope
 
 
 @asynccontextmanager
@@ -57,6 +58,13 @@ app = FastAPI(
     description="Reference-isolated, artifact-first shorts workflow API",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def record_request_costs(request, call_next):
+    with request_cost_scope():
+        return await call_next(request)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

@@ -18,7 +18,7 @@ class FakeResponses:
         return SimpleNamespace(
             id="xai_response_1",
             output_text="Grok final response",
-            usage=SimpleNamespace(input_tokens=100, output_tokens=50),
+            usage=SimpleNamespace(input_tokens=100, output_tokens=50, cost_in_usd_ticks=5000000),
         )
 
 
@@ -49,7 +49,7 @@ def test_xai_provider_uses_the_fixed_official_api_base(monkeypatch):
     monkeypatch.setattr(providers_xai_module, "OpenAI", fake_openai)
     XAITextServices(XAIProviderConfig("xai-test-key"))
 
-    assert captured == {"api_key": "xai-test-key", "base_url": XAI_API_BASE_URL}
+    assert captured == {"api_key": "xai-test-key", "base_url": XAI_API_BASE_URL, "max_retries": 0}
 
 
 def test_xai_text_service_uses_responses_contract_and_tracks_cost():
@@ -128,7 +128,9 @@ def test_llm_assistant_v2_runs_through_registered_xai_provider(client, monkeypat
     assert payload["provider_request_id"] == "xai_node_response"
     assert len(payload["output_artifact_ids"]) == 1
     assert payload["output"]["text"] == "Grok Node result"
-    assert payload["cost_usd"] == pytest.approx(0.00042)
+    # A mocked service's bare float is not a provider billing receipt.
+    assert payload["cost_usd"] == 0
+    assert payload["cost_summary"]["status"] == "unreported"
     assert captured["reasoning_effort"] == "high"
     assert captured["prompt_cache_key"] == payload["request_hash"]
     artifact = client.get(f"/artifacts/{payload['output_artifact_ids'][0]}").json()

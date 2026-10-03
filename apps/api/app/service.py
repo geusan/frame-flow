@@ -191,6 +191,10 @@ def artifact_response(record: ArtifactRecord) -> ArtifactResponse:
 
 
 def node_response(record: NodeRunRecord) -> NodeRunResponse:
+    from .billing import CostReadModel, legacy_summary
+    from sqlalchemy.orm import object_session
+    session = object_session(record)
+    cost = CostReadModel(session, record.run_id).node(record) if session else legacy_summary(record.cost_usd)
     return NodeRunResponse(
         id=record.id,
         created_at=record.created_at,
@@ -198,7 +202,8 @@ def node_response(record: NodeRunRecord) -> NodeRunResponse:
         node_key=record.node_key,
         status=record.status,
         progress=record.progress,
-        cost_usd=record.cost_usd,
+        cost_usd=float(cost["known_cost_usd"]),
+        cost_summary=cost,
         provider_request_id=record.provider_request_id,
         provider_operation_id=record.provider_operation_id,
         attempt_count=record.attempt_count,
@@ -207,6 +212,10 @@ def node_response(record: NodeRunRecord) -> NodeRunResponse:
 
 
 def run_response(record: RunRecord) -> RunResponse:
+    from .billing import CostReadModel, legacy_summary
+    from sqlalchemy.orm import object_session
+    session = object_session(record)
+    cost = CostReadModel(session, record.id).run(record) if session else legacy_summary(record.actual_cost_usd)
     return RunResponse(
         id=record.id,
         created_at=record.created_at,
@@ -214,7 +223,8 @@ def run_response(record: RunRecord) -> RunResponse:
         status=record.status,
         progress=record.progress,
         estimated_cost_usd=record.estimated_cost_usd,
-        actual_cost_usd=record.actual_cost_usd,
+        actual_cost_usd=float(cost["known_cost_usd"]),
+        cost_summary=cost,
         budget_limit_usd=record.budget_limit_usd,
         execution_plan=record.execution_plan,
         node_runs=[node_response(node) for node in record.node_runs],

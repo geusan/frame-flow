@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .billing import call_with_cost
+
 import base64
 import hashlib
 import os
@@ -49,7 +51,7 @@ class OpenAIGenerationServices:
     def __init__(self, config: OpenAIProviderConfig | None = None, client: Any | None = None) -> None:
         self.config = config or OpenAIProviderConfig.from_env()
         self.client = client or OpenAI(
-            api_key=self.config.api_key,
+            api_key=self.config.api_key, max_retries=0,
             base_url=self.config.base_url,
             organization=self.config.organization,
             project=self.config.project,
@@ -60,7 +62,7 @@ class OpenAIGenerationServices:
             exact_model = OPENAI_MODEL_REGISTRY[logical_model]
         except KeyError as exc:
             raise ValueError(f"OpenAI model alias is not registered: {logical_model}") from exc
-        response = self.client.responses.create(
+        response = call_with_cost("openai", "responses", self.client.responses.create,
             model=exact_model,
             instructions=instructions,
             input=prompt,
@@ -93,10 +95,10 @@ class OpenAIGenerationServices:
             "quality": quality,
             "output_format": "png",
         }
-        response = self.client.images.edit(
+        response = call_with_cost("openai", "images.edit", self.client.images.edit,
             image=[(f"input-{index}.png", item.data, item.content_type) for index, item in enumerate(reference_images[:16], start=1)],
             **common,
-        ) if reference_images else self.client.images.generate(**common)
+        ) if reference_images else call_with_cost("openai", "images.generate", self.client.images.generate, **common)
         images = [base64.b64decode(item.b64_json) for item in response.data if item.b64_json]
         if not images:
             raise RuntimeError("OpenAI Images API returned no image")
@@ -177,7 +179,7 @@ class OpenAIGenerationServices:
         }
         if exact_model.startswith("gpt-4o-mini-tts"):
             speech_request["instructions"] = style_prompt
-        response = self.client.audio.speech.create(**speech_request)
+        response = call_with_cost("openai", "audio.speech", self.client.audio.speech.create, **speech_request)
         audio = bytes(response.content)
         if not audio:
             raise RuntimeError("OpenAI Speech API returned no audio")

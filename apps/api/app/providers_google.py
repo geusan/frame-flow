@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .billing import call_with_cost, submit_sdk_with_cost, record_google_video_result, record_google_video_media
+
 import base64
 import hashlib
 import json
@@ -54,17 +56,20 @@ def _request_id(value: str) -> str:
 
 
 class GoogleProviderBase:
+    def cost_context(self):
+        return {"channel": "gemini" if self.config.api_key else "vertex", "location": self.config.location}
+
     def __init__(self, config: GoogleProviderConfig | None = None, client: Any | None = None) -> None:
         self.config = config or GoogleProviderConfig.from_env()
         self.client = client or (
-            genai.Client(api_key=self.config.api_key)
+            genai.Client(api_key=self.config.api_key, http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)))
             if self.config.api_key
             else genai.Client(
                 vertexai=True,
                 project=self.config.project,
                 location=self.config.location,
                 credentials=self.config.credentials,
-                http_options=types.HttpOptions(api_version=self.config.api_version),
+                http_options=types.HttpOptions(api_version=self.config.api_version, retry_options=types.HttpRetryOptions(attempts=1)),
             )
         )
 
@@ -94,7 +99,7 @@ class GoogleTextProvider(GoogleProviderBase):
             "seed": seed,
         }
         digest = request_hash(logical_model, payload)
-        response = self.client.models.generate_content(
+        response = call_with_cost("google", "generate_content", self.client.models.generate_content, _cost_context=self.cost_context(),
             model=exact_model,
             contents=rendered_prompt,
             config=types.GenerateContentConfig(
@@ -128,7 +133,7 @@ class GoogleTextProvider(GoogleProviderBase):
             "seed": seed,
         }
         digest = request_hash(logical_model, payload)
-        response = self.client.models.generate_content(
+        response = call_with_cost("google", "generate_content", self.client.models.generate_content, _cost_context=self.cost_context(),
             model=exact_model,
             contents=rendered_prompt,
             config=types.GenerateContentConfig(
@@ -164,7 +169,7 @@ class GoogleImageProvider(GoogleProviderBase):
         references = reference_images or []
         payload = {"model": exact_model, "prompt": prompt, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "reference_hashes": [hashlib.sha256(data).hexdigest() for data, _ in references]}
         digest = request_hash(logical_model, payload)
-        response = self.client.models.generate_content(
+        response = call_with_cost("google", "generate_content", self.client.models.generate_content, _cost_context=self.cost_context(),
             model=exact_model,
             contents=[prompt, *(types.Part.from_bytes(data=data, mime_type=mime_type) for data, mime_type in references)] if references else prompt,
             config=types.GenerateContentConfig(
@@ -221,7 +226,7 @@ class GoogleVideoProvider(GoogleProviderBase):
             "Exactly one depiction of the character. Single continuous shot, no scene cuts, no identity drift, morphing, duplicate body, extra limbs, text, labels, or contact-sheet layout."
         )
         inputs.append({"type": "text", "text": rendered_prompt})
-        response = self.client.interactions.create(
+        response = call_with_cost("google", "interactions", self.client.interactions.create, _cost_context=self.cost_context(),
             model=exact_model,
             input=inputs,
             response_format={"type": "video", "aspect_ratio": aspect_ratio, "resolution": resolution},
@@ -320,7 +325,9 @@ class GoogleVideoProvider(GoogleProviderBase):
                 )
                 for data, mime_type in references
             ]
-        operation = self.client.models.generate_videos(
+        operation = submit_sdk_with_cost("google", "generate_videos", self.client.models.generate_videos,
+            _cost_context={**self.cost_context(), "duration_seconds": duration_seconds, "resolution": resolution,
+                           "generate_audio": config_values.get("generate_audio"), "requested_video_count": candidate_count},
             model=exact_model,
             source=types.GenerateVideosSource(
                 prompt=prompt,
@@ -340,6 +347,7 @@ class GoogleVideoProvider(GoogleProviderBase):
             raise GoogleProviderError(f"Google video operation failed: {operation.error}")
         response = operation.response or operation.result
         videos = getattr(response, "generated_videos", None) or []
+        record_google_video_result("unspecified", operation_id, video_count=len(videos))
         uris = [generated.video.uri for generated in videos if generated.video and generated.video.uri]
         return True, uris
 
@@ -366,6 +374,7 @@ class GoogleVideoProvider(GoogleProviderBase):
             raise GoogleProviderError(f"Google video operation failed: {operation.error}")
         response = operation.response or operation.result
         videos = getattr(response, "generated_videos", None) or []
+        record_google_video_result(self.exact_model(logical_model), submission.provider_operation_id, video_count=len(videos))
         generated_results: list[GeneratedBinary] = []
         for generated in videos:
             video = getattr(generated, "video", None)
@@ -379,6 +388,7 @@ class GoogleVideoProvider(GoogleProviderBase):
                 generated_results.append(GeneratedBinary(data, mime_type, self.exact_model(logical_model), submission.provider_request_id))
         if not generated_results:
             raise GoogleProviderError("Google video operation returned no downloadable video")
+        record_google_video_media(self.exact_model(logical_model), submission.provider_operation_id, generated_results)
         return generated_results
 
     @staticmethod
@@ -408,7 +418,7 @@ class GoogleTtsProvider(GoogleProviderBase):
                 project=self.config.project,
                 location="global",
                 credentials=self.config.credentials,
-                http_options=types.HttpOptions(api_version="v1beta1"),
+                http_options=types.HttpOptions(api_version="v1beta1", retry_options=types.HttpRetryOptions(attempts=1)),
             )
 
     def synthesize(
@@ -424,7 +434,8 @@ class GoogleTtsProvider(GoogleProviderBase):
         rendered = f"{style_prompt.strip()}\n\nRead the following text exactly:\n{text.strip()}"
         digest = request_hash(logical_model, {"model": exact_model, "text": text, "style_prompt": style_prompt, "voice_name": voice_name, "locale": locale})
         client = self._preview_client if exact_model == "gemini-3.1-flash-tts-preview" else self.client
-        response = client.models.generate_content(
+        response = call_with_cost("google", "generate_content", client.models.generate_content,
+            _cost_context={**self.cost_context(), "location": "global" if client is self._preview_client else self.config.location},
             model=exact_model,
             contents=rendered,
             config=types.GenerateContentConfig(

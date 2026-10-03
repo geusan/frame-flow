@@ -1,5 +1,7 @@
 "use client";
 
+import { CostValue } from "@/components/shared/cost-value";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -602,7 +604,7 @@ export function ImageEditor({ artifactId }: { artifactId: string }) {
             </form>
             {aiError && <div className="image-editor-ai-error"><CircleAlert size={15} /> {aiError}</div>}
             {aiResult && <section className="image-editor-ai-result">
-              <div className="image-editor-control-head"><span><BadgeCheck size={14} /> AI result</span><small>${aiResult.cost_usd.toFixed(3)} · {aiResult.duration_ms}ms</small></div>
+              <div className="image-editor-control-head"><span><BadgeCheck size={14} /> AI result</span><CostValue cost={aiResult.cost_summary} legacyCost={aiResult.cost_usd} /><small>{aiResult.duration_ms}ms</small></div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={aiResult.output.url} alt="AI edited result" />
               <div><span><strong>{aiResult.exact_model_id}</strong><small>Original and prompt are preserved in lineage.</small></span><Button type="button" onClick={() => router.push(`/asset/images/${aiResult.output_artifact_ids[0]}/edit`)}>Continue editing <ArrowLeft className="image-editor-forward" size={14} /></Button></div>

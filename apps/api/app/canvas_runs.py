@@ -7,12 +7,13 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from .canvas_documents import legacy_canvas_graph
 from .database import ArtifactRecord, CanvasNodeRunRecord, CanvasRecord, CanvasRunRecord, SessionLocal
 from .domain import CanvasNodeRunResponse, CanvasRunRequest, CanvasRunResponse, ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
+from .billing import CostReadModel, legacy_summary, run_cost_owner
 from .nodes import node_registry
 from .nodes.human_gates import HumanGateMode, human_gate_mode
 from .nodes.legacy_run_adapter import legacy_canvas_run_parameters
@@ -24,6 +25,8 @@ class NonRetryableNodeError(RuntimeError):
 
 
 def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
+    session = object_session(run)
+    billing = CostReadModel(session, run.id) if session else None
     return CanvasRunResponse(
         id=run.id,
         created_at=run.created_at,
@@ -38,6 +41,7 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
         inputs=run.input_snapshot or {},
         model_snapshot=run.model_snapshot or {},
         compiler_version=run.compiler_version,
+        cost_summary=billing.run(run) if billing else legacy_summary(),
         node_runs=[CanvasNodeRunResponse(
             id=node.id,
             created_at=node.created_at,
@@ -52,7 +56,8 @@ def canvas_run_response(run: CanvasRunRecord) -> CanvasRunResponse:
             output_artifact_ids=node.output_artifact_ids or [],
             output=node.output_payload or {},
             duration_ms=node.duration_ms,
-            cost_usd=node.cost_usd,
+            cost_usd=float(billing.node(node)["known_cost_usd"]) if billing else node.cost_usd,
+            cost_summary=billing.node(node) if billing else legacy_summary(node.cost_usd),
             error=node.error,
             logs=node.logs or [],
         ) for node in run.node_runs],
@@ -200,11 +205,12 @@ def execute_canvas_node(run_id: str, canvas_node_id: str) -> dict[str, Any]:
             run.progress = _run_progress(run)
             db.commit()
 
-        experiment = (
-            run_experiment(db, experiment_payload, progress_callback=report_progress)
-            if "progress_callback" in inspect.signature(run_experiment).parameters
-            else run_experiment(db, experiment_payload)
-        )
+        with run_cost_owner(run.id, node.id):
+            experiment = (
+                run_experiment(db, experiment_payload, progress_callback=report_progress)
+                if "progress_callback" in inspect.signature(run_experiment).parameters
+                else run_experiment(db, experiment_payload)
+            )
         db.refresh(run)
         db.refresh(node)
         if run.status == NodeStatus.CANCELED:

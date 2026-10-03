@@ -6,6 +6,12 @@ Status: Core implementation complete; historical compatibility adapters retained
 
 ## 구현 상태
 
+2026-10-02 비용 관측성: 공통 `billing` scope와 Provider 호출 원장을 추가했다.
+사용량·요금표 근거와 확정/계산/미확정/추가 과금 없음 상태를 Run 조회로 전달하며,
+실패한 후처리와 비동기 재개에서도 비용 증거를 유지하고 중복 합산을 막는다.
+Node Definition/digest와 과거 Run/Artifact는 변경하지 않는다.
+계약·운영·검증은 [비용 기록](docs/cost-accounting.md)에 기록한다.
+
 2026-09-18 마무리: Phase 0~6의 핵심 계약과 Web 작성·게시·실행 흐름을 구현했고, Phase 7의 수동 production Library/사용되지 않는 중앙 dispatch 제거와 Architecture guard를 완료했다. 과거 Canvas/API/Run snapshot의 호환 Adapter는 지원 계약으로 유지한다. 외부 클라이언트 전환 확인 없이 호환 API를 제거하는 작업은 하지 않는다.
 
 - Canonical Canvas는 직접 검증·조회·저장하고 Publish compiler도 Canonical graph를 사용한다.

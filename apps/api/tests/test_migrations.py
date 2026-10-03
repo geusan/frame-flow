@@ -27,4 +27,5 @@ def test_alembic_upgrade_head_supports_the_default_sqlite_installation(tmp_path)
         canvas_node_columns = {row[1] for row in connection.execute("PRAGMA table_info(canvas_node_runs)")}
     assert {"skill_definitions", "skill_versions", "skill_installations", "workflow_versions", "fonts"} <= tables
     assert "logs" in canvas_node_columns
-    assert version == "0011"
+    assert {"provider_costs", "provider_cost_observations"} <= tables
+    assert version == "0012"

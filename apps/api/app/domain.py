@@ -404,6 +404,7 @@ class ExperimentRunResponse(ApiRecord):
     output: dict[str, Any]
     duration_ms: int
     cost_usd: float
+    cost_summary: dict[str, Any] = Field(default_factory=dict)
     cache_hit: bool
     cached_from_id: str | None
     is_baseline: bool
@@ -423,6 +424,7 @@ class CanvasNodeRunResponse(ApiRecord):
     output: dict[str, Any]
     duration_ms: int
     cost_usd: float
+    cost_summary: dict[str, Any] = Field(default_factory=dict)
     error: str | None
     logs: list[str] = Field(default_factory=list)
 
@@ -440,6 +442,7 @@ class CanvasRunResponse(ApiRecord):
     inputs: dict[str, Any] = Field(default_factory=dict)
     model_snapshot: dict[str, Any] = Field(default_factory=dict)
     compiler_version: str | None = None
+    cost_summary: dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeRunResponse(ApiRecord):
@@ -448,6 +451,7 @@ class NodeRunResponse(ApiRecord):
     status: NodeStatus
     progress: int
     cost_usd: float
+    cost_summary: dict[str, Any] = Field(default_factory=dict)
     provider_request_id: str | None
     provider_operation_id: str | None
     attempt_count: int
@@ -460,6 +464,7 @@ class RunResponse(ApiRecord):
     progress: int
     estimated_cost_usd: float
     actual_cost_usd: float
+    cost_summary: dict[str, Any] = Field(default_factory=dict)
     budget_limit_usd: float
     execution_plan: dict[str, Any]
     node_runs: list[NodeRunResponse] = Field(default_factory=list)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .billing import call_with_cost
+
 import hashlib
 import json
 import math
@@ -387,7 +389,7 @@ class GeminiSemanticAnalyzer:
             f"Locally detected shots: {json.dumps(shots, ensure_ascii=False, separators=(',', ':'))}"
         )
         try:
-            response = self.provider.client.models.generate_content(
+            response = call_with_cost("google", "generate_content", self.provider.client.models.generate_content, _cost_context=self.provider.cost_context(),
                 model=exact_model,
                 contents=[types.Part.from_bytes(data=video, mime_type=content_type), prompt],
                 config=types.GenerateContentConfig(

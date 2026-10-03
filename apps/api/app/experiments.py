@@ -8,7 +8,7 @@ import time
 from typing import Any, Callable
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from .database import ArtifactRecord, ExperimentRunRecord
 from .domain import ExperimentRunRequest, ExperimentRunResponse, NodeStatus
@@ -179,6 +179,8 @@ def request_fingerprint(payload: ExperimentRunRequest, model_alias: str, exact_m
 
 
 def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
+    from .billing import experiment_cost_summary
+    cost = experiment_cost_summary(record, object_session(record))
     return ExperimentRunResponse(
         id=record.id,
         created_at=record.created_at,
@@ -197,7 +199,8 @@ def experiment_response(record: ExperimentRunRecord) -> ExperimentRunResponse:
         output_artifact_ids=record.output_artifact_ids or [],
         output=record.output_payload or {},
         duration_ms=record.duration_ms,
-        cost_usd=record.cost_usd,
+        cost_usd=float(cost["known_cost_usd"]),
+        cost_summary=cost,
         cache_hit=record.cache_hit,
         cached_from_id=record.cached_from_id,
         is_baseline=record.is_baseline,
@@ -210,6 +213,7 @@ def run_experiment(
     payload: ExperimentRunRequest,
     progress_callback: Callable[[int, str], None] | None = None,
 ) -> ExperimentRunRecord:
+    from .billing import current_owner, execution_cost_scope, summary
     payload = resolve_prompt_image_variables(payload)
     definition = node_registry.get(payload.node_key, payload.node_contract_version)
     payload = resolve_character_lora_parameters(db, payload, definition)
@@ -247,6 +251,8 @@ def run_experiment(
         prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=normalized_parameters,
         input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},
+        billing_run_id=current_owner()[0], billing_node_run_id=current_owner()[1],
+        cost_summary=summary("pending", unresolved=1, reason="execution_in_progress"),
     )
     db.add(record)
     db.flush()
@@ -260,12 +266,14 @@ def run_experiment(
         record.output_payload = dict(cached.output_payload or {})
         record.cache_hit = True
         record.cached_from_id = cached.id
+        record.cost_summary = summary("no_charge", reason="cache_hit")
         audit(db, "experiment.cache_hit", record.id, {"cached_from_id": cached.id})
         db.commit()
         db.refresh(record)
         return record
 
     started = time.perf_counter()
+    costs = None
     try:
         context = NodeExecutionContext(
             definition=definition,
@@ -290,11 +298,9 @@ def run_experiment(
                 f"Node contract has no registered execution capability: "
                 f"{payload.node_key}@{payload.node_contract_version}"
             )
-        result = node_registry.execute(
-            context,
-            payload.parameters,
-            payload.inputs,
-        )
+        expects_provider = definition.execution.kind in {"provider", "composite"} and "fixture" not in record.execution_mode
+        with execution_cost_scope(record.id, expects_provider=expects_provider) as costs:
+            result = node_registry.execute(context, payload.parameters, payload.inputs)
         artifacts = []
         for artifact_id in result.output_artifact_ids:
             artifact = db.get(ArtifactRecord, artifact_id)
@@ -311,6 +317,8 @@ def run_experiment(
         record.status = NodeStatus.FAILED
         record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
         record.error = str(exc)
+        record.cost_summary = costs.finish() if costs else summary("no_charge", reason="failed_before_execution")
+        record.cost_usd = float(record.cost_summary["known_cost_usd"])
         audit(db, "experiment.failed", record.id, {"error": record.error})
         db.commit()
         db.refresh(record)
@@ -321,7 +329,8 @@ def run_experiment(
     record.output_artifact_ids = [item.id for item in artifacts]
     record.output_payload = dict(result.output)
     record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
-    record.cost_usd = result.cost_usd
+    record.cost_summary = costs.finish()
+    record.cost_usd = float(record.cost_summary["known_cost_usd"])
     audit(db, "experiment.succeeded", record.id, {"request_hash": digest, "artifact_ids": record.output_artifact_ids})
     db.commit()
     db.refresh(record)

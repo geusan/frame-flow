@@ -384,14 +384,42 @@ export interface NodeDefinitionRecord {
   };
 }
 
+export interface CostSummary {
+  version: number;
+  status: "pending" | "unreported" | "partial" | "legacy" | "calculated" | "recorded" | "no_charge";
+  currency: "USD";
+  known_cost_usd: string;
+  amount_usd: string | null;
+  unresolved_calls: number;
+  call_count: number;
+  reason?: string | null;
+}
+
+export interface ProviderCostRecord {
+  id: string;
+  created_at: string;
+  provider: string;
+  operation: string;
+  model: string;
+  requested_model: string;
+  provider_request_id: string | null;
+  status: CostSummary["status"];
+  outcome: string;
+  amount_usd: string | null;
+  usage: Record<string, unknown>;
+  pricing: Record<string, unknown>;
+  reason: string | null;
+}
+
 export interface WorkflowRunRecord {
   id: string;
   created_at: string;
-  run_type: "generation" | "canvas" | "workflow";
+  run_type: "generation" | "canvas" | "workflow" | "experiment" | "provider";
   name: string;
   status: string;
   progress: number;
   cost_usd: number;
+  cost_summary?: CostSummary;
   estimated_cost_usd?: number;
   nodes_done: number;
   nodes_total: number;
@@ -416,6 +444,7 @@ export interface CanvasNodeRunRecord {
   output: ExperimentOutput | Record<string, never>;
   duration_ms: number;
   cost_usd: number;
+  cost_summary?: CostSummary;
   error?: string;
   logs: string[];
 }
@@ -435,6 +464,7 @@ export interface CanvasRunRecord {
   inputs: Record<string, unknown>;
   model_snapshot: Record<string, unknown>;
   compiler_version?: string;
+  cost_summary?: CostSummary;
 }
 
 export interface ExperimentOutput {
@@ -467,6 +497,7 @@ export interface ExperimentRun {
   output: ExperimentOutput;
   duration_ms: number;
   cost_usd: number;
+  cost_summary?: CostSummary;
   cache_hit: boolean;
   cached_from_id?: string;
   is_baseline: boolean;
@@ -718,6 +749,7 @@ export const frameflowApi = {
   createFormatVariants: (formatId: string, count = 1) => request<Array<{ id: string; name: string }>>(`/formats/${formatId}/variants`, { method: "POST", body: JSON.stringify({ count, distance: "medium", variation_axes: ["visual_motion"] }) }),
   listRuns: () => request<RunRecord[]>("/runs"),
   listWorkflowRuns: () => request<WorkflowRunRecord[]>("/workflow-runs"),
+  listCosts: (ownerId: string, offset = 0) => request<ProviderCostRecord[]>(`/costs?${new URLSearchParams({ owner_id: ownerId, limit: "100", offset: String(offset) })}`),
   listModels: () => request<ModelRecord[]>("/models"),
   listFonts: (includeRetired = false) => request<RegisteredFont[]>(`/fonts${includeRetired ? "?include_retired=true" : ""}`),
   registerFont: (file: File, options: { display_name?: string; license_name?: string } = {}) => {

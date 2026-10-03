@@ -1,5 +1,7 @@
 "use client";
 
+import { CostValue } from "@/components/shared/cost-value";
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Background,
@@ -1744,7 +1746,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
               {visibleExperimentHistory.map((experiment) => <article className={`experiment-run ${experiment.is_baseline ? "baseline" : ""}`} key={experiment.id}>
                 <div><strong>{experiment.model_alias.replace("google.", "")}</strong><time>{new Date(experiment.created_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</time></div>
                 <p>{experiment.prompt}</p>
-                <div className="experiment-run-meta"><span>{experiment.cache_hit ? "Cache" : experiment.execution_mode}</span><span>{experiment.duration_ms}ms</span><span>${experiment.cost_usd.toFixed(2)}</span><code>{experiment.request_hash.slice(0, 7)}</code></div>
+                <div className="experiment-run-meta"><span>{experiment.cache_hit ? "Cache" : experiment.execution_mode}</span><span>{experiment.duration_ms}ms</span><CostValue cost={experiment.cost_summary} legacyCost={experiment.cost_usd} /><code>{experiment.request_hash.slice(0, 7)}</code></div>
                 <div className="experiment-run-actions">{experiment.is_baseline ? <span><BadgeCheck size={12} /> Baseline</span> : <button type="button" onClick={() => void markExperimentBaseline(experiment.id)}>Set baseline</button>}<button type="button" onClick={() => updateSelectedData({ status: "SUCCEEDED", output: experiment.output, outputEdited: false, preview: experiment.output.title, lastExperimentId: experiment.id, outputArtifactIds: experiment.output_artifact_ids })}>Show result</button></div>
               </article>)}
             </div>}

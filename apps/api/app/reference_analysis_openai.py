@@ -1,6 +1,8 @@
 """OpenAI audiovisual analysis adapters; sampled images and audio are untrusted data."""
 from __future__ import annotations
 
+from .billing import call_with_cost
+
 import base64
 import json
 import tempfile
@@ -47,7 +49,7 @@ class OpenAIReferenceRecognizer:
     def transcribe(self, audio: bytes, *, language_code: str, duration_ms: int) -> TranscriptResult:
         options = {"language": language_code.split("-")[0]} if language_code not in {"", "auto"} else {}
         try:
-            result = self.client.audio.transcriptions.create(
+            result = call_with_cost("openai", "audio.transcriptions", self.client.audio.transcriptions.create,
                 model=TRANSCRIPTION_MODEL, file=("speech.wav", audio, "audio/wav"),
                 response_format="verbose_json", timestamp_granularities=["segment"], **options,
             )
@@ -104,7 +106,7 @@ class OpenAIReferenceAnalyzer:
                 ])
             schema = _strict(_semantic_schema())
             try:
-                response = self.client.responses.create(
+                response = call_with_cost("openai", "responses", self.client.responses.create,
                     model=self.exact_model, store=False,
                     instructions="You are a forensic video analyst. Prefer omission over speculation. Return schema-conforming JSON.",
                     input=[{"role": "user", "content": content}],
@@ -135,7 +137,7 @@ class OpenAIReferenceAnalyzer:
                       "and discrete sound effects. Ordinary speech is not a sound effect. Do not invent events. "
                       f"Use local milliseconds 0..{length}. Return only a JSON object, no markdown, matching {json.dumps(audio_schema)}")
             try:
-                response = self.client.chat.completions.create(model=AUDIO_MODEL, modalities=["text"],
+                response = call_with_cost("openai", "chat.completions", self.client.chat.completions.create, model=AUDIO_MODEL, modalities=["text"],
                     messages=[{"role": "user", "content": [
                         {"type": "text", "text": prompt},
                         {"type": "input_audio", "input_audio": {"data": base64.b64encode(path.read_bytes()).decode(), "format": "mp3"}},

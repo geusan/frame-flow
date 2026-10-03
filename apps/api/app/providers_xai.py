@@ -1,4 +1,7 @@
 from __future__ import annotations
+from decimal import Decimal
+
+from .billing import call_with_cost
 
 import os
 from dataclasses import dataclass
@@ -38,7 +41,7 @@ class XAITextResult:
 class XAITextServices:
     def __init__(self, config: XAIProviderConfig | None = None, client: Any | None = None) -> None:
         self.config = config or XAIProviderConfig.from_env()
-        self.client = client or OpenAI(api_key=self.config.api_key, base_url=XAI_API_BASE_URL)
+        self.client = client or OpenAI(api_key=self.config.api_key, base_url=XAI_API_BASE_URL, max_retries=0)
 
     def generate(
         self,
@@ -54,7 +57,7 @@ class XAITextServices:
             exact_model = XAI_MODEL_REGISTRY[model_alias]
         except KeyError as exc:
             raise ValueError(f"xAI model alias is not registered: {model_alias}") from exc
-        response = self.client.with_options(timeout=timeout_seconds).responses.create(
+        response = call_with_cost("xai", "responses", self.client.with_options(timeout=timeout_seconds).responses.create,
             model=exact_model,
             instructions=instructions,
             input=prompt,
@@ -67,8 +70,8 @@ class XAITextServices:
         usage = getattr(response, "usage", None)
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-        # Grok 4.6 public list pricing as of 2026-08-31: $2/M input, $6/M output.
-        cost_usd = input_tokens * 2.0 / 1_000_000 + output_tokens * 6.0 / 1_000_000
+        ticks = getattr(usage, "cost_in_usd_ticks", None)
+        cost_usd = float(Decimal(str(ticks)) / Decimal("10000000000")) if ticks is not None else 0.0
         return XAITextResult(
             text=text,
             provider_request_id=str(response.id),

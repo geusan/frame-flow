@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import httpx
+from .billing import ProviderCall, submit_with_cost, record_fal_result
 
 FAL_PERFORMANCE_MODEL = "fal-ai/kling-video/v3/pro/motion-control"
 ELEVENLABS_VOICE_MODEL = "eleven_multilingual_sts_v2"
@@ -70,7 +71,7 @@ class FalPerformanceService:
                 remember("rejected")
                 raise MediaProviderError("fal media upload failed before generation was submitted", retryable=True, rejected=True) from exc
             try:
-                response = self.client.post(f"https://queue.fal.run/{FAL_PERFORMANCE_MODEL}", headers=headers, json={
+                response = submit_with_cost("fal", "performance", FAL_PERFORMANCE_MODEL, self.client.post, f"https://queue.fal.run/{FAL_PERFORMANCE_MODEL}", headers=headers, json={
                     "image_url": image_url, "video_url": video_url,
                     "prompt": prompt, "character_orientation": orientation, "keep_original_sound": False,
                 })
@@ -114,6 +115,7 @@ class FalPerformanceService:
                 raise MediaProviderError("fal rejected generation input: " + "; ".join(messages), rejected=True)
             response.raise_for_status()
             payload = response.json()
+            record_fal_result(response, FAL_PERFORMANCE_MODEL, request_id, self.client, headers)
             payload = payload.get("data", payload)
             url = str((payload.get("video") or {}).get("url") or "")
             parsed = httpx.URL(url)
@@ -152,6 +154,7 @@ class ElevenLabsVoiceService:
 
     def convert(self, *, audio: bytes, voice_id: str, stability: float, similarity: float,
                 seed: int, remove_noise: bool) -> ProviderMedia:
+        charge = ProviderCall("elevenlabs", "speech_to_speech", ELEVENLABS_VOICE_MODEL)
         try:
             response = self.client.post(f"{self.base}/v1/speech-to-speech/{voice_id}",
                 headers={"xi-api-key": self.key}, params={"output_format": "mp3_44100_128"},
@@ -162,8 +165,11 @@ class ElevenLabsVoiceService:
                 })
             response.raise_for_status()
         except httpx.HTTPError as exc:
+            charge.failed(exc)
             code = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else "network"
             raise MediaProviderError(f"ElevenLabs voice conversion failed ({code}); inspect provider history before retrying", rejected=code in {400, 401, 402, 403, 404, 422}) from exc
+        charge.submitted(response.headers.get("request-id") or response.headers.get("x-request-id"))
+        charge.complete(usage={"character_cost": response.headers.get("character-cost"), "history_item_id": response.headers.get("history-item-id")})
         if not response.content:
             raise MediaProviderError("ElevenLabs returned empty audio")
         request_id = response.headers.get("request-id") or response.headers.get("x-request-id") or "response_" + hashlib.sha256(response.content).hexdigest()[:24]

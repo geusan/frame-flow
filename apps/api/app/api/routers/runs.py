@@ -36,6 +36,16 @@ from ..dependencies import get_run_application
 router = APIRouter(tags=["runs"])
 
 
+@router.get("/costs")
+def list_costs(
+    owner_id: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    application: RunApplication = Depends(get_run_application),
+) -> list[dict[str, Any]]:
+    return application.list_costs(owner_id, limit, offset)
+
+
 def _raise_run_http_error(exc: Exception) -> NoReturn:
     if isinstance(exc, RunNotFoundError):
         raise HTTPException(404, str(exc)) from exc

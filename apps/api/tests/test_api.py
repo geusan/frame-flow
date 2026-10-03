@@ -235,7 +235,10 @@ def test_live_generation_mode_uses_google_service_without_deterministic_fallback
     assert result["execution_mode"] == "google-live.v1"
     assert result["provider_request_id"] == "google_live_request"
     assert result["output"]["title"] == "Generated image"
-    assert result["cost_usd"] == 0.067
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "image.generated.v1"
     assert artifact["metadata"]["source"] == "node_executor_registry"
@@ -314,7 +317,10 @@ def test_character_generation_routes_bundle_and_views_through_registry(client: T
     result = response.json()
     assert result["status"] == "SUCCEEDED", result.get("error")
     assert result["provider_request_id"] == "google_character_registry"
-    assert result["cost_usd"] == 0.268
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     assert result["output"]["imageCount"] == 4
     character = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert character["type"] == "Character"
@@ -351,7 +357,10 @@ def test_video_generation_routes_through_registry_capability(client: TestClient,
     result = response.json()
     assert result["status"] == "SUCCEEDED", result.get("error")
     assert result["provider_request_id"] == "google_video_registry"
-    assert result["cost_usd"] == 1.4
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     assert result["output"]["title"] == "Generated character video"
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "video.generated.v1"
@@ -385,7 +394,10 @@ def test_google_speech_generation_routes_through_registry_capability(client: Tes
     result = response.json()
     assert result["status"] == "SUCCEEDED", result.get("error")
     assert result["provider_request_id"] == "google_tts_registry"
-    assert result["cost_usd"] == 0.12
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "audio.generated.v1"
     assert artifact["metadata"]["source"] == "node_executor_registry"
@@ -489,7 +501,10 @@ def test_google_text_provider_routes_through_registry_capability(client: TestCli
     result = response.json()
     assert result["status"] == "SUCCEEDED"
     assert result["provider_request_id"] == "google_text_registry"
-    assert result["cost_usd"] == 0.03
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "text.generated.v1"
     assert artifact["metadata"]["provider"] == "google"
@@ -1486,7 +1501,8 @@ def test_workspace_summary_unified_runs_and_model_usage_are_persisted(client: Te
     assert summary["artifacts"] >= 1
 
     runs = client.get("/workflow-runs").json()
-    assert len(runs) == 1
+    assert len(runs) == 2
+    assert {run["run_type"] for run in runs} == {"canvas", "experiment"}
     assert runs[0]["run_type"] == "canvas"
     assert runs[0]["name"] == "Persisted Canvas Run"
     models = client.get("/models").json()
@@ -1568,7 +1584,10 @@ def test_fal_lora_image_routes_through_registry_capability(client: TestClient, m
     result = response.json()
     assert result["status"] == "SUCCEEDED", result.get("error")
     assert result["provider_request_id"] == "fal_image_registry"
-    assert result["cost_usd"] == 0.07
+    # This service stub has no usage receipt; a fixed estimate must not look billed.
+    assert result["cost_usd"] == 0
+    assert result["cost_summary"]["status"] == "unreported"
+    assert result["cost_summary"]["amount_usd"] is None
     artifact = client.get(f"/artifacts/{result['output_artifact_ids'][0]}").json()
     assert artifact["schema_id"] == "image.lora.v1"
     assert artifact["metadata"]["source"] == "node_executor_registry"

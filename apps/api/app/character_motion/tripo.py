@@ -1,4 +1,5 @@
 from __future__ import annotations
+from ..billing import submit_with_cost, record_provider_result
 
 from dataclasses import dataclass
 import os
@@ -217,7 +218,7 @@ class TripoClient:
 
     def submit_task(self, path: str, payload: dict[str, Any], *, action: str) -> str:
         try:
-            response = self.http.post(f"{self.base_url}{path}", headers=self.auth_headers, json=payload)
+            response = submit_with_cost("tripo", action, str(payload.get("model_version") or payload.get("type") or action), self.http.post, f"{self.base_url}{path}", request_id_field="task_id", headers=self.auth_headers, json=payload)
         except httpx.HTTPError as exc:
             raise TripoProviderError(f"Tripo is unavailable while {action}: {exc}", retryable=True) from exc
         data = self._payload(response, action)
@@ -253,6 +254,7 @@ class TripoClient:
             if progress:
                 progress(provider_progress, f"Tripo {action}: {status or 'unknown'} {provider_progress}%")
             if status == "success":
+                record_provider_result("tripo", str(data.get("model_version") or data.get("type") or action), task_id, {"credits_consumed": data.get("credits_consumed")})
                 output = data.get("output") if isinstance(data.get("output"), dict) else {}
                 return TripoTaskResult(
                     task_id=task_id,

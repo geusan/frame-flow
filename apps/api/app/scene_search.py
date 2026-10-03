@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .billing import call_with_cost
+
 import base64
 import hashlib
 import json
@@ -95,7 +97,7 @@ class GoogleSceneRanker:
             contents.append(types.Part.from_bytes(data=frame.content, mime_type=frame.content_type))
         schema = _ranking_schema()
         try:
-            response = self.provider.client.models.generate_content(
+            response = call_with_cost("google", "generate_content", self.provider.client.models.generate_content, _cost_context=self.provider.cost_context(),
                 model=exact_model,
                 contents=contents,
                 config=types.GenerateContentConfig(
@@ -158,7 +160,7 @@ class OpenAISceneRanker:
             })
         schema = _ranking_schema()
         try:
-            response = self.service.client.responses.create(
+            response = call_with_cost("openai", "responses", self.service.client.responses.create,
                 model=exact_model,
                 instructions="You are a visual scene retrieval ranker. Do not infer details that are not visible.",
                 input=[{"role": "user", "content": content}],

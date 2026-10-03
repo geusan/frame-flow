@@ -46,6 +46,7 @@ WORKFLOW_OPERATIONS = {
 }
 
 RUN_OPERATIONS = {
+    ("GET", "/costs"),
     ("POST", "/experiments"),
     ("GET", "/experiments"),
     ("POST", "/experiments/{experiment_id}/baseline"),

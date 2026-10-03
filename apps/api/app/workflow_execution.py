@@ -14,6 +14,7 @@ from .database import (
 )
 from .domain import ExperimentRunRequest, NodeStatus
 from .experiments import run_experiment
+from .billing import run_cost_owner
 from .storage import get_artifact_storage, storage_location
 
 
@@ -150,7 +151,8 @@ def execute_workflow_node(run_id: str, node_key: str) -> dict[str, Any]:
         run.status = NodeStatus.RUNNING
         db.commit()
         payload = _payload_for_node(db, run, node)
-        experiment = run_experiment(db, payload)
+        with run_cost_owner(run.id, node.id):
+            experiment = run_experiment(db, payload)
         if experiment.status != NodeStatus.SUCCEEDED:
             node.status = NodeStatus.FAILED
             node.progress = 0
