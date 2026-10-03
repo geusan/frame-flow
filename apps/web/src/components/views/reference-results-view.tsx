@@ -130,29 +130,41 @@ interface TimelineLane {
   items: Array<{ id: string; start: number; end: number; label: string }>;
 }
 
+function parseManifestValue(value: unknown): ReferenceManifest | null {
+  if (!value || typeof value !== "object" || !("schema_version" in value)) return null;
+  return value.schema_version === "reference.decomposition.v1" ? value as ReferenceManifest : null;
+}
+
 function parseManifest(detail: ArtifactDetail): ReferenceManifest | null {
   const text = detail.metadata.output?.text;
   if (!text) return null;
   try {
-    const parsed = JSON.parse(text) as ReferenceManifest;
-    return parsed.schema_version === "reference.decomposition.v1" ? parsed : null;
+    return parseManifestValue(JSON.parse(text));
   } catch {
     return null;
   }
 }
 
-function resultFromDetail(detail: ArtifactDetail): ReferenceResult | null {
-  const manifest = parseManifest(detail);
+function resultFromDetail(detail: ArtifactDetail, manifest = parseManifest(detail)): ReferenceResult | null {
   if (!manifest) return null;
   return {
     asset: {
       id: detail.id,
       created_at: detail.created_at,
-      filename: detail.metadata.filename ?? detail.metadata.output?.title ?? "Reference analysis",
+      filename: detail.metadata.filename ?? detail.metadata.output?.title ?? `Reference analysis · ${detail.id.slice(0, 10)}`,
     },
     detail,
     manifest,
   };
+}
+
+async function loadReferenceResult(artifactId: string): Promise<ReferenceResult> {
+  const detail = await frameflowApi.getArtifact(artifactId);
+  // Older results embedded their JSON in metadata; current artifacts store it as content.
+  const manifest = parseManifest(detail) ?? parseManifestValue(await frameflowApi.getArtifactJson(artifactId));
+  const result = resultFromDetail(detail, manifest);
+  if (!result) throw new Error("Reference analysis result could not be parsed.");
+  return result;
 }
 
 function resultFromOutput(title: string, text?: string): ReferenceResult | null {
@@ -200,10 +212,9 @@ function resultTitle(result: ReferenceResult): string {
 
 async function fetchReferenceResults(): Promise<{ results: ReferenceResult[]; missing: number }> {
   const assets = await frameflowApi.listAllArtifacts(["ReferenceAnalysis"]);
-  const details = await Promise.all(assets.map((asset) => frameflowApi.getArtifact(asset.id)));
-  const results = assets.flatMap((asset, index) => {
-    const manifest = parseManifest(details[index]);
-    return manifest ? [{ asset, detail: details[index], manifest }] : [];
+  const loaded = await Promise.allSettled(assets.map((asset) => loadReferenceResult(asset.id)));
+  const results = loaded.flatMap((result, index) => {
+    return result.status === "fulfilled" ? [{ ...result.value, asset: assets[index] }] : [];
   });
   return { results, missing: assets.length - results.length };
 }
@@ -599,11 +610,9 @@ export function ReferenceResultDetail({
     if (!artifactId) return;
     let active = true;
 
-    frameflowApi.getArtifact(artifactId)
-      .then((detail) => {
+    loadReferenceResult(artifactId)
+      .then((loaded) => {
         if (!active) return;
-        const loaded = resultFromDetail(detail);
-        if (!loaded) throw new Error("Reference analysis result could not be parsed.");
         setRequest({ artifactId, result: loaded, error: null });
       })
       .catch((loadError) => {
@@ -652,7 +661,7 @@ export function ReferenceResultsView({
     try {
       const loaded = await fetchReferenceResults();
       setResults(loaded.results);
-      if (loaded.missing) setError(`${loaded.missing} analysis result could not be parsed.`);
+      if (loaded.missing) setError(`${loaded.missing} analysis result could not be loaded.`);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Reference result loading failed");
     } finally {
@@ -666,7 +675,7 @@ export function ReferenceResultsView({
       .then((loaded) => {
         if (!active) return;
         setResults(loaded.results);
-        if (loaded.missing) setError(`${loaded.missing} analysis result could not be parsed.`);
+        if (loaded.missing) setError(`${loaded.missing} analysis result could not be loaded.`);
       })
       .catch((loadError) => { if (active) setError(loadError instanceof Error ? loadError.message : "Reference result loading failed"); })
       .finally(() => { if (active) setLoading(false); });

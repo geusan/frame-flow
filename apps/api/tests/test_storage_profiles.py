@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -94,6 +95,49 @@ def test_switching_write_default_preserves_old_reads_and_urls(configured):
         assert new.metadata_json['storage']['provider']=='r2'
     response=client.get('/artifacts/'+old_id+'/download-url').json()
     assert response['provider']=='minio' and response['url'].startswith('http://minio:9000/')
+
+
+@pytest.mark.parametrize("provider", ["minio", "r2"])
+@pytest.mark.parametrize("inline_output", [False, True])
+def test_reference_json_content_is_readable_without_storage_redirect(configured, provider, inline_output):
+    client, _ = configured
+    if provider == "r2":
+        profile = save(client)
+        assert client.post(f"/settings/storage/profiles/{profile['id']}/activate").status_code == 200
+
+    manifest = {"schema_version": "reference.decomposition.v1", "source": {"duration_ms": 3000}}
+    content = json.dumps(manifest).encode()
+    metadata = {"output": {"kind": "json", "text": content.decode()}} if inline_output else {}
+    with SessionLocal() as db:
+        artifact = create_artifact(
+            db, "ReferenceAnalysis", schema_id="reference.decomposition.v1",
+            content=content, content_type="application/json", metadata=metadata,
+        )
+        db.commit()
+        artifact_id = artifact.id
+
+    before = client.get(f"/artifacts/{artifact_id}").json()
+    response = client.get(
+        f"/artifacts/{artifact_id}/content",
+        headers={"Origin": "http://localhost:3000"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 200
+    assert "location" not in response.headers
+    assert response.json() == manifest
+    assert client.get(f"/artifacts/{artifact_id}").json() == before
+    assert ("output" in before["metadata"]) is inline_output
+
+
+def test_binary_content_keeps_storage_redirect(configured):
+    client, _ = configured
+    with SessionLocal() as db:
+        artifact = create_artifact(db, "Video", content=b"video", content_type="video/mp4")
+        db.commit()
+        artifact_id = artifact.id
+    response = client.get(f"/artifacts/{artifact_id}/content", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"].startswith("http://minio:9000/")
 
 
 def test_failed_connection_never_changes_active_provider(configured,monkeypatch):

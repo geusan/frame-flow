@@ -758,6 +758,7 @@ export const frameflowApi = {
     }
   },
   getArtifact: (artifactId: string) => request<ArtifactDetail>(`/artifacts/${artifactId}`),
+  getArtifactJson: (artifactId: string) => request<unknown>(`/artifacts/${encodeURIComponent(artifactId)}/content`),
   createAudioAsset: (artifactId: string) => request<UploadedArtifact>(`/artifacts/${artifactId}/audio-asset`, { method: "POST" }),
   saveManualImageEdit: (artifactId: string, image: Blob, document: ImageEditDocument) => {
     const body = new FormData();

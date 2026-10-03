@@ -895,7 +895,9 @@ class LegacySqlAlchemyArtifactOperations:
                     (artifact.metadata_json.get("storage") or {}).get("content_type")
                     or "application/octet-stream"
                 )
-                if storage.settings.provider == "memory":
+                media_type = content_type.partition(";")[0].strip().lower()
+                # Browser JSON readers must not depend on object-storage CORS.
+                if storage.settings.provider == "memory" or media_type == "application/json" or media_type.endswith("+json"):
                     return StoredContent(
                         content_type=content_type,
                         data=storage.get_bytes(bucket=bucket, key=key),
