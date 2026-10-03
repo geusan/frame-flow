@@ -100,6 +100,26 @@ Web은 3000번부터 사용 가능한 포트를 자동으로 선택합니다. �
 - API 문서: <http://localhost:8000/docs>
 - API 상태: <http://localhost:8000/health>
 
+### Google Fonts 자막 폰트
+
+`/settings/fonts`에서 Google Fonts 전체 목록을 이름으로 검색하고, 한글 지원 필터와 스타일 미리보기로 선택한 뒤 **다운로드 · 적용**을 누릅니다. Caption Designer의 글꼴 선택창에서도 전체 Google Fonts를 검색할 수 있으며, **선택 · 적용**하면 필요한 굵기의 파일을 자동 등록하고 선택한 텍스트에 적용합니다. 선택창을 닫으면 완료 중인 다운로드가 자막을 변경하지 않습니다. 선택한 굵기/스타일의 전체 TTF/OTF를 기존 Font Registry에 저장하므로 서버 렌더러도 같은 파일을 사용하며, 기존 자막의 폰트 Snapshot과 Node 계약은 바뀌지 않습니다.
+
+별도 API 키는 필요하지 않습니다. 서버는 Google Fonts의 공개 웹 카탈로그(`fonts.google.com/metadata/fonts`, 6시간 메모리 캐시)와 CSS2 API, `fonts.gstatic.com`에 접근해야 하며, 브라우저는 미리보기용 Google Fonts CSS를 사용합니다. 공개 웹 카탈로그는 버전이 보장되는 Developer API가 아니므로 응답 형식 변경 시 `app/google_fonts.py` 어댑터를 갱신해야 합니다. 원본 파일의 라이선스/저작권 정보와 다운로드 출처를 Artifact에 보존하며 동일 파일은 SHA-256 기준으로 중복 등록하지 않습니다.
+
+등록된 Font Artifact는 API가 원본 바이트를 직접 전달하므로 R2/MinIO의 브라우저 CORS 설정에 의존하지 않습니다. 편집기는 현재 문서에서 사용하는 파일과 사용자가 선택한 파일만 로드합니다.
+
+### 눈누 자막 폰트
+
+같은 설정 화면과 자막 글꼴 선택창의 **눈누** 탭에서 무료 폰트를 검색합니다. **스타일 선택**에서 굵기, 영상·웹사이트·서버 탑재 허용 범위와 원본 라이선스를 확인하고 다운로드/적용할 수 있습니다. 지원되는 전체 WOFF/WOFF2 파일은 글리프와 이름을 유지한 TTF/OTF로 변환하고 출처·원본 hash·변환 revision·라이선스를 Font Artifact에 보존합니다. 폰트 파일은 선택했을 때 등록되며 기존 Node/CaptionDocument 계약과 과거 Snapshot은 유지됩니다.
+
+눈누의 공개 목록 JSON과 상세 HTML을 `app/noonnu_fonts.py`에서 읽고 최대 128개 응답을 10분 동안 캐시합니다. 가져오기 직전에 상세 사용 범위를 다시 확인합니다. Google Fonts/제작사 CSS, 프로토콜 생략 주소와 한글·공백 파일명을 해석하며, 가변 폰트는 선택한 굵기와 나머지 축의 기본값을 고정한 파일로 저장합니다. 분할 웹폰트는 일부 글자 파일을 임의로 등록하지 않고 확인된 전체 파일을 사용합니다.
+
+2026-10-03 눈누 무료 목록 1,188종의 상세 페이지와 제작사 링크를 전수 조사했습니다. 검증된 파일 주소·스타일·출처·확인 시점은 `app/noonnu_sources.v1.json`에 보관합니다. 오래된 Google Early Access 주소는 Google 공식 저장소의 해당 원본으로 보완하고, 제작사 ZIP은 확인된 항목만 메모리에서 읽습니다. ZIP 경로·크기·리다이렉트의 공개 IP를 검증하며 다운로드 URL을 클라이언트에서 받지 않습니다. 기존 Font Artifact와 자막 Snapshot을 변경하지 않습니다.
+
+조사·파일 응답 검증·예외 파일 분석·카탈로그 생성 도구는 `scripts/audit-noonnu-fonts.py`, `scripts/verify-noonnu-sources.py`, `scripts/repair-noonnu-source-records.py`, `scripts/build-noonnu-source-catalog.py`입니다. 조사 기록은 `output/noonnu-source-audit-20261003/`에 체크포인트로 저장하며 완료된 방문을 재사용하고 요청 제한에는 지연 재시도합니다. 인기순 페이지 순위가 변해 누락되지 않도록 이름순으로 전체 개수를 대조합니다. 결과 HTML/JSON에는 제작사 페이지의 접속 오류와 별도로 확인된 다운로드 경로를 구분합니다.
+
+다운로드 경로 확인과 사용 허가는 별개입니다. 유료 마켓과 조건부/불명확한 서버 탑재는 자동 등록하지 않으며 원본 라이선스와 확인된 파일 링크를 표시합니다. 원본 TTF/OTF를 직접 업로드할 수도 있습니다. 사이트 형식 변경은 어댑터 수정이 필요하며 API 키는 사용하지 않습니다.
+
 Web 화면 경로는 `/canvases`, `/canvases/{id}`, `/workflows`, `/workflows/{id}`, `/asset/images`,
 `/asset/videos`, `/runs`, `/settings`, `/settings/models`로 분리되어 있습니다.
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Check, CircleAlert, RefreshCw, Save, SlidersHorizontal, Type, Upload } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { FontCatalogBrowser } from "@/components/views/font-catalog-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -128,7 +129,7 @@ export function FontRegistry() {
   return <div className="view-page fonts-page">
     <PageHeader
       title="Caption Fonts"
-      description="자막 렌더러와 TipTap 미리보기가 함께 사용할 TTF/OTF Face와 시각 크기 보정을 관리합니다."
+      description="Google Fonts와 눈누에서 글꼴을 추가하거나 TTF/OTF 파일을 업로드해 자막에 사용하세요."
       actions={<>
         <input ref={fileInputRef} type="file" accept=".ttf,.otf,font/ttf,font/otf" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void register(file); }} />
         <Button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading}><Upload size={14} />{uploading ? "Registering…" : "Register font"}</Button>
@@ -136,9 +137,14 @@ export function FontRegistry() {
       </>}
     />
 
+    <FontCatalogBrowser fonts={fonts} onImported={(font) => {
+      setFonts((current) => [...current.filter((item) => item.id !== font.id), font].sort((a, b) => a.display_name.localeCompare(b.display_name)));
+      setDrafts((current) => ({ ...current, [font.id]: current[font.id] ?? draftFor(font) }));
+    }} />
+
     <Card className="font-registry-callout">
       <span><Type size={19} /></span>
-      <div><strong>One file, one immutable face</strong><p>등록 파일의 SHA-256은 고정됩니다. 크기 보정은 Caption Document에 Snapshot되어 과거 렌더를 바꾸지 않습니다.</p></div>
+      <div><strong>등록된 자막 폰트</strong><p>Caption Designer에서 글꼴을 선택해 사용하세요. 미리보기와 영상 렌더링에 같은 폰트가 적용됩니다.</p></div>
       <Badge variant="success">{activeCount} active</Badge>
     </Card>
 

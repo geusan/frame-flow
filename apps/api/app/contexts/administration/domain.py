@@ -20,3 +20,7 @@ class AdministrationUnsupportedMediaError(AdministrationError):
 
 class AdministrationPayloadTooLargeError(AdministrationError):
     pass
+
+
+class AdministrationUpstreamError(AdministrationError):
+    pass

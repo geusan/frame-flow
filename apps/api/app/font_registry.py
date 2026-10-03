@@ -168,6 +168,11 @@ def font_css_family(font_id: str) -> str:
     return f"ff-font-{re.sub(r'[^a-zA-Z0-9-]', '-', font_id)}"
 
 
+def inspect_font_license(content: bytes) -> dict[str, str]:
+    names = _name_values(_font_tables(content)["name"])
+    return {key: names[name_id] for key, name_id in (("copyright", 0), ("text", 13), ("url", 14)) if name_id in names}
+
+
 def font_response(font: FontRecord, artifact: ArtifactRecord) -> dict[str, Any]:
     storage = artifact.metadata_json.get("storage") or {}
     return {
@@ -193,6 +198,8 @@ def font_response(font: FontRecord, artifact: ArtifactRecord) -> dict[str, Any]:
         "size_bytes": int(storage.get("size_bytes") or 0),
         "css_family": font_css_family(font.id),
         "url": artifact_content_url(artifact.id),
+        "google_fonts": artifact.metadata_json.get("google_fonts"),
+        "noonnu": artifact.metadata_json.get("noonnu"),
     }
 
 
@@ -213,6 +220,7 @@ def register_font(
     display_name: str | None,
     license_name: str,
     created_by: str,
+    source_metadata: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     inspected = inspect_font(content)
     digest = hashlib.sha256(content).hexdigest()
@@ -232,6 +240,7 @@ def register_font(
         content_type=FONT_MIME_TYPES.get(content_type, content_type),
         filename=filename,
         metadata={
+            **(source_metadata or {}),
             "source": "font_registry",
             "filename": filename,
             "immutable": True,

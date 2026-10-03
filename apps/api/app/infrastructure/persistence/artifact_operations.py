@@ -896,8 +896,9 @@ class LegacySqlAlchemyArtifactOperations:
                     or "application/octet-stream"
                 )
                 media_type = content_type.partition(";")[0].strip().lower()
-                # Browser JSON readers must not depend on object-storage CORS.
-                if storage.settings.provider == "memory" or media_type == "application/json" or media_type.endswith("+json"):
+                # Browser JSON readers and FontFace loading must not depend on
+                # object-storage CORS. Font artifacts are bounded at upload.
+                if storage.settings.provider == "memory" or artifact.type == "Font" or media_type == "application/json" or media_type.endswith("+json"):
                     return StoredContent(
                         content_type=content_type,
                         data=storage.get_bytes(bucket=bucket, key=key),

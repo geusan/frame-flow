@@ -141,6 +141,68 @@ export interface RegisteredFont {
   size_bytes: number;
   css_family: string;
   url: string;
+  google_fonts?: { family: string; variant: string; url: string; license: { copyright?: string; text?: string; url?: string } } | null;
+  noonnu?: { id: number; name: string; variant: string; page_url: string; source_url: string; conversion: string; license: { text: string; permissions: Record<string, string> } } | null;
+}
+
+export interface NoonnuFontVariant {
+  key: string;
+  label: string;
+  weight: number;
+  style: "normal" | "italic";
+  url: string;
+  source_kind?: string;
+  archive_member?: string;
+}
+
+export interface NoonnuFontFamily {
+  id: number;
+  name: string;
+  name_en: string;
+  designer: string;
+  variant_count: number;
+  page_url: string;
+  preview: NoonnuFontVariant | null;
+}
+
+export interface NoonnuFontDetail {
+  id: number;
+  name: string;
+  designer: string;
+  page_url: string;
+  download_page_url: string | null;
+  variants: NoonnuFontVariant[];
+  permissions: Record<string, string>;
+  license_text: string;
+  can_import: boolean;
+  unavailable_reason: string | null;
+  source_audit?: { checked_at: string; status: string } | null;
+  download_sources?: Array<{ url: string; label: string; kind: string }>;
+}
+
+export interface NoonnuFontSearchResult {
+  items: NoonnuFontFamily[];
+  total: number;
+  page: number;
+  has_more: boolean;
+  source_audit?: { catalog_total?: number; verified_downloads?: number; checked_at?: string };
+}
+
+export interface GoogleFontFamily {
+  family: string;
+  display_name: string;
+  category: string;
+  subsets: string[];
+  variants: string[];
+}
+
+export interface GoogleFontSearchResult {
+  items: GoogleFontFamily[];
+  total: number;
+  offset: number;
+  limit: number;
+  catalog_total: number;
+  korean_total: number;
 }
 
 export interface WorkspaceSummary {
@@ -752,6 +814,16 @@ export const frameflowApi = {
   listCosts: (ownerId: string, offset = 0) => request<ProviderCostRecord[]>(`/costs?${new URLSearchParams({ owner_id: ownerId, limit: "100", offset: String(offset) })}`),
   listModels: () => request<ModelRecord[]>("/models"),
   listFonts: (includeRetired = false) => request<RegisteredFont[]>(`/fonts${includeRetired ? "?include_retired=true" : ""}`),
+  searchNoonnuFonts: (query: string, page = 1, signal?: AbortSignal) => request<NoonnuFontSearchResult>(`/fonts/noonnu?${new URLSearchParams({ q: query, page: String(page) })}`, { signal }),
+  getNoonnuFont: (fontId: number, signal?: AbortSignal) => request<NoonnuFontDetail>(`/fonts/noonnu/${fontId}`, { signal }),
+  importNoonnuFont: (fontId: number, variant: string) => request<RegisteredFont & { created: boolean }>("/fonts/noonnu/import", { method: "POST", body: JSON.stringify({ font_id: fontId, variant }) }),
+  searchGoogleFonts: (query: string, koreanOnly: boolean, offset = 0, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ q: query, korean_only: String(koreanOnly), offset: String(offset), limit: "12" });
+    return request<GoogleFontSearchResult>(`/fonts/google?${params}`, { signal });
+  },
+  importGoogleFont: (family: string, variant: string) => request<RegisteredFont & { created: boolean }>("/fonts/google/import", {
+    method: "POST", body: JSON.stringify({ family, variant }),
+  }),
   registerFont: (file: File, options: { display_name?: string; license_name?: string } = {}) => {
     const body = new FormData();
     body.append("file", file, file.name);

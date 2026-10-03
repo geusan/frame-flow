@@ -34,6 +34,8 @@ from ...database import (
 )
 from ...domain import NodeStatus
 from ...font_registry import FONT_MAX_BYTES, inspect_font, list_fonts, register_font, update_font_profile
+from ...google_fonts import download_google_font, search_google_fonts
+from ...noonnu_fonts import download_noonnu_font, get_noonnu_font, search_noonnu_fonts
 from ...project_skills import (
     SKILL_MAX_BYTES,
     activate_project_skill_version,
@@ -73,6 +75,22 @@ class SqlAlchemyAdministrationOperations:
         with self._session_factory() as db:
             return list_fonts(db, include_retired=include_retired)
 
+    def search_google_fonts(self, query: str, korean_only: bool, offset: int, limit: int) -> dict[str, Any]:
+        return search_google_fonts(query, korean_only, offset, limit)
+
+    def import_google_font(self, family: str, variant: str) -> dict[str, Any]:
+        downloaded = download_google_font(family, variant)
+        return self.register_font(FontRegistrationCommand(**downloaded, created_by="local-user"))
+
+    def search_noonnu_fonts(self, query: str, page: int) -> dict[str, Any]:
+        return search_noonnu_fonts(query, page)
+
+    def get_noonnu_font(self, font_id: int) -> dict[str, Any]:
+        return get_noonnu_font(font_id)
+
+    def import_noonnu_font(self, font_id: int, variant: str) -> dict[str, Any]:
+        return self.register_font(FontRegistrationCommand(**download_noonnu_font(font_id, variant), created_by="local-user"))
+
     def register_font(self, command: FontRegistrationCommand) -> dict[str, Any]:
         if not command.filename.lower().endswith((".ttf", ".otf")):
             raise AdministrationUnsupportedMediaError(
@@ -93,6 +111,7 @@ class SqlAlchemyAdministrationOperations:
                     display_name=command.display_name,
                     license_name=command.license_name,
                     created_by=command.created_by,
+                    source_metadata=command.source_metadata,
                 )
             except ValueError as exc:
                 raise AdministrationValidationError(str(exc)) from exc

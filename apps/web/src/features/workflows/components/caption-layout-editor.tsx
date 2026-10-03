@@ -7,7 +7,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AlignCenter, AlignLeft, AlignRight, Bold, Italic, Move, RotateCcw, Type } from "lucide-react";
 
-import { NativeSelect } from "@/components/ui/native-select";
+import { CaptionFontPicker } from "@/features/workflows/components/caption-font-picker";
 import { VideoPlayer } from "@/components/ui/video-player";
 import {
   captionCues,
@@ -179,8 +179,10 @@ export function CaptionLayoutEditor({
     let active = true;
     frameflowApi.listFonts()
       .then(async (records) => {
-        await Promise.allSettled(records.map(loadRegisteredFont));
-        if (active) setFonts(records);
+        if (!active) return;
+        setFonts(records);
+        const usedIds = new Set(captionCues(documentRef.current).flatMap((cue) => cue.runs.map((run) => run.fontId)));
+        await Promise.allSettled(records.filter((font) => usedIds.has(font.id)).map(loadRegisteredFont));
       })
       .catch((error: unknown) => { if (active) setFontError(error instanceof Error ? error.message : "등록 글꼴을 불러오지 못했습니다."); });
     return () => { active = false; };
@@ -257,14 +259,13 @@ export function CaptionLayoutEditor({
     emitDocument(buildDocument(documentRef.current.content, documentRef.current, fontSize));
   };
 
-  const applyFont = (fontId: string) => {
-    if (!editor) return;
-    if (!fontId) {
+  const applyFont = (font: RegisteredFont | null) => {
+    if (!editor || editor.isDestroyed) return;
+    if (!font) {
       editor.chain().focus().setMark("textStyle", { fontId: null, fontFamily: null }).removeEmptyTextStyle().run();
       return;
     }
-    const font = fonts.find((candidate) => candidate.id === fontId);
-    if (font) editor.chain().focus().setMark("textStyle", { fontId: font.id, fontFamily: font.css_family }).run();
+    editor.chain().focus().setMark("textStyle", { fontId: font.id, fontFamily: font.css_family }).run();
   };
 
   const setSelectedFontSize = (fontSize: number) => {
@@ -307,7 +308,7 @@ export function CaptionLayoutEditor({
         <button type="button" className={editor?.isActive("italic") ? "active" : ""} onMouseDown={(event) => event.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()} aria-label="Italic"><Italic size={14} /></button>
         <span className="caption-toolbar-divider" />
         <label className="caption-color-control" title="Text color"><input type="color" value={selectedColor} onInput={(event) => editor?.chain().focus().setColor(event.currentTarget.value).run()} /><span style={{ background: selectedColor }} /></label>
-        <NativeSelect className="caption-font-select" value={selectedFontId} onChange={(event) => applyFont(event.target.value)} aria-label="Font family"><option value="">Renderer default · Noto Sans CJK KR</option>{fonts.map((font) => <option value={font.id} key={font.id}>{font.display_name} · {font.subfamily_name}</option>)}</NativeSelect>
+        <CaptionFontPicker fonts={fonts} selectedFontId={selectedFontId} onImported={(font) => setFonts((current) => [...current.filter((item) => item.id !== font.id), font])} onApply={applyFont} />
         <label className="caption-inline-size"><Type size={13} /><input type="number" min="8" max="240" value={Number.isFinite(selectedFontSize) ? selectedFontSize : draft.fontSize} onChange={(event) => setSelectedFontSize(Number(event.target.value))} /><span>px</span></label>
       </div>
       <EditorContent editor={editor} />

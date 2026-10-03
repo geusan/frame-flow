@@ -15,6 +15,7 @@ class FontRegistrationCommand:
     display_name: str | None
     license_name: str
     created_by: str
+    source_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,21 @@ class AdministrationApplication:
 
     def list_fonts(self, include_retired: bool = False) -> list[dict[str, Any]]:
         return self._operations.list_fonts(include_retired)
+
+    def search_google_fonts(self, query: str, korean_only: bool, offset: int, limit: int) -> dict[str, Any]:
+        return self._operations.search_google_fonts(query, korean_only, offset, limit)
+
+    def import_google_font(self, family: str, variant: str) -> dict[str, Any]:
+        return self._operations.import_google_font(family, variant)
+
+    def search_noonnu_fonts(self, query: str, page: int) -> dict[str, Any]:
+        return self._operations.search_noonnu_fonts(query, page)
+
+    def get_noonnu_font(self, font_id: int) -> dict[str, Any]:
+        return self._operations.get_noonnu_font(font_id)
+
+    def import_noonnu_font(self, font_id: int, variant: str) -> dict[str, Any]:
+        return self._operations.import_noonnu_font(font_id, variant)
 
     def register_font(self, command: FontRegistrationCommand) -> dict[str, Any]:
         return self._operations.register_font(command)

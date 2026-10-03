@@ -140,6 +140,28 @@ def test_binary_content_keeps_storage_redirect(configured):
     assert response.headers["location"].startswith("http://minio:9000/")
 
 
+@pytest.mark.parametrize("provider", ["minio", "r2"])
+@pytest.mark.parametrize("content_type", ["font/ttf", "font/otf", "application/octet-stream"])
+def test_font_bytes_are_served_with_api_cors_without_storage_redirect(configured, provider, content_type):
+    from test_font_registry_and_caption_documents import minimal_font
+
+    client, _ = configured
+    if provider == "r2":
+        profile = save(client)
+        assert client.post(f"/settings/storage/profiles/{profile['id']}/activate").status_code == 200
+    content = minimal_font()
+    with SessionLocal() as db:
+        artifact = create_artifact(db, "Font", schema_id="font.face.v1", content=content, content_type=content_type)
+        db.commit()
+        artifact_id = artifact.id
+    response = client.get(f"/artifacts/{artifact_id}/content", headers={"Origin": "http://localhost:3000"}, follow_redirects=False)
+    assert response.status_code == 200
+    assert "location" not in response.headers
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert response.headers["content-type"] == content_type
+    assert response.content == content
+
+
 def test_failed_connection_never_changes_active_provider(configured,monkeypatch):
     client,_=configured;p=save(client)
     monkeypatch.setattr(storage_profiles,'check_storage_profile',lambda *_: (_ for _ in ()).throw(storage.StorageError('permission denied')))

@@ -122,6 +122,11 @@ SETTINGS_OPERATIONS = {
 FONT_OPERATIONS = {
     ("GET", "/fonts"),
     ("POST", "/fonts"),
+    ("GET", "/fonts/google"),
+    ("POST", "/fonts/google/import"),
+    ("GET", "/fonts/noonnu"),
+    ("GET", "/fonts/noonnu/{font_id}"),
+    ("POST", "/fonts/noonnu/import"),
     ("PATCH", "/fonts/{font_id}"),
 }
 
