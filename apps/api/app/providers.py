@@ -52,6 +52,7 @@ OPENAI_MODEL_REGISTRY = {
     "openai.text.quality": "gpt-5.6-terra",
     "openai.chat.latest": "chat-latest",
     "openai.image.default": "gpt-image-2",
+    "openai.image.precise": "gpt-image-2.5-sunburst-2026-09-08",
     "openai.tts.default": "gpt-4o-mini-tts",
     "openai.tts.fast": "tts-1",
     "openai.tts.quality": "tts-1-hd",

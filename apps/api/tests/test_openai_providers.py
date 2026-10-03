@@ -103,6 +103,36 @@ def test_openai_image_provider_edits_connected_image():
     assert "input_fidelity" not in client.images.last
 
 
+def test_precision_image_alias_is_pinned_and_preserves_aspect_ratio():
+    from app.providers import model_id_for_alias
+    client = FakeOpenAIClient()
+    service = OpenAIGenerationServices(OpenAIProviderConfig("test"), client)
+    service.generate_images(
+        logical_model="openai.image.precise", prompt="Correct only lighting and body reference drift", count=1,
+        aspect_ratio="9:16", quality="high",
+        reference_images=[InputMedia("candidate", "Image", b"candidate-png", "image/png")],
+    )
+    assert client.images.last["model"] == "gpt-image-2.5-sunburst-2026-09-08"
+    assert client.images.last["size"] == "1152x2048"
+    assert client.images.last["image"][0][1] == b"candidate-png"
+    assert "input_fidelity" not in client.images.last
+    assert model_id_for_alias("openai.image.default") == "gpt-image-2"
+
+
+def test_precision_image_uses_explicit_documented_token_rates():
+    from datetime import date
+    from decimal import Decimal
+    from app.cost_pricing import calculate
+    amount, snapshot, unresolved = calculate(
+        'openai', 'gpt-image-2.5-sunburst-2026-09-08', 'images.edit',
+        {'input_tokens_details': {'text_tokens': 100, 'image_tokens': 200}, 'output_tokens': 300},
+        {}, today=date(2026, 10, 2),
+    )
+    assert amount == Decimal('0.0111')
+    assert unresolved is None
+    assert 'gpt-image-2.5-sunburst' in str(snapshot)
+
+
 @pytest.mark.parametrize(("model_alias", "exact_model", "uses_instructions"), [
     ("openai.tts.default", "gpt-4o-mini-tts", True),
     ("openai.tts.fast", "tts-1", False),

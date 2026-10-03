@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-CATALOG_VERSION = "public-rates.2026-10-02"
+CATALOG_VERSION = "public-rates.2026-10-02.precise-image1"
 VALID_UNTIL = date(2026, 11, 1)
 OPENAI_SOURCE = "https://developers.openai.com/api/docs/pricing"
 GOOGLE_SOURCE = "https://cloud.google.com/vertex-ai/generative-ai/pricing"
@@ -65,7 +65,9 @@ def calculate(provider: str, model: str, operation: str, usage: dict, context: d
                 return None, {}, "service_tier_price_unavailable"
             if context.get("custom_endpoint"):
                 return None, {}, "custom_endpoint_price_unavailable"
-            if provider == "openai" and model == "gpt-image-2" and operation in {"images.generate", "images.edit"}:
+            if provider == "openai" and model in {"gpt-image-2", "gpt-image-2.5-sunburst-2026-09-08"} and operation in {"images.generate", "images.edit"}:
+                if model == "gpt-image-2.5-sunburst-2026-09-08":
+                    source = "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst"
                 details = usage.get("input_tokens_details") or {}
                 if number(details.get("text_tokens")) is None or number(details.get("image_tokens")) is None:
                     return None, {}, "image_token_breakdown_missing"

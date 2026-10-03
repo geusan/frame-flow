@@ -214,7 +214,7 @@ class OpenAIGenerationServices:
 
 
 def _image_size(aspect_ratio: str, exact_model: str = "") -> str:
-    if exact_model == "gpt-image-2" or exact_model.startswith("gpt-image-2-"):
+    if exact_model == "gpt-image-2" or exact_model.startswith(("gpt-image-2-", "gpt-image-2.5-")):
         return {"9:16": "1152x2048", "16:9": "2048x1152", "4:5": "1024x1280", "1:1": "1024x1024"}.get(aspect_ratio, "1024x1536")
     if aspect_ratio == "16:9":
         return "1536x1024"

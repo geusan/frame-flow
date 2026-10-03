@@ -183,3 +183,47 @@ request was verified equal to the unchanged character text plus the refined
 situation, including directional fringe, nose, chin and neck shading. The image
 was visually reviewed; this remains generative lighting transfer rather than a
 deterministic per-pixel shadow constraint.
+
+## Fidelity failure and separate correction — v6
+
+The later v5 window-side run `canvasrun_3591cafd83d2420eb9` did not preserve the
+intended shaded frontal exposure or canonical torso appearance. Keeping the
+character prompt unchanged is a verified text property, not proof of visual body
+preservation. A correction trial with the original `gpt-image-2` still retained
+too much frontal illumination and was not accepted as a solution.
+
+An otherwise equivalent edit with `openai.image.precise`, pinned to
+`gpt-image-2.5-sunburst-2026-09-08`, showed more shaded foreground illumination and
+canonical torso volume in this sample. V6 therefore keeps the entire first pass
+and adds one correction pass: contextual correction-instruction washing, section
+selection, verbatim character-plus-correction composition, and image editing.
+The four correction images are the first-pass candidate (its existing target
+face/scene), canonical side/bust reference, canonical full-body reference, and
+original situation. The three original canonical references remain in the first
+pass. The default image alias and all v1–v5 contracts/snapshots stay unchanged.
+
+The primary output is labeled as a correction candidate requiring comparison;
+the initial image is a secondary output. Execution success is not automated visual
+QA acceptance. There is no quality-driven regeneration loop. Uncached runs add one
+text-refinement call and one image-edit call. Provider transport/activity retry
+policies are unchanged. A deterministic body lock would require stronger geometric
+or region-level controls; this two-pass generative flow does not claim one.
+
+Run `canvasrun_b7f9e13132f2484e85` reused the exact v5 first image
+`art_6dc5f344460c4a8d99` and produced correction `art_f60e61fdffe1427b97`.
+The image provider's prompt was checked against the unchanged character text plus
+only the washed edit instruction, and its four image inputs were checked in order.
+V5's content hash is unchanged. Provider/Registry/Workflow regression tests: 88
+passed, including the pinned precision alias, 9:16 dimensions and documented token
+rates. Visual improvement is sample-specific and does not prove anatomy invariance.
+
+Official API references:
+- [Precision editing model and pinned snapshot](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)
+- [Image editing and model limitations](https://developers.openai.com/api/docs/guides/image-generation)
+
+GPT Image 2 already uses high input fidelity automatically; its preservation
+behavior cannot be increased with an `input_fidelity` parameter. The precision
+alias uses the documented custom 1152×2048 size and supported `high` quality.
+Its exact snapshot was explicitly added to the cost catalog using the documented
+token rates matching GPT Image 2. Recorded calculations are list-price estimates,
+not invoices; unsupported/missing usage still remains unresolved.
