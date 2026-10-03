@@ -48,12 +48,21 @@ remain unresolved, even when no response usage is available.
 Capture coverage: OpenAI Responses, chat/audio analysis, image generate/edit,
 speech/transcription; Google GenAI text/image/TTS/Omni, Veo submissions/completion,
 Chirp speech recognition; fal image/training/performance/lip-sync; Tripo tasks;
-ElevenLabs speech-to-speech; xAI Responses.
+ElevenLabs speech-to-speech; MiniMax video; xAI Responses.
 
 xAI's reported `cost_in_usd_ticks` converts at 10^10 ticks/USD. fal uses reported
 billable units with the endpoint pricing response. Tripo credits, ElevenLabs
 character cost are retained in their native units; lacking a
 verified USD tariff must produce `unreported`, never an invented conversion.
+
+MiniMax-H3 generation uses the official provider `usage.output_seconds` and
+`usage.input_seconds` at $0.08/second for 768P or $0.13/second for 2K. Reference
+images beyond the first five add $0.04 each; reference audio is free. Output
+padding, requested duration, audio seconds and informational token counts do not
+inflate the billable video seconds. Resolution, operation/task type and all
+billable quantities must be known; regeneration/Context-IR/H3-Max use different
+tariffs and are not silently priced as H3 generation. Native usage and the price
+source remain attached to the receipt, including after a download failure.
 
 The versioned public catalog in `cost_pricing.py` currently covers configured
 OpenAI chat/text/image models, TTS-1/HD and Whisper, and verified Vertex
@@ -69,6 +78,7 @@ Sources checked on 2026-10-02:
 - [OpenAI pricing](https://developers.openai.com/api/docs/pricing) and [image usage](https://developers.openai.com/api/docs/guides/image-generation).
 - [Vertex pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing), [Gemini pricing](https://ai.google.dev/gemini-api/docs/pricing), [Google TTS pricing](https://cloud.google.com/text-to-speech/pricing).
 - [xAI cost tracking](https://docs.x.ai/developers/cost-tracking).
+- [MiniMax pricing](https://platform.minimax.io/docs/pricing/overview) and [H3 task usage](https://platform.minimax.io/docs/api-reference/video-generation-v2-query).
 - fal's authenticated `GET https://api.fal.ai/v1/models/pricing` response is saved with each calculation.
 
 ## Validation and rollout

@@ -5,10 +5,11 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-CATALOG_VERSION = "public-rates.2026-10-02.precise-image1"
+CATALOG_VERSION = "public-rates.2026-10-02.precise-image1.minimax-h3"
 VALID_UNTIL = date(2026, 11, 1)
 OPENAI_SOURCE = "https://developers.openai.com/api/docs/pricing"
 GOOGLE_SOURCE = "https://cloud.google.com/vertex-ai/generative-ai/pricing"
+MINIMAX_SOURCE = "https://platform.minimax.io/docs/pricing/overview"
 
 # USD per million tokens; cached and cache-write tokens are separate input buckets.
 OPENAI_TEXT = {
@@ -60,7 +61,37 @@ def calculate(provider: str, model: str, operation: str, usage: dict, context: d
                       "amount_usd": str(q * r / Decimal(divisor))})
 
     try:
-        if provider in {"openai", "xai"}:
+        if provider == "minimax" and model == "MiniMax-H3":
+            task_type = usage.get("task_type")
+            if task_type is None and operation == "video_generation":
+                task_type = "generation"  # The original, durably recorded create endpoint.
+            if task_type != "generation":
+                return None, {}, "minimax_task_type_price_unavailable"
+            if context.get("api_origin", "https://api.minimax.io") != "https://api.minimax.io":
+                return None, {}, "endpoint_price_unavailable"
+            rate = {"768P": "0.08", "2K": "0.13"}.get(usage.get("resolution"))
+            if rate is None:
+                return None, {}, "minimax_resolution_price_unavailable"
+            measured = usage.get("provider_usage")
+            if not isinstance(measured, dict):
+                return None, {}, "minimax_usage_missing"
+            output_seconds = number(measured.get("output_seconds"))
+            input_seconds = number(measured.get("input_seconds"))
+            images = number(measured.get("input_image_count"))
+            if None in (output_seconds, input_seconds, images) or output_seconds <= 0 or images != images.to_integral_value():
+                return None, {}, "minimax_usage_missing_or_inconsistent"
+            if "total_seconds" in measured:
+                total_seconds = number(measured["total_seconds"])
+                if total_seconds is None or total_seconds != input_seconds + output_seconds:
+                    return None, {}, "minimax_total_seconds_inconsistent"
+            source = MINIMAX_SOURCE
+            # Provider-reported seconds are billable, not requested or padded media duration.
+            add("output_video_seconds", output_seconds, rate, "1")
+            add("reference_video_seconds", input_seconds, rate, "1")
+            add("reference_images_after_first_5", max(images - 5, Decimal(0)), "0.04", "1")
+            if "input_audio_seconds" in measured:
+                add("reference_audio_seconds", measured["input_audio_seconds"], "0", "1")
+        elif provider in {"openai", "xai"}:
             if context.get("service_tier", "default") not in {"default", "auto", "standard", None}:
                 return None, {}, "service_tier_price_unavailable"
             if context.get("custom_endpoint"):

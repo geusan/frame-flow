@@ -1,0 +1,26 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.reference_generate",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Generate from media references", "description": "MiniMax H3로 이미지·동작 영상·음성 참조를 함께 사용해 하나의 영상을 생성. 참조 순서는 연결 순서이며 시작 프레임의 픽셀 일치를 보장하지 않음", "category": "Video", "icon": "video", "cost_label": "Provider billed", "keywords": ["MiniMax H3", "omni reference", "reference video", "character"]},
+  "ports": {
+    "inputs": [
+      {"key": "prompt", "type": "prompt.text.v1", "label": "Direction prompt", "required": true},
+      {"key": "images", "type": "media.image.v1", "label": "Image references (ordered)", "required": true, "multiple": true},
+      {"key": "videos", "type": "media.video.v1", "label": "Motion references (ordered)", "multiple": true},
+      {"key": "audios", "type": "media.audio.v1", "label": "Audio references (ordered)", "multiple": true}
+    ],
+    "outputs": [{"key": "video", "type": "media.video.v1", "label": "Generated reference video"}]
+  },
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["resolution", "duration_seconds", "aspect_ratio", "timeout_seconds"], "properties": {
+    "resolution": {"type": "string", "enum": ["768P", "2K"], "default": "2K", "title": "Resolution", "x-workflow-input": {"enabled": true, "type": "enum"}},
+    "duration_seconds": {"type": "integer", "minimum": 4, "maximum": 15, "default": 4, "title": "Generated duration (seconds)", "x-workflow-input": {"enabled": true, "type": "integer"}},
+    "aspect_ratio": {"type": "string", "enum": ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": {"enabled": true, "type": "enum"}},
+    "timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 3600, "default": 1200, "title": "Wait limit (seconds)"}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "provider", "executor": "reference-video-generation", "revision": "reference-video-generation.v1", "provider": "minimax", "model_alias": "minimax.video.h3", "model_families": ["minimax.video.h3"]},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Video", "schema_id": "video.reference_generated.v1", "input_roles": {"prompt.text.v1": "direction_prompt", "media.image.v1": "identity_appearance_reference", "media.video.v1": "motion_reference", "media.audio.v1": "speech_reference"}, "output_role": "reference_generated_video"}
+}

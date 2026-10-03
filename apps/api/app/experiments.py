@@ -119,7 +119,7 @@ def resolve_model(model_alias: str, node_key: str, contract_version: int = 1) ->
             raise ValueError(f"{node_key} requires model alias {definition.execution.model_alias}")
         resolved = definition.execution.model_alias
         return resolved, model_id_for_alias(resolved) or definition.execution.revision
-    normalized = model_alias if model_alias.startswith(("google.", "openai.", "fal.", "tripo.", "chatgpt.", "claude.", "xai.")) else f"google.{model_alias}"
+    normalized = model_alias if model_id_for_alias(model_alias) else f"google.{model_alias}"
     exact = model_id_for_alias(normalized)
     if not exact:
         raise ValueError(f"model alias is not registered: {model_alias}")

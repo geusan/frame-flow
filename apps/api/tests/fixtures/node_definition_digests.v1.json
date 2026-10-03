@@ -84,6 +84,8 @@
   "video.media_story@1": "sha256:857b2d2882b022317d452db5180f441db13350e3e270426a8268ef8dd6b18a7e",
   "video.performance_transfer@1": "sha256:c62b1b557a2909c9166ec18de5982edd13fa53193f5dcf8b500252afad28e248",
   "video.reference_captions@1": "sha256:fcab0b213cce28414c2daf956ece4f1674afc0deeaf8d4682b7e8f0e0fe4a1b2",
+  "video.reference_generate@1": "sha256:e3494e6bb9f256238591dfe77a63594d1c97a762d0a866277366c6e1864415d1",
+  "video.reference_generate@2": "sha256:ed16469d9f0f093a74d4a7d13b73c72bb60b0812c3160024ae4145fd870730b4",
   "video.render@1": "sha256:c36fdeed2ce243c887234679da4443dac1663cf8579c8505a613864cb9f079c6",
   "video.render@2": "sha256:0a1555f7c67a6e2bc0b749e78d5c72a38925903cb02dda00af7745ad8d35633e",
   "video.retime@1": "sha256:5aa3dcae70d2f44838207dcf545de77652665b0a2f8e240a5b2a140196f2fb4f",

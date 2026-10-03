@@ -255,6 +255,7 @@ class SqlAlchemyAdministrationOperations:
             rows.extend(self._configured_registry_rows(db, XAI_MODEL_REGISTRY, usage, "xai", "xAI", "xAI Responses API", "XAI_API_KEY configured", "XAI_API_KEY is not set"))
             rows.extend(self._configured_registry_rows(db, FAL_MODEL_REGISTRY, usage, "fal", "fal.ai", "fal Queue API", "FAL_KEY configured", "FAL_KEY is not set"))
             rows.extend(self._configured_registry_rows(db, provider_catalog.ELEVENLABS_MODEL_REGISTRY, usage, "elevenlabs", "ElevenLabs", "ElevenLabs API", "ELEVENLABS_API_KEY configured", "ELEVENLABS_API_KEY is not set"))
+            rows.extend(self._configured_registry_rows(db, provider_catalog.MINIMAX_MODEL_REGISTRY, usage, "minimax", "MiniMax", "MiniMax Video V2 API", "MINIMAX_API_KEY configured", "MINIMAX_API_KEY is not set"))
             tripo_models = getattr(provider_catalog, "TRIPO_MODEL_REGISTRY", {})
             if tripo_models:
                 rows.extend(self._configured_registry_rows(db, tripo_models, usage, "tripo", "Tripo", "Tripo API v3", "TRIPO_API_KEY configured", "TRIPO_API_KEY is not set", modality=lambda alias: "3d" if ".3d." in alias else "rig"))

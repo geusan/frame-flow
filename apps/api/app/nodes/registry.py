@@ -18,6 +18,7 @@ from .executors.prompt_section import PromptSectionExecutor
 from .executors.prompt_combine import PromptCombineExecutor
 from .executors.media_segments import VideoSegmentExecutor, AudioSegmentExecutor
 from .executors.lip_sync import LipSyncExecutor
+from .executors.reference_video import ReferenceVideoExecutor, PaddedReferenceVideoExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -226,6 +227,8 @@ node_registry = NodeRegistry(
         "video-segment": VideoSegmentExecutor(),
         "audio-segment": AudioSegmentExecutor(),
         "lip-sync": LipSyncExecutor(),
+        "reference-video-generation": ReferenceVideoExecutor(),
+        "reference-video-generation-padded": PaddedReferenceVideoExecutor(),
         "caption-timeline": CaptionTimelineExecutor(),
         "character-auto-rig": AutoRigExecutor(),
         "character-auto-rig-tripo": TripoAutoRigExecutor(),

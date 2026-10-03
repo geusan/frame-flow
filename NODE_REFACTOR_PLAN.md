@@ -54,6 +54,16 @@ native local Executor/Generic Inspector로 등록했다. 전자는 워싱 문서
 독립 실행한다. 첫 문장 pilot을 확인한 뒤 문장별 보정 → 연결 → 자막 → 음성 합성으로
 구성한다. [계약과 검증](docs/audio-first-lipsync.md)에 timing, retry와 비용 기록을 명시했다.
 
+2026-10-02 MiniMax H3 참조 생성: `video.reference_generate@1`을 native Executor/
+Generic Inspector로 등록했다. 이미지·영상·오디오의 모달리티별 참조 순서와 파일 제약,
+MiniMax V2 task checkpoint/resume, Artifact lineage와 미확정 비용을 기록한다.
+기존 `video.animate_image@1`의 시작 프레임 계약은 변경하지 않는다.
+[계약과 비교 Canvas 설정](docs/minimax-h3-reference-workflow.md)을 참고한다.
+
+2026-10-02 실제 H3 반환 길이 대응: `video.reference_generate@2`는 공급사가 추가한
+최대 1초의 원본 여유 프레임과 실제 길이를 기록하고 정확한 길이 추출은 별도 Node에
+맡긴다. 기존 `@1`의 ±250ms 동작과 digest를 보존하며 Draft 교체 Diff/경고를 제공한다.
+
 ### 이전 진행 기록 (2026-08-31 이후)
 
 아래는 당시 상태이며, 남은 작업 표현은 위의 최신 상태로 대체한다.

@@ -88,6 +88,10 @@ ELEVENLABS_MODEL_REGISTRY = {
     "elevenlabs.audio.voice_change": "eleven_multilingual_sts_v2",
 }
 
+MINIMAX_MODEL_REGISTRY = {
+    "minimax.video.h3": "MiniMax-H3",
+}
+
 ALL_MODEL_REGISTRY = {
     **MODEL_REGISTRY,
     **OPENAI_MODEL_REGISTRY,
@@ -96,6 +100,7 @@ ALL_MODEL_REGISTRY = {
     **FAL_MODEL_REGISTRY,
     **TRIPO_MODEL_REGISTRY,
     **ELEVENLABS_MODEL_REGISTRY,
+    **MINIMAX_MODEL_REGISTRY,
 }
 
 

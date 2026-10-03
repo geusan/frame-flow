@@ -31,6 +31,7 @@
       "video.generate",
       "video.animate_image",
       "video.lip_sync",
+      "video.reference_generate",
       "character.turnaround.generate",
       "video.performance_transfer",
       "audio.voice_convert"
