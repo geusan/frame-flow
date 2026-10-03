@@ -16,6 +16,7 @@
     "test:avatar-expressions": "node --experimental-strip-types scripts/test-avatar-expressions.mjs",
     "test:face-rig2d": "node --experimental-strip-types scripts/test-face-rig2d.mjs",
     "test:workflow-contract": "node --experimental-strip-types scripts/test-workflow-contract.mjs",
+    "test:workflow-runner": "node --experimental-strip-types scripts/test-workflow-runner.mjs",
     "test:artifact-source": "node --experimental-strip-types scripts/test-artifact-source.mjs",
     "test:cost": "node --experimental-strip-types scripts/test-cost.mjs"
   },

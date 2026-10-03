@@ -115,6 +115,8 @@ class LegacySqlAlchemyRunOperations:
             run = db.get(CanvasRunRecord, run_id)
             if run is None:
                 raise RunNotFoundError("Canvas run not found")
+            if run.status in {NodeStatus.SUCCEEDED, NodeStatus.FAILED, NodeStatus.CANCELED}:
+                return canvas_run_response(run)
             run.status = NodeStatus.CANCELED
             run.canceled_at = utc_now()
             for node in run.node_runs:
