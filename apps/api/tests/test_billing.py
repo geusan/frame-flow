@@ -19,6 +19,7 @@ from app.database import (
     CanvasNodeRunRecord, CanvasRunRecord, ExperimentRunRecord,
     ProviderCostObservation, ProviderCostRecord, SessionLocal,
 )
+from app.providers_lipsync import FalLipSyncService
 from app.providers_performance import MediaProviderError
 
 
@@ -155,6 +156,39 @@ def test_composite_keeps_every_call_and_partial_totals(client):
     value = finish("exp-composite", costs)
     assert value["status"] == "partial" and value["amount_usd"] is None
     assert Decimal(value["known_cost_usd"]) == Decimal("0.0142") and value["call_count"] == 3
+
+
+def test_fal_resume_keeps_original_price_and_does_not_charge_twice(client, monkeypatch):
+    posts = []
+    download_ok = False
+    def handle(request):
+        if request.method == "POST":
+            posts.append(request.url.path)
+            return httpx.Response(200, json={"request_id": "same-task"})
+        if request.url.path.endswith("/status"):
+            return httpx.Response(200, json={"status": "COMPLETED"})
+        if request.url.host == "queue.fal.run":
+            return httpx.Response(200, json={"video": {"url": "https://v3.fal.media/result.mp4"}}, headers={"x-fal-billable-units": "0.05"})
+        if request.url.host == "api.fal.ai":
+            return httpx.Response(200, json={"prices": [{"endpoint_id": "fal-ai/sync-lipsync/v2/pro", "unit_price": 99 if download_ok else 5, "unit": "minutes", "currency": "USD"}]})
+        return httpx.Response(200 if download_ok else 500, content=b"video")
+    service = FalLipSyncService(api_key="test", client=httpx.Client(transport=httpx.MockTransport(handle)))
+    monkeypatch.setattr(service, "_upload", lambda *_: "https://v3.fal.media/input.mp4")
+    kwargs = dict(video=b"v", audio=b"a", audio_content_type="audio/wav", timeout_seconds=30, remember=lambda _: None, progress=lambda *_: None)
+    experiment("exp-first", "run-first", "node-first")
+    with run_cost_owner("run-first", "node-first"), execution_cost_scope("exp-first", expects_provider=True) as first:
+        with pytest.raises(MediaProviderError):
+            service.synchronize(**kwargs, resume_id=None)
+    assert Decimal(finish("exp-first", first, "FAILED")["amount_usd"]) == Decimal("0.25")
+    download_ok = True
+    experiment("exp-resume", "run-resume", "node-resume")
+    with run_cost_owner("run-resume", "node-resume"), execution_cost_scope("exp-resume", expects_provider=True) as resumed:
+        service.synchronize(**kwargs, resume_id="same-task")
+    assert finish("exp-resume", resumed)["status"] == "no_charge" and len(posts) == 1
+    with SessionLocal() as db:
+        rows = db.scalars(select(ProviderCostRecord)).all()
+        assert len(rows) == 1 and rows[0].run_id == "run-first"
+        assert rows[0].amount_usd == Decimal("0.25") and rows[0].pricing["unit_price_usd"] == "5"
 
 
 def test_cost_context_is_isolated_between_threads(client):

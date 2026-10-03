@@ -71,6 +71,7 @@ XAI_MODEL_REGISTRY = {
 }
 
 FAL_MODEL_REGISTRY = {
+    "fal.video.lip_sync": "fal-ai/sync-lipsync/v2/pro",
     "fal.video.performance": "fal-ai/kling-video/v3/pro/motion-control",
     "fal.image.flux2-lora": "fal-ai/flux-2/lora",
     "fal.training.flux2-lora": "fal-ai/flux-2-trainer-v2",

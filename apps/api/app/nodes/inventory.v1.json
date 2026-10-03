@@ -30,6 +30,7 @@
       "tts.generate",
       "video.generate",
       "video.animate_image",
+      "video.lip_sync",
       "character.turnaround.generate",
       "video.performance_transfer",
       "audio.voice_convert"
@@ -70,6 +71,8 @@
       "video.edit",
       "video.frame_apply",
       "video.frame_extract",
+      "video.segment",
+      "audio.segment",
       "video.retime",
       "video.render",
       "video.blender_render",

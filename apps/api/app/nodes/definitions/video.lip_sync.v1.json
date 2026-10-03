@@ -1,0 +1,12 @@
+{
+  "schema_version": "node.definition.v1", "type_key": "video.lip_sync", "contract_version": 1, "lifecycle": "ACTIVE",
+  "display": {"label": "Speech lip sync", "description": "동일 길이의 Video와 Audio로 입모양을 보정하고 원래 프레임 시간축의 무음 Video를 출력", "category": "Video", "icon": "video", "cost_label": "Provider billed", "keywords": ["lip sync", "speech", "audio driven", "mouth"]},
+  "ports": {"inputs": [{"key": "video", "type": "media.video.v1", "label": "Performance video", "required": true}, {"key": "audio", "type": "media.audio.v1", "label": "Target speech", "required": true}], "outputs": [{"key": "video", "type": "media.video.v1", "label": "Lip-synced video"}]},
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["timeout_seconds"], "properties": {
+    "timeout_seconds": {"type": "integer", "minimum": 30, "maximum": 1800, "default": 900, "title": "Wait limit (seconds)"}
+  }},
+  "binding_policy": {"workflow_inputs": "none"},
+  "execution": {"kind": "provider", "executor": "lip-sync", "revision": "lip-sync.v1", "provider": "fal", "model_alias": "fal.video.lip_sync"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Video", "schema_id": "video.lip_synced.v1", "input_roles": {"media.video.v1": "source_performance", "media.audio.v1": "target_speech"}, "output_role": "lip_synced_performance"}
+}

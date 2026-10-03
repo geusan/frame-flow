@@ -49,6 +49,11 @@ native local Executor/Generic Inspector로 등록했다. 전자는 워싱 문서
 읽기 전용 맥락으로 제공하지만 노딸깍 출력으로 대체하지 않는다. 최종 생성은 고정된
 캐릭터 원문과 상황별 연출 설명만 사용하며 기존 계약·WorkflowVersion은 유지한다.
 
+2026-10-01 오디오 기준 립싱크 경로: `video.segment@1`, `audio.segment@1`,
+`video.lip_sync@1`을 등록해 같은 시간 구간의 영상/음성을 추출하고 입모양 보정을
+독립 실행한다. 첫 문장 pilot을 확인한 뒤 문장별 보정 → 연결 → 자막 → 음성 합성으로
+구성한다. [계약과 검증](docs/audio-first-lipsync.md)에 timing, retry와 비용 기록을 명시했다.
+
 ### 이전 진행 기록 (2026-08-31 이후)
 
 아래는 당시 상태이며, 남은 작업 표현은 위의 최신 상태로 대체한다.

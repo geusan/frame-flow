@@ -47,7 +47,7 @@ remain unresolved, even when no response usage is available.
 
 Capture coverage: OpenAI Responses, chat/audio analysis, image generate/edit,
 speech/transcription; Google GenAI text/image/TTS/Omni, Veo submissions/completion,
-Chirp speech recognition; fal image/training/performance; Tripo tasks;
+Chirp speech recognition; fal image/training/performance/lip-sync; Tripo tasks;
 ElevenLabs speech-to-speech; xAI Responses.
 
 xAI's reported `cost_in_usd_ticks` converts at 10^10 ticks/USD. fal uses reported

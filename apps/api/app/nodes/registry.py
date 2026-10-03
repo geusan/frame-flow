@@ -16,6 +16,8 @@ from .executors.image_animation import ImageAnimationExecutor
 from .executors.image_description import ImageDescriptionExecutor
 from .executors.prompt_section import PromptSectionExecutor
 from .executors.prompt_combine import PromptCombineExecutor
+from .executors.media_segments import VideoSegmentExecutor, AudioSegmentExecutor
+from .executors.lip_sync import LipSyncExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -221,6 +223,9 @@ node_registry = NodeRegistry(
         "image-description": ImageDescriptionExecutor(),
         "prompt-section": PromptSectionExecutor(),
         "prompt-combine": PromptCombineExecutor(),
+        "video-segment": VideoSegmentExecutor(),
+        "audio-segment": AudioSegmentExecutor(),
+        "lip-sync": LipSyncExecutor(),
         "caption-timeline": CaptionTimelineExecutor(),
         "character-auto-rig": AutoRigExecutor(),
         "character-auto-rig-tripo": TripoAutoRigExecutor(),

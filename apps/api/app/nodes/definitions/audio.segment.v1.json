@@ -1,0 +1,13 @@
+{
+  "schema_version": "node.definition.v1", "type_key": "audio.segment", "contract_version": 1, "lifecycle": "ACTIVE",
+  "display": {"label": "Audio segment", "description": "재생 속도를 바꾸지 않고 지정 음성 구간을 48kHz PCM WAV로 추출", "category": "Audio", "icon": "changeVoice", "cost_label": "$0.00", "keywords": ["trim", "segment", "speech", "samples"]},
+  "ports": {"inputs": [{"key": "audio", "type": "media.audio.v1", "label": "Audio", "required": true}], "outputs": [{"key": "audio", "type": "media.audio.v1", "label": "Speech segment"}]},
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["start_seconds", "duration_seconds"], "properties": {
+    "start_seconds": {"type": "number", "minimum": 0, "maximum": 86400, "default": 0, "title": "Start (seconds)", "x-workflow-input": {"enabled": true, "type": "number"}},
+    "duration_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 600, "default": 3, "title": "Duration (seconds)", "x-workflow-input": {"enabled": true, "type": "number"}}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "local", "executor": "audio-segment", "revision": "audio-segment.v1", "provider": "local", "model_alias": "local.audio-segment"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Audio", "schema_id": "audio.segment.v1", "input_roles": {"media.audio.v1": "source_speech"}, "output_role": "speech_segment"}
+}

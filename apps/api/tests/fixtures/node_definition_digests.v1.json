@@ -4,6 +4,7 @@
   "asset.select@2": "sha256:48f3646c355f0664d3d2625555105461dfed4599b0c30d3ad9f1c88aea641469",
   "audio.extract@1": "sha256:23bb4243c4895272ee5a9d195442e6c1bf0467f7b81ce6c115da974d95eb1238",
   "audio.practice_track@1": "sha256:be3bf7005f461f0b8c798b7abc870ad75e72c6b9f22a3196a506723ce3786531",
+  "audio.segment@1": "sha256:df5f9b980651d6b29a9f0d3c7931d62525b591bdb52c416ce635c1e5b3a862b2",
   "audio.voice_convert@1": "sha256:c0adbb8589032165b5b5a430e597af8ebdfe006af1b98085188cf4bb4b5061c2",
   "candidate.select@1": "sha256:06b33887a566219bdf8a12f689cfb96865db10ea7d392f8bff52a731b6696bc5",
   "character.auto_rig@1": "sha256:bbf750e4cffddd3185c90a0afcce1a60aef4220c9efcafbf2cf8949af8a08cdb",
@@ -79,12 +80,14 @@
   "video.frame_extract@1": "sha256:51a3dc39af2cff59d529f9a48d47ed65b8921b5bf247f433875c9d10ed24a0c4",
   "video.generate@1": "sha256:7e70a0b2ab3e8a36b9dc02b3eca1441962baeccabd0317a4d52ccbc5e6349efe",
   "video.image_story@1": "sha256:6aa018e8dcdade256ffc71658252417fbdbd016d919e99b24954193266cbccb6",
+  "video.lip_sync@1": "sha256:37b07bd075bf8e6274758624c01782829f3d9474898988b89a30aaccb4de29a6",
   "video.media_story@1": "sha256:857b2d2882b022317d452db5180f441db13350e3e270426a8268ef8dd6b18a7e",
   "video.performance_transfer@1": "sha256:c62b1b557a2909c9166ec18de5982edd13fa53193f5dcf8b500252afad28e248",
   "video.reference_captions@1": "sha256:fcab0b213cce28414c2daf956ece4f1674afc0deeaf8d4682b7e8f0e0fe4a1b2",
   "video.render@1": "sha256:c36fdeed2ce243c887234679da4443dac1663cf8579c8505a613864cb9f079c6",
   "video.render@2": "sha256:0a1555f7c67a6e2bc0b749e78d5c72a38925903cb02dda00af7745ad8d35633e",
   "video.retime@1": "sha256:5aa3dcae70d2f44838207dcf545de77652665b0a2f8e240a5b2a140196f2fb4f",
+  "video.segment@1": "sha256:0469e44e067c9b906842e4ed7da7abfe35eac173b748aa7c35c2b4802822cbc6",
   "video.split@1": "sha256:ac36013813409fe08115bf30d07e9a1d1284d683fe6a681bb0642674cf2d9563",
   "video.translate@1": "sha256:7019ff86daaa4b110317780e31e4b630d0eb3787159f3d28624331a8ff7e35e0"
 }

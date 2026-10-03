@@ -1,0 +1,15 @@
+{
+  "schema_version": "node.definition.v1", "type_key": "video.segment", "contract_version": 1, "lifecycle": "ACTIVE",
+  "display": {"label": "Video segment", "description": "지정 시간 구간을 프레임 경계에 맞춰 무음 영상으로 추출", "category": "Video", "icon": "timeline", "cost_label": "$0.00", "keywords": ["trim", "segment", "speech", "cut"]},
+  "ports": {"inputs": [{"key": "video", "type": "media.video.v1", "label": "Video", "required": true}], "outputs": [{"key": "video", "type": "media.video.v1", "label": "Video segment"}]},
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["start_seconds", "duration_seconds", "output_fps", "end_padding_seconds"], "properties": {
+    "start_seconds": {"type": "number", "minimum": 0, "maximum": 86400, "default": 0, "title": "Start (seconds)", "x-workflow-input": {"enabled": true, "type": "number"}},
+    "duration_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 600, "default": 3, "title": "Duration (seconds)", "x-workflow-input": {"enabled": true, "type": "number"}},
+    "output_fps": {"type": "integer", "enum": [24, 25, 30, 60], "default": 24, "title": "Output FPS", "x-workflow-input": {"enabled": true, "type": "integer"}},
+    "end_padding_seconds": {"type": "number", "minimum": 0, "maximum": 1, "default": 0, "title": "Allowed end-frame hold (seconds)", "description": "입력 끝을 넘는 경우에만 허용한 시간 이내에서 마지막 프레임을 유지합니다. 기본값 0은 범위 초과를 거부합니다."}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "local", "executor": "video-segment", "revision": "video-segment.v1", "provider": "local", "model_alias": "local.video-segment"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Video", "schema_id": "video.segment.v1", "input_roles": {"media.video.v1": "source_video"}, "output_role": "video_segment"}
+}
