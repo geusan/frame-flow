@@ -1,0 +1,22 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.animate_image",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Animate starting image", "description": "연결한 이미지를 영상의 실제 시작 프레임으로 사용하고 Prompt에 따라 움직임을 생성", "category": "Video", "icon": "video", "cost_label": "Provider billed", "keywords": ["first frame", "image to video", "animate", "veo"]},
+  "ports": {
+    "inputs": [{"key": "prompt", "type": "prompt.text.v1", "label": "Motion prompt", "required": true}, {"key": "image", "type": "media.image.v1", "label": "Starting image", "required": true}],
+    "outputs": [{"key": "video", "type": "media.video.v1", "label": "Animated video"}]
+  },
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["resolution", "aspect_ratio", "duration_seconds", "output_count"], "properties": {
+    "resolution": {"type": "string", "enum": ["720p", "1080p"], "default": "1080p", "title": "Resolution", "x-workflow-input": {"enabled": true, "type": "enum"}},
+    "aspect_ratio": {"type": "string", "enum": ["9:16", "16:9"], "default": "9:16", "title": "Aspect ratio", "x-workflow-input": {"enabled": true, "type": "enum"}},
+    "duration_seconds": {"type": "integer", "enum": [4, 6, 8], "default": 8, "title": "Duration", "description": "1080p는 8초를 사용합니다.", "x-workflow-input": {"enabled": true, "type": "integer"}},
+    "output_count": {"type": "integer", "minimum": 1, "maximum": 4, "default": 1, "title": "Output count"},
+    "seed": {"type": "integer", "minimum": 0, "title": "Seed", "x-workflow-input": {"enabled": true, "type": "integer"}}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "provider", "executor": "image-animation", "revision": "image-animation.v1", "provider": "google", "model_alias": "google.video.quality", "model_families": ["google.video.fast", "google.video.quality"]},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Video", "schema_id": "video.image_animation.v1", "input_roles": {"prompt.text.v1": "motion_prompt", "media.image.v1": "first_frame"}, "output_role": "animated_video"}
+}

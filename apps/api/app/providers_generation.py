@@ -177,7 +177,12 @@ class GoogleGenerationServices:
         seed: int | None,
         image_inputs: list[InputMedia],
         video_inputs: list[InputMedia],
+        image_input_mode: str = "reference",
     ) -> list[GeneratedBinary]:
+        if image_input_mode not in {"reference", "first_frame"}:
+            raise ValueError("Unsupported video image input mode")
+        if image_input_mode == "first_frame" and (len(image_inputs) != 1 or video_inputs or logical_model == "google.video.omni"):
+            raise ValueError("First-frame animation requires one Image and a Veo model")
         normalized_resolution = resolution.lower()
         if normalized_resolution not in {"720p", "1080p"}:
             normalized_resolution = "1080p"
@@ -200,7 +205,8 @@ class GoogleGenerationServices:
             aspect_ratio=aspect_ratio,
             seed=seed,
             output_gcs_uri=os.getenv("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
-            reference_images=[(item.data, item.content_type) for item in image_inputs[:3]],
+            reference_images=[(item.data, item.content_type) for item in image_inputs[:3]] if image_input_mode == "reference" else [],
+            **({"image_data": image_inputs[0].data, "image_mime_type": image_inputs[0].content_type} if image_input_mode == "first_frame" else {}),
             resolution=normalized_resolution,
         )
         return self.video.wait_for_generated(

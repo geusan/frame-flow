@@ -30,6 +30,12 @@ Audio 결합 Node에 연결한다. Provider checkpoint는 알려진 fal 요청�
 Local/Temporal parity, Publish reachability 검증은
 [캐릭터 레퍼런스 영상 제작](docs/character-performance-workflow.md)에 기록한다.
 
+2026-10-01 시작 프레임 경로 추가: `video.frame_extract@1`은 레퍼런스의 첫 프레임을
+PNG Artifact로 추출하고, `video.animate_image@1`은 생성된 캐릭터 Image를 실제 영상
+시작 프레임으로 전달한다. 두 계약은 native Executor/Generic Inspector를 사용하며
+기존 `video.generate@1`의 reference-image 의미는 유지한다.
+[계약·Draft 교체·검증](docs/start-frame-workflow.md)을 함께 기록했다.
+
 ### 이전 진행 기록 (2026-08-31 이후)
 
 아래는 당시 상태이며, 남은 작업 표현은 위의 최신 상태로 대체한다.

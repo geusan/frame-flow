@@ -11,6 +11,8 @@ from .executors.character_turnaround import CharacterTurnaroundExecutor, Turnaro
 from .executors.practice import StudyScreenExecutor, PracticeTrackExecutor, PracticeMotionExecutor, PracticeGuideExecutor
 from .executors.performance_transfer import PerformanceTransferExecutor, VoiceConvertExecutor
 from .executors.reference_captions import ReferenceCaptionsExecutor
+from .executors.frame_extract import FrameExtractExecutor
+from .executors.image_animation import ImageAnimationExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -211,6 +213,8 @@ node_registry = NodeRegistry(
         "performance-transfer": PerformanceTransferExecutor(),
         "voice-convert": VoiceConvertExecutor(),
         "reference-captions": ReferenceCaptionsExecutor(),
+        "frame-extract": FrameExtractExecutor(),
+        "image-animation": ImageAnimationExecutor(),
         "caption-timeline": CaptionTimelineExecutor(),
         "character-auto-rig": AutoRigExecutor(),
         "character-auto-rig-tripo": TripoAutoRigExecutor(),

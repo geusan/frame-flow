@@ -295,5 +295,5 @@ def test_canonical_digest_mismatch_rejected_and_unknown_roundtrip_preserved(clie
     document["graph"]["nodes"][0]["definition_digest"] = "sha256:wrong"
     with pytest.raises(ValueError, match="digest mismatch"):
         normalize_canvas_document(document)
-    unknown = canonicalize_canvas_document([{"id": "unknown", "data": {"key": "video.frame_extract", "config": {"future": True}}}], [{"id": "edge", "source": "unknown", "target": "missing", "sourceHandle": "future-output", "targetHandle": "future-input"}])
+    unknown = canonicalize_canvas_document([{"id": "unknown", "data": {"key": "video.future_frame_extract", "config": {"future": True}}}], [{"id": "edge", "source": "unknown", "target": "missing", "sourceHandle": "future-output", "targetHandle": "future-input"}])
     assert normalize_canvas_document(unknown) == unknown

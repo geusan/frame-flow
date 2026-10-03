@@ -307,6 +307,8 @@ class GoogleVideoProvider(GoogleProviderBase):
             raise GoogleProviderError("Veo candidate_count must be between 1 and 4")
         exact_model = self.exact_model(logical_model)
         payload = {"model": exact_model, "prompt": prompt, "duration_seconds": duration_seconds, "candidate_count": candidate_count, "aspect_ratio": aspect_ratio, "seed": seed, "output_gcs_uri": output_gcs_uri, "has_image": image_data is not None, "reference_hashes": [hashlib.sha256(data).hexdigest() for data, _ in references], "resolution": resolution}
+        if image_data is not None:
+            payload["image_hash"] = hashlib.sha256(image_data).hexdigest()
         digest = request_hash(logical_model, payload)
         config_values: dict[str, Any] = {
             "duration_seconds": duration_seconds,

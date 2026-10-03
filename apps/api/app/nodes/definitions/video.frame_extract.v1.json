@@ -1,0 +1,18 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "video.frame_extract",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Video frame extract", "description": "영상의 지정 시점에서 원본 프레임을 PNG 이미지로 추출", "category": "Video", "icon": "image", "cost_label": "$0.00", "keywords": ["frame", "first frame", "extract", "start image"]},
+  "ports": {
+    "inputs": [{"key": "video", "type": "media.video.v1", "label": "Video", "required": true}],
+    "outputs": [{"key": "image", "type": "media.image.v1", "label": "Extracted frame"}]
+  },
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["timestamp_seconds"], "properties": {
+    "timestamp_seconds": {"type": "number", "minimum": 0, "maximum": 86400, "default": 0, "title": "Frame time (seconds)", "description": "0은 첫 프레임입니다. 지정 시점 이후 처음 표시되는 프레임을 추출합니다.", "x-workflow-input": {"enabled": true, "type": "number"}}
+  }},
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "local", "executor": "frame-extract", "revision": "frame-extract.v1", "provider": "local", "model_alias": "local.frame-extract"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Image", "schema_id": "image.video_frame.v1", "input_roles": {"media.video.v1": "source_video"}, "output_role": "extracted_frame"}
+}

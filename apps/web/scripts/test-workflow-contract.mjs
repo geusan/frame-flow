@@ -18,7 +18,7 @@ assert.equal(renamed.bindings[1].value.key,'subject');
 assert.equal(contract.inputs[0].key,'topic');
 assert.deepEqual(bindingValue('template','{{a}} {{b}} {{a}}').input_keys,['a','b']);
 const templates = definitions.map(definition => nodeTemplateFromDefinition(definition, ports));
-const saved = {nodes:[{id:'old',position:{x:5,y:8},data:{key:'image.motion',contractVersion:1,config:{duration_seconds:8}}}, {id:'unknown',position:{x:8,y:9},data:{key:'video.frame_extract',config:{opaque:true}}}], edges:[{id:'edge',source:'unknown',target:'old',sourceHandle:'future-output',targetHandle:'future-input'}]};
+const saved = {nodes:[{id:'old',position:{x:5,y:8},data:{key:'image.motion',contractVersion:1,config:{duration_seconds:8}}}, {id:'unknown',position:{x:8,y:9},data:{key:'video.future_frame_extract',config:{opaque:true}}}], edges:[{id:'edge',source:'unknown',target:'old',sourceHandle:'future-output',targetHandle:'future-input'}]};
 const loaded = migrateStoredGraph(saved,templates);
 assert.equal(loaded.nodes.length,2);
 assert.equal(loaded.nodes[0].data.contractVersion,1);
@@ -47,6 +47,16 @@ assert.ok(inputPortMatches(modelNode,modelNode.data.inputPorts[0].key,0));
 assert.ok(inputPortMatches(modelNode,`input-${modelNode.data.inputTypes[0]}-0`,0));
 assert.ok(!inputPortMatches(modelNode,'missing',0));
 console.log('Manifest port metadata includes all outputs and supports canonical/legacy input handles.');
+for (const key of ['video.frame_extract','video.animate_image']) {
+  const definition = definitions.find(d=>d.type_key===key);
+  const template = templates.find(t=>t.data.key===key);
+  assert.equal(definition.editor.kind,'generic');
+  assert.ok(template.data.executable);
+  assert.equal(template.data.outputPorts.length,1);
+  assert.ok(workflowTargets([{id:key,data:template.data}],definitions).length>0);
+}
+assert.equal(templates.find(t=>t.data.key==='video.frame_extract').data.outputPorts[0].type,'media.image.v1');
+assert.equal(templates.find(t=>t.data.key==='video.animate_image').data.inputPorts.find(p=>p.key==='image').required,true);
 const {nodeHumanGateMode}=await import('../src/features/nodes/contracts.ts');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='candidate.select')),'select_artifact');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='timeline.compose' && d.contract_version===1)),'approve');

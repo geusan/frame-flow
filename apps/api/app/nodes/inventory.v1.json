@@ -28,6 +28,7 @@
       "skill.execute",
       "tts.generate",
       "video.generate",
+      "video.animate_image",
       "character.turnaround.generate",
       "video.performance_transfer",
       "audio.voice_convert"
@@ -65,6 +66,7 @@
       "video.concatenate",
       "video.edit",
       "video.frame_apply",
+      "video.frame_extract",
       "video.retime",
       "video.render",
       "video.blender_render",

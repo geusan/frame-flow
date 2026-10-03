@@ -15,6 +15,7 @@ VIDEO_MODEL_COSTS = {
 
 
 class VideoGenerationCapabilityExecutor:
+    image_input_mode = "reference"
     def supports(self, context: NodeExecutionContext) -> bool:
         return (
             context.definition.execution.kind == "provider"
@@ -45,8 +46,12 @@ class VideoGenerationCapabilityExecutor:
         )
         image_inputs = [item for item in media if item.artifact_type == "Image"][:3]
         video_inputs = [item for item in media if item.artifact_type in {"Video", "FinalVideo"}][:1]
+        if self.image_input_mode == "first_frame" and (len(image_inputs) != 1 or video_inputs):
+            raise ValueError("Image animation requires one starting Image and no driving Video")
         seed = resolved_node_config.get("seed")
         model_alias = context.model_alias
+        revision_fn = getattr(self, "runtime_revision", None)
+        execution_revision = revision_fn(context.definition, resolved_node_config) if callable(revision_fn) else LIVE_GENERATION_REVISION
         generated = get_google_generation_services().generate_videos(
             logical_model=model_alias,
             prompt=prompt,
@@ -57,6 +62,7 @@ class VideoGenerationCapabilityExecutor:
             seed=int(seed) if seed is not None else None,
             image_inputs=image_inputs,
             video_inputs=video_inputs,
+            **({"image_input_mode": self.image_input_mode} if self.image_input_mode != "reference" else {}),
         )
         artifacts = [
             artifact_store.create(
@@ -68,7 +74,7 @@ class VideoGenerationCapabilityExecutor:
                     metadata={
                         "experiment_id": context.experiment_id,
                         "request_hash": context.request_hash,
-                        "execution_mode": LIVE_GENERATION_REVISION,
+                        "execution_mode": execution_revision,
                         "immutable": True,
                         "source": "node_executor_registry",
                         "provider": "google",
@@ -77,6 +83,9 @@ class VideoGenerationCapabilityExecutor:
                         "normalized_config": resolved_node_config,
                         "output_role": context.definition.artifact_contract.output_role,
                         "candidate_index": index,
+                        "image_input_mode": self.image_input_mode,
+                        "definition_digest": context.definition.definition_digest,
+                        **({"cost_status": "provider_billed_unreported"} if self.image_input_mode == "first_frame" else {}),
                     },
                     content=item.data,
                     content_type=item.mime_type,
@@ -97,7 +106,7 @@ class VideoGenerationCapabilityExecutor:
             },
             output_artifact_ids=[artifact.id for artifact in artifacts],
             provider_request_id=generated[0].provider_request_id,
-            cost_usd=VIDEO_MODEL_COSTS.get(model_alias, 0.0),
+            cost_usd=0.0 if self.image_input_mode == "first_frame" else VIDEO_MODEL_COSTS.get(model_alias, 0.0),
             metadata={
                 "artifact_type": context.definition.artifact_contract.primary_type,
                 "schema_id": context.definition.artifact_contract.schema_id,
