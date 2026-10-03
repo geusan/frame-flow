@@ -36,6 +36,19 @@ PNG Artifact로 추출하고, `video.animate_image@1`은 생성된 캐릭터 Ima
 기존 `video.generate@1`의 reference-image 의미는 유지한다.
 [계약·Draft 교체·검증](docs/start-frame-workflow.md)을 함께 기록했다.
 
+2026-10-01 이미지 행동 묘사: `image.describe@1`을 등록했다. 실제 Image 픽셀을
+OpenAI vision 입력으로 보내 행동·시선·손과 사물의 접촉·자세·조명을 관찰하고,
+선택적인 downstream 제약을 그대로 포함한 `prompt.image_description.v1` Text Artifact를
+출력한다. 노딸깍과 이미지 생성은 기존 계약으로 연결하며, 참조 이미지 순서는 명시적인
+Prompt attachment에서 고정한다. 기존 WorkflowVersion은 변경하지 않는다.
+[계약·Draft migration·검증](docs/image-description-workflow.md)을 함께 기록한다.
+
+2026-10-02 Prompt 조합: `prompt.extract_section@1`과 `prompt.combine@1`을
+native local Executor/Generic Inspector로 등록했다. 전자는 워싱 문서의 선택한 본문만
+추출하고, 후자는 고정/가변 Prompt를 순서대로 원문 결합한다. 캐릭터 원문은 노딸깍에
+읽기 전용 맥락으로 제공하지만 노딸깍 출력으로 대체하지 않는다. 최종 생성은 고정된
+캐릭터 원문과 상황별 연출 설명만 사용하며 기존 계약·WorkflowVersion은 유지한다.
+
 ### 이전 진행 기록 (2026-08-31 이후)
 
 아래는 당시 상태이며, 남은 작업 표현은 위의 최신 상태로 대체한다.

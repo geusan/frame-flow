@@ -1,0 +1,27 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "image.describe",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Image description", "description": "입력 이미지를 실제로 읽어 행동·시선·손과 사물의 접촉·자세·의상·조명을 묘사한 Prompt를 생성", "category": "Image", "icon": "assistant", "keywords": ["image", "vision", "describe", "action", "pose", "이미지 분석", "행동 묘사"]},
+  "ports": {
+    "inputs": [
+      {"key": "image", "type": "media.image.v1", "label": "Image", "required": true},
+      {"key": "prompt", "type": "prompt.text.v1", "label": "Generation constraints"}
+    ],
+    "outputs": [{"key": "prompt", "type": "prompt.text.v1", "label": "Image description"}]
+  },
+  "config_schema": {
+    "type": "object", "additionalProperties": false,
+    "required": ["instructions", "image_detail", "max_output_tokens"],
+    "properties": {
+      "instructions": {"type": "string", "minLength": 1, "maxLength": 12000, "default": "Describe the main visible subject and the exact action at this instant in English. Distinguish performing an action from merely holding an object. Record head orientation, gaze relative to the camera, mouth state and object contact; each hand's grip and location; torso lean, shoulders, elbows, knees, feet and support points; spatial relations, clothing, viewpoint, framing, background and visible lighting/shadows. Use image-left/image-right when anatomical left/right is uncertain. Mark occluded or uncertain details rather than inventing them. Do not infer a person's identity, hidden anatomy, exact camera settings or events outside this frame. If no person is visible, say so and describe the garment/object only. Return a factual description, not a proposed new pose or an image-generation result.", "title": "Analysis instructions", "x-workflow-input": {"enabled": true, "type": "prompt"}},
+      "image_detail": {"type": "string", "enum": ["low", "high", "auto"], "default": "high", "title": "Image detail"},
+      "max_output_tokens": {"type": "integer", "minimum": 256, "maximum": 8192, "default": 2400, "title": "Maximum description tokens"}
+    }
+  },
+  "binding_policy": {"workflow_inputs": "schema"},
+  "execution": {"kind": "provider", "executor": "image-description", "revision": "image-description.v1", "provider": "openai", "model_alias": "openai.chat.latest", "model_families": ["openai.text.", "openai.chat."]},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Text", "schema_id": "prompt.image_description.v1", "input_roles": {"media.image.v1": "described_image", "prompt.text.v1": "generation_constraints"}, "output_role": "image_description"}
+}

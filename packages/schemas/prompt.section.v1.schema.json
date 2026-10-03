@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt.section.v1",
+  "title": "Selected prompt section",
+  "description": "Nonempty UTF-8 text extracted from exactly one named Markdown ATX section. The heading is removed; its body is retained through the next same-or-higher-level heading. No instructions are added or rewritten.",
+  "type": "string",
+  "minLength": 1
+}

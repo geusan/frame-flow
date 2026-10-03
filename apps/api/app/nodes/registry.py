@@ -13,6 +13,9 @@ from .executors.performance_transfer import PerformanceTransferExecutor, VoiceCo
 from .executors.reference_captions import ReferenceCaptionsExecutor
 from .executors.frame_extract import FrameExtractExecutor
 from .executors.image_animation import ImageAnimationExecutor
+from .executors.image_description import ImageDescriptionExecutor
+from .executors.prompt_section import PromptSectionExecutor
+from .executors.prompt_combine import PromptCombineExecutor
 from .executors import (
     AudioExtractExecutor,
     CaptionTimelineExecutor,
@@ -215,6 +218,9 @@ node_registry = NodeRegistry(
         "reference-captions": ReferenceCaptionsExecutor(),
         "frame-extract": FrameExtractExecutor(),
         "image-animation": ImageAnimationExecutor(),
+        "image-description": ImageDescriptionExecutor(),
+        "prompt-section": PromptSectionExecutor(),
+        "prompt-combine": PromptCombineExecutor(),
         "caption-timeline": CaptionTimelineExecutor(),
         "character-auto-rig": AutoRigExecutor(),
         "character-auto-rig-tripo": TripoAutoRigExecutor(),

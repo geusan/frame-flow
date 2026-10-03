@@ -46,6 +46,9 @@ assert.equal(modelNode.data.outputPorts.length,2);
 assert.ok(inputPortMatches(modelNode,modelNode.data.inputPorts[0].key,0));
 assert.ok(inputPortMatches(modelNode,`input-${modelNode.data.inputTypes[0]}-0`,0));
 assert.ok(!inputPortMatches(modelNode,'missing',0));
+const imageGenerator={id:'image',data:templates.find(item=>item.data.key==='image.generate').data};
+assert.ok(inputPortMatches(imageGenerator,'prompt',0));
+assert.ok(inputPortMatches(imageGenerator,'input-Prompt-0',0));
 console.log('Manifest port metadata includes all outputs and supports canonical/legacy input handles.');
 for (const key of ['video.frame_extract','video.animate_image']) {
   const definition = definitions.find(d=>d.type_key===key);
@@ -62,3 +65,23 @@ assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='candidate.selec
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='timeline.compose' && d.contract_version===1)),'approve');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='image.generate')),undefined);
 console.log('Manifest human gate policy preserves legacy approval and candidate-selection semantics.');
+const imageDescription = definitions.find(d => d.type_key === 'image.describe' && d.contract_version === 1);
+const imageDescriptionTemplate = nodeTemplateFromDefinition(imageDescription, ports);
+assert.equal(imageDescription.editor.kind, 'generic');
+assert.equal(imageDescriptionTemplate.data.inputPorts.find(p => p.key === 'image').type, 'media.image.v1');
+assert.equal(imageDescriptionTemplate.data.outputPorts[0].type, 'prompt.text.v1');
+assert.ok(workflowTargets([{id:'describe',data:imageDescriptionTemplate.data}],definitions).some(t => t.path === '/config/instructions'));
+const descriptionRoundTrip = migrateStoredGraph({nodes:[{id:'describe',position:{x:20,y:30},data:{...imageDescriptionTemplate.data,config:{instructions:'Describe visible action only.',image_detail:'high',max_output_tokens:2400}}}],edges:[]},templates);
+assert.equal(descriptionRoundTrip.nodes[0].data.config.instructions, 'Describe visible action only.');
+console.log('Image description: Registry library, generic editor, image/prompt ports and workflow-input exposure passed.');
+for (const key of ['prompt.extract_section', 'prompt.combine']) {
+  const definition = definitions.find(d => d.type_key === key && d.contract_version === 1);
+  const template = nodeTemplateFromDefinition(definition, ports);
+  assert.equal(definition.editor.kind, 'generic');
+  assert.equal(template.data.outputPorts[0].type, 'prompt.text.v1');
+  assert.ok(template.data.inputPorts.every(port => port.type === 'prompt.text.v1'));
+  assert.ok(template.data.executable);
+}
+assert.ok(workflowTargets([{id:'section',data:templates.find(t=>t.data.key==='prompt.extract_section').data}],definitions).some(t=>t.path==='/config/heading'));
+assert.equal(templates.find(t=>t.data.key==='prompt.combine').data.inputPorts.length,2);
+console.log('Prompt composition: registered generic editors, two distinct typed inputs and section-heading binding passed.');

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt.image_description.v1",
+  "title": "Image-grounded description prompt",
+  "description": "UTF-8 text artifact. Observed reference image is followed by the visible-evidence description. Optional downstream generation constraints are appended verbatim, outside the model-generated observations. Image indices in the downstream constraints refer to the downstream generation inputs, not the analysis request.",
+  "type": "string",
+  "minLength": 1
+}

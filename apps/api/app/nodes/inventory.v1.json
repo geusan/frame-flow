@@ -21,6 +21,7 @@
       "character.generate",
       "character.image_to_3d",
       "image.generate",
+      "image.describe",
       "llm.assistant",
       "lora.image.generate",
       "lora.train",
@@ -34,6 +35,8 @@
       "audio.voice_convert"
     ],
     "local": [
+      "prompt.extract_section",
+      "prompt.combine",
       "image.study_screen",
       "audio.practice_track",
       "image.practice_motion",

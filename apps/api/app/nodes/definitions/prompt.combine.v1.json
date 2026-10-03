@@ -1,0 +1,21 @@
+{
+  "schema_version": "node.definition.v1",
+  "type_key": "prompt.combine",
+  "contract_version": 1,
+  "lifecycle": "ACTIVE",
+  "display": {"label": "Combine prompts", "description": "고정 Prompt와 가변 Prompt를 다시 쓰거나 요약하지 않고 순서대로 결합", "category": "Utilities", "icon": "brief", "cost_label": "$0.00", "keywords": ["prompt", "combine", "fixed", "variable"]},
+  "ports": {
+    "inputs": [
+      {"key": "fixed", "type": "prompt.text.v1", "label": "Fixed prompt", "required": true},
+      {"key": "variable", "type": "prompt.text.v1", "label": "Variable prompt", "required": true}
+    ],
+    "outputs": [{"key": "prompt", "type": "prompt.text.v1", "label": "Combined prompt"}]
+  },
+  "config_schema": {"type": "object", "additionalProperties": false, "required": ["separator"], "properties": {
+    "separator": {"type": "string", "maxLength": 200, "default": "\n\n", "title": "Separator"}
+  }},
+  "binding_policy": {"workflow_inputs": "none"},
+  "execution": {"kind": "local", "executor": "prompt-combine", "revision": "prompt-combine.v1", "provider": "local", "model_alias": "local.prompt-combine"},
+  "editor": {"kind": "generic"},
+  "artifact_contract": {"primary_type": "Text", "schema_id": "prompt.combined.v1", "input_roles": {"prompt.text.v1": "prompt_fragment"}, "output_role": "combined_prompt"}
+}

@@ -7,7 +7,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { CaptionLayoutEditor } from "@/features/workflows/components/caption-layout-editor";
 import type { RichCaptionDocument } from "@/features/workflows/rich-caption";
 import { HolisticMotionPreview } from "@/features/workflows/components/holistic-motion-preview";
-import { inputHandleId, type CanvasOutput, type StudioFlowNode } from "@/lib/canvas-model";
+import { inputPortMatches, type CanvasOutput, type StudioFlowNode } from "@/lib/canvas-model";
 import { API_BASE, type ModelRecord, type NodeDefinitionRecord, type ProjectSkillRecord } from "@/lib/api";
 import { maximizePlaybackVolume } from "@/lib/media";
 import { modelOptionsForDefinition, providerForModelAlias, providerOptionsForDefinition } from "@/features/nodes/model-options";
@@ -52,7 +52,7 @@ export function ConnectedPromptPreview({ node, definition, nodes, edges }: Pick<
   const promptPort = definition.ports.inputs.find((port) => port.type === "prompt.text.v1");
   if (!promptPort) return null;
   const promptIndex = node.data.inputTypes?.indexOf("Prompt") ?? -1;
-  const promptEdge = promptIndex < 0 ? undefined : edges.find((edge) => edge.target === node.id && edge.targetHandle === inputHandleId("Prompt", promptIndex));
+  const promptEdge = promptIndex < 0 ? undefined : edges.find((edge) => edge.target === node.id && inputPortMatches(node, edge.targetHandle, promptIndex));
   const prompt = promptOutputText(nodes.find((candidate) => candidate.id === promptEdge?.source));
   const acceptsImageWithoutPrompt = !promptPort.required && definition.ports.inputs.some((port) => port.type === "media.image.v1");
   return <div className={`connected-prompt-preview ${prompt || acceptsImageWithoutPrompt ? "connected" : "missing"}`}>

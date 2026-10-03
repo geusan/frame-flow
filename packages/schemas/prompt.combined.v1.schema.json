@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt.combined.v1",
+  "title": "Deterministically combined prompt",
+  "description": "UTF-8 text equal to the complete fixed input, configured separator and complete variable input, in that order. Neither input is trimmed, summarized or rewritten.",
+  "type": "string",
+  "minLength": 1
+}
