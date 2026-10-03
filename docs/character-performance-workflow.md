@@ -82,7 +82,17 @@ API의 숫자 `cost_usd=0`은 청구액이 0이라는 뜻이 아니다. Library�
 첫 결과는 입력 사진과 원본의 구도·마이크 손이 달라 자막이 얼굴에 겹치고 마이크가
 손에서 이탈하는 문제가 있었다. 이 결과를 실행 이력에 보존하고, 위의 시작 이미지
 정렬 단계를 추가했다. 새 시작 이미지는 얼굴/체형과 왼쪽 배치, 마이크 그립, 빈 자막
-공간을 시각 검수했다. 새 영상의 최종 검수는 별도 결과 확인이 필요하다.
+공간을 시각 검수했다. 보정 영상의 2/6/10/14초 샘플에서 왼쪽 배치, 마이크를 든
+같은 손의 유지, 자유로운 손의 가리키기 순서와 얼굴/머리 일관성을 확인했다.
+생성형 동작의 크기와 미세한 표정은 원본과 완전히 동일하지 않을 수 있다.
+
+최종 Artifact: `art_66127cc338a14d8e97`.
+fal 영상 생성 2건은 각각 응답의 billable units가 16초이며 현재 단가 $0.168/초로
+합계 $5.376이다. 첫 건은 로그인한 fal Usage 화면에서도 $2.688을 확인했다.
+ElevenLabs 응답의 character-cost는 160이다. OpenAI 시작 이미지 1장과 레퍼런스
+분석의 실청구액은 현재 Adapter에 token usage가 저장되지 않았고 비용 조회 API 권한도
+없어 확인하지 못했다. 앱의 0달러 기록을 실제 무료로 해석하면 안 된다.
+상세 관측값은 `output/character-reference-video/cost-report.json`에 보관한다.
 
 자동 검증은 Provider normalized request, pending/resume, 오류와 비용 metadata,
 Config/Port/digest, Artifact lineage, cache, Local/Temporal parity, 원본 Audio stream-copy,
