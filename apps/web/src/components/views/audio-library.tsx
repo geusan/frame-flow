@@ -35,7 +35,7 @@ function Waveform() {
 
 function AudioDetail({ asset, onClose }: { asset: ArtifactListItem; onClose: () => void }) {
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-    <DialogContent className="audio-asset-dialog" overlayClassName="scene-search-backdrop">
+    <DialogContent className="audio-asset-dialog z-[111]" overlayClassName="scene-search-backdrop">
       <DialogDescription className="sr-only">Listen to and download {asset.filename}</DialogDescription>
       <div className="scene-search-head"><span><small>Audio asset</small><DialogTitle asChild><strong title={asset.filename}>{asset.filename}</strong></DialogTitle></span><DialogClose asChild><button type="button" aria-label="Close audio"><X size={16} /></button></DialogClose></div>
       <div className="audio-asset-dialog-body">
