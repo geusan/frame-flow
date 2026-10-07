@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import json
 import math
 import os
@@ -102,7 +104,7 @@ class FixtureProviderCapabilityExecutor:
     def supports(self, context: NodeExecutionContext) -> bool:
         return (
             context.definition.execution.kind == "provider"
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() != "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() != "live"
         )
 
     def execute(
@@ -298,7 +300,7 @@ class ReferenceAnalysisCapabilityExecutor:
         analysis_options = {}
         if context.model_alias.startswith(("openai.chat.", "openai.text.")):
             analysis_options["analyzer_revision"] = context.definition.execution.revision
-            if os.getenv("REFERENCE_ANALYSIS_MODE", "live").strip().lower() == "live":
+            if provider_value("REFERENCE_ANALYSIS_MODE", "live").strip().lower() == "live":
                 from ...reference_analysis_openai import OpenAIReferenceAnalyzer, OpenAIReferenceRecognizer
                 analysis_options.update(
                     semantic_analyzer=OpenAIReferenceAnalyzer(
@@ -436,7 +438,7 @@ class SubtitleAlignCapabilityExecutor:
         audio = _require(artifacts, "Audio", "Audio")
         media_runtime = context.require_media_runtime()
         duration = media_runtime.media_duration(audio)
-        mode = os.getenv("SUBTITLE_ALIGNMENT_MODE", "live").strip().lower()
+        mode = provider_value("SUBTITLE_ALIGNMENT_MODE", "live").strip().lower()
         if mode == "live":
             transcript = get_speech_recognizer().transcribe(
                 audio.data,
@@ -445,7 +447,7 @@ class SubtitleAlignCapabilityExecutor:
             )
             content = media_runtime.segments_to_srt(transcript.segments)
             title = f"Speech subtitles · {transcript.language_code}"
-        elif mode == "heuristic" and os.getenv("APP_ENV") == "test":
+        elif mode == "heuristic" and provider_value("APP_ENV") == "test":
             script = _require(artifacts, "Script", "Script", "TimedScript")
             content = media_runtime.build_subtitles(_text_from_artifact(script), duration)
             title = "Timed subtitles"

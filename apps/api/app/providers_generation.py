@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 import io
 import os
 import re
@@ -204,7 +206,7 @@ class GoogleGenerationServices:
             candidate_count=max(1, min(4, candidate_count)),
             aspect_ratio=aspect_ratio,
             seed=seed,
-            output_gcs_uri=os.getenv("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
+            output_gcs_uri=provider_value("GOOGLE_VIDEO_OUTPUT_GCS_URI") or None,
             reference_images=[(item.data, item.content_type) for item in image_inputs[:3]] if image_input_mode == "reference" else [],
             **({"image_data": image_inputs[0].data, "image_mime_type": image_inputs[0].content_type} if image_input_mode == "first_frame" else {}),
             resolution=normalized_resolution,
@@ -212,8 +214,8 @@ class GoogleGenerationServices:
         return self.video.wait_for_generated(
             submission,
             logical_model=logical_model,
-            timeout_seconds=int(os.getenv("GOOGLE_VIDEO_TIMEOUT_SECONDS", "900")),
-            poll_interval_seconds=float(os.getenv("GOOGLE_VIDEO_POLL_SECONDS", "10")),
+            timeout_seconds=int(provider_value("GOOGLE_VIDEO_TIMEOUT_SECONDS", "900")),
+            poll_interval_seconds=float(provider_value("GOOGLE_VIDEO_POLL_SECONDS", "10")),
         )
 
     def generate_speech(

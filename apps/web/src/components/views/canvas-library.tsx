@@ -19,7 +19,7 @@ function isLegacyMockCanvas(nodes: Array<Record<string, unknown>>): boolean {
     || nodes.some((node) => node.id === "format" && String((node.data as Record<string, unknown> | undefined)?.label ?? "") === "Contrarian History");
 }
 
-export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }) {
+export function CanvasLibrary({ onOpen, migrateLegacy = true }: { onOpen: (canvasId: string) => void; migrateLegacy?: boolean }) {
   const [canvases, setCanvases] = useState<CanvasDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -46,7 +46,7 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
     const loadAndMigrate = async () => {
       try {
         let records = await frameflowApi.listCanvases();
-        const raw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+        const raw = migrateLegacy ? window.localStorage.getItem(LEGACY_STORAGE_KEY) : null;
         if (raw) {
           const graph = JSON.parse(raw) as { id?: string; name?: string; nodes?: Array<Record<string, unknown>>; edges?: Array<Record<string, unknown>>; activeRunId?: string };
           const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
@@ -68,7 +68,7 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
     };
     void loadAndMigrate();
     return () => { active = false; };
-  }, []);
+  }, [migrateLegacy]);
 
   const createCanvas = async () => {
     setCreating(true);
@@ -154,7 +154,7 @@ export function CanvasLibrary({ onOpen }: { onOpen: (canvasId: string) => void }
     {error && <p className="experiment-history-state error">{error}</p>}
     {notice && !error && <p className="experiment-history-state success">{notice}</p>}
     {!error && loading && <p className="experiment-history-state">Loading persisted canvases…</p>}
-    {!error && !loading && !canvases.length && <div className="canvas-library-empty"><span><Workflow size={24} /></span><strong>No saved canvases</strong><p>새 Canvas를 만들면 그래프가 PostgreSQL에 자동 저장됩니다.</p><Button type="button" onClick={() => void createCanvas()}><Plus size={14} /> Create first canvas</Button></div>}
+    {!error && !loading && !canvases.length && <div className="canvas-library-empty"><span><Workflow size={24} /></span><strong>No saved canvases</strong><p>새 Canvas를 만들면 그래프가 서버에 자동 저장됩니다.</p><Button type="button" onClick={() => void createCanvas()}><Plus size={14} /> Create first canvas</Button></div>}
     <div className="canvas-document-grid">{canvases.map((canvas) => <article className="canvas-document-card" key={canvas.id}>
       <button type="button" className="canvas-document-open" onClick={() => onOpen(canvas.id)}>
         <span className="canvas-document-icon"><Workflow size={18} /></span>

@@ -5,6 +5,8 @@ credentials, full provider responses or signed download URLs.
 """
 from __future__ import annotations
 
+from .access import credential_scope_key
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 from collections import defaultdict
@@ -151,6 +153,14 @@ def _observation(db, row):
     db.add(ProviderCostObservation(id="costobs_" + uuid4().hex, cost_id=row.id, payload=cost_payload(row)))
 
 
+def receipt_session():
+    from .access import current_scope
+    scope=current_scope()
+    if scope and scope.adapters.cost_sessions:
+        return scope.adapters.cost_sessions(scope.context)
+    return SessionLocal()
+
+
 class ProviderCall:
     def __init__(self, provider, operation, model, *, request_id=None, context=None):
         self.provider, self.operation, self.model = provider, operation, model
@@ -160,15 +170,15 @@ class ProviderCall:
             return
         run_id, node_run_id = current_owner()
         scope = _scope.get()
-        with SessionLocal() as db:
+        with receipt_session() as db:
             row = db.scalar(select(ProviderCostRecord).where(
-                ProviderCostRecord.provider == provider, ProviderCostRecord.provider_request_id == request_id,
+                ProviderCostRecord.provider == provider, ProviderCostRecord.provider_request_id == request_id, ProviderCostRecord.credential_scope == credential_scope_key(),
             )) if request_id else None
             if row is None:
                 row = ProviderCostRecord(id="cost_" + uuid4().hex,
                     experiment_id=scope.experiment_id if scope else None, run_id=run_id, node_run_id=node_run_id,
                     provider=provider, operation=operation, requested_model=model, model=model,
-                    provider_request_id=request_id, status="pending", outcome="pending", usage={}, pricing={},
+                    provider_request_id=request_id, credential_scope=credential_scope_key(), status="pending", outcome="pending", usage={}, pricing={},
                     reason="awaiting_provider_response")
                 db.add(row)
                 _observation(db, row)
@@ -184,11 +194,11 @@ class ProviderCall:
             return
         for retry in range(2):
             try:
-                with SessionLocal() as db:
+                with receipt_session() as db:
                     row = db.get(ProviderCostRecord, self.id)
                     existing = db.scalar(select(ProviderCostRecord).where(
                         ProviderCostRecord.provider == self.provider,
-                        ProviderCostRecord.provider_request_id == request_id,
+                        ProviderCostRecord.provider_request_id == request_id, ProviderCostRecord.credential_scope == credential_scope_key(),
                         ProviderCostRecord.id != self.id,
                     ))
                     if existing:
@@ -221,7 +231,7 @@ class ProviderCall:
         else:
             amount, pricing, missing = calculate(self.provider, actual_model, self.operation, clean_usage, self.context)
             status, reason = ("calculated", None) if amount is not None else ("unreported", reason or missing)
-        with SessionLocal() as db:
+        with receipt_session() as db:
             row = db.scalar(select(ProviderCostRecord).where(ProviderCostRecord.id == self.id).with_for_update())
             # A resumed task with less information cannot erase a prior receipt.
             if row.amount_usd is not None:
@@ -237,7 +247,7 @@ class ProviderCall:
             return
         status_code = getattr(error, "status_code", None) or getattr(getattr(error, "response", None), "status_code", None)
         rejected = status_code in {400, 401, 402, 403, 404, 413, 422, 429}
-        with SessionLocal() as db:
+        with receipt_session() as db:
             row = db.get(ProviderCostRecord, self.id)
             if row.outcome == "completed":
                 return
@@ -319,7 +329,7 @@ def record_google_video_result(model, request_id, *, video_count):
     if not _enabled.get():
         return
     with SessionLocal() as db:
-        row = db.scalar(select(ProviderCostRecord).where(ProviderCostRecord.provider == "google", ProviderCostRecord.provider_request_id == request_id))
+        row = db.scalar(select(ProviderCostRecord).where(ProviderCostRecord.provider == "google", ProviderCostRecord.provider_request_id == request_id, ProviderCostRecord.credential_scope == credential_scope_key()))
         context = dict((row.usage or {}).get("request_dimensions") or {}) if row else {}
         model = row.requested_model if row and model == "unspecified" else model
     # Provider output count is known at completion; requested count is not billable usage.
@@ -335,7 +345,7 @@ def record_google_video_media(model, request_id, videos):
     import tempfile
     from pathlib import Path
     with SessionLocal() as db:
-        row = db.scalar(select(ProviderCostRecord).where(ProviderCostRecord.provider == "google", ProviderCostRecord.provider_request_id == request_id))
+        row = db.scalar(select(ProviderCostRecord).where(ProviderCostRecord.provider == "google", ProviderCostRecord.provider_request_id == request_id, ProviderCostRecord.credential_scope == credential_scope_key()))
         context = dict((row.usage or {}).get("request_dimensions") or {}) if row else {}
     dimensions = []
     try:

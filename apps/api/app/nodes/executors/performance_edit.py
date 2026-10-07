@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import io
 import os
 import tempfile
@@ -17,7 +19,7 @@ from .performance_transfer import _input, _runtime_revision, _store
 class PerformanceEditExecutor:
     @staticmethod
     def runtime_revision(definition, config):
-        return _runtime_revision(definition) + ':' + os.getenv('GENERATION_PROVIDER_MODE', 'live')
+        return _runtime_revision(definition) + ':' + provider_value('GENERATION_PROVIDER_MODE', 'live')
 
     def execute(self, context, config, inputs):
         if context.model_alias != 'google.video.omni.vertex':
@@ -45,7 +47,7 @@ class PerformanceEditExecutor:
                 '-c:v','libx264','-preset','veryfast','-crf','18','-pix_fmt','yuv420p','-movflags','+faststart',str(normalized)])
             payload = edit_request(prompt=config['prompt'], image=image.data, image_content_type=image.content_type,
                                    video=normalized.read_bytes(), resolution=config['resolution'])
-            fixture = os.getenv('GENERATION_PROVIDER_MODE', 'live') != 'live'
+            fixture = provider_value('GENERATION_PROVIDER_MODE', 'live') != 'live'
             if fixture:
                 result = ProviderMedia(render_video_mp4(context.request_hash, duration), 'video/mp4',
                                        'fixture_' + context.request_hash[:20], {'cost_status': 'fixture'})

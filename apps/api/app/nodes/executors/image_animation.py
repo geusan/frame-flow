@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import os
 
 from .contract_capabilities import FixtureProviderCapabilityExecutor
@@ -18,7 +20,7 @@ class ImageAnimationExecutor(VideoGenerationCapabilityExecutor):
 
     @staticmethod
     def runtime_revision(definition, resolved_config):
-        mode = os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower()
+        mode = provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower()
         return f"{definition.execution.revision}:{mode}"
 
     def execute(self, context, config, typed_inputs):
@@ -30,7 +32,7 @@ class ImageAnimationExecutor(VideoGenerationCapabilityExecutor):
             raise ImageAnimationError("Image animation requires exactly one starting Image")
         if config["resolution"] == "1080p" and config["duration_seconds"] != 8:
             raise ImageAnimationError("1080p image animation requires an 8-second clip")
-        if os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() != "live":
+        if provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() != "live":
             return FixtureProviderCapabilityExecutor().execute(context, config, typed_inputs)
         tasks = context.require_provider_tasks()
         tasks.claim("google", "image-animation", resumable=False)

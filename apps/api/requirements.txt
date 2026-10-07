@@ -25,3 +25,6 @@ boto3>=1.40,<2
 # NumPy 2.5+ requires Python 3.12 and cannot be used while host development
 # continues to support Python 3.11.
 numpy>=1.26,<2.5
+
+# Image executors import PIL at application startup.
+Pillow>=12.3,<13

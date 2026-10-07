@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 from .billing import call_with_cost, submit_sdk_with_cost, record_google_video_result, record_google_video_media
 
 import base64
@@ -35,7 +37,7 @@ class GoogleProviderConfig:
         credentials = google_credentials_from_env()
         if not project or credentials is None:
             raise GoogleProviderError("Google Service Account JSON is required for live Google providers")
-        return cls(project=project, credentials=credentials, location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), api_version="v1")
+        return cls(project=project, credentials=credentials, location=provider_value("GOOGLE_CLOUD_LOCATION", "us-central1"), api_version="v1")
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 import base64
 import json
 import os
@@ -42,10 +44,10 @@ def reference_request(*, prompt, resolution, duration, ratio, media):
 
 class MiniMaxVideoService:
     def __init__(self, *, api_key=None, base_url=None, client=None, poll_interval=5):
-        self.key = api_key if api_key is not None else os.getenv("MINIMAX_API_KEY", "")
+        self.key = api_key if api_key is not None else provider_value("MINIMAX_API_KEY", "")
         if not self.key:
             raise MediaProviderError("MINIMAX_API_KEY is required")
-        self.base = (base_url or os.getenv("MINIMAX_API_HOST") or "https://api.minimax.io").rstrip("/")
+        self.base = (base_url or provider_value("MINIMAX_API_HOST") or "https://api.minimax.io").rstrip("/")
         parsed = httpx.URL(self.base)
         if parsed.scheme != "https" or parsed.userinfo or parsed.path not in {"", "/"}:
             raise MediaProviderError("MiniMax API host must be an HTTPS origin without embedded credentials")

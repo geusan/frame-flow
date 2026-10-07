@@ -205,6 +205,18 @@ class SqlAlchemyAdministrationOperations:
         return usage.get(alias, {"usage_count": 0, "recorded_cost_usd": 0.0, "last_used_at": None})
 
     def list_models(self) -> list[dict[str, Any]]:
+        from ...access import current_scope
+        scope = current_scope()
+        if scope:
+            available = {reference.provider for reference in scope.context.credential_references}
+            with self._session_factory() as db:
+                usage = self._usage(db)
+            return [{"logical_alias": alias, "exact_model_id": model_id,
+                     "provider": alias.split(".")[0], "modality": alias.split(".")[1],
+                     "region": "Provider default", "status": "active" if alias.split(".")[0] in available or scope.adapters.allow_fixtures else "disabled",
+                     "configured": alias.split(".")[0] in available or scope.adapters.allow_fixtures,
+                     "configuration": "Workspace credential", **self._usage_for(usage, alias)}
+                    for alias,model_id in provider_catalog.ALL_MODEL_REGISTRY.items() if not alias.startswith(("chatgpt.","claude."))]
         with self._session_factory() as db:
             usage = self._usage(db)
             google = get_provider_record(db, "google")

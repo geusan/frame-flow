@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import os
 from typing import Any
 
@@ -28,7 +30,7 @@ class TextGenerationCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.model_alias.startswith(("google.text.", "openai.text.", "openai.chat."))
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
     def execute(

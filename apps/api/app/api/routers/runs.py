@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...access import AccessDenied
+
 import asyncio
 import json
 from typing import Any, AsyncIterator, NoReturn
@@ -104,6 +106,9 @@ async def canvas_run_events(
         while not await request.is_disconnected():
             try:
                 payload = application.get_canvas_run(run_id)
+            except AccessDenied:
+                yield "event: access.revoked\ndata: {}\n\n"
+                return
             except RunNotFoundError:
                 yield (
                     "event: canvas.run.error\n"

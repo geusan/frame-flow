@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 import json
 import os
 from typing import Any
@@ -55,7 +57,7 @@ def validate_service_account_json(raw: str) -> dict[str, Any]:
 
 
 def service_account_info_from_env() -> dict[str, Any] | None:
-    raw = os.getenv(GOOGLE_SERVICE_ACCOUNT_ENV, "").strip()
+    raw = provider_value(GOOGLE_SERVICE_ACCOUNT_ENV, "").strip()
     return parse_service_account_json(raw) if raw else None
 
 
@@ -75,7 +77,7 @@ def google_project_from_env() -> str:
     payload = service_account_info_from_env()
     if payload:
         return str(payload["project_id"]).strip()
-    configured = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+    configured = provider_value("GOOGLE_CLOUD_PROJECT", "").strip()
     if configured:
         return configured
     return ""

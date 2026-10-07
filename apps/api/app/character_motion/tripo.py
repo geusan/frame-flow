@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from ..provider_credentials import provider_value
 from ..billing import submit_with_cost, record_provider_result
 
 from dataclasses import dataclass
@@ -69,22 +71,22 @@ class TripoClient:
         poll_interval_seconds: float | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
-        self.api_key = (api_key if api_key is not None else os.getenv("TRIPO_API_KEY", "")).strip()
+        self.api_key = (api_key if api_key is not None else provider_value("TRIPO_API_KEY", "")).strip()
         if not self.api_key:
             raise TripoProviderError(
                 "Tripo API key is not configured. Enable Tripo in Settings or set TRIPO_API_KEY on the worker.",
                 retryable=False,
             )
-        self.base_url = (base_url or os.getenv("TRIPO_BASE_URL", TRIPO_DEFAULT_BASE_URL)).rstrip("/")
+        self.base_url = (base_url or provider_value("TRIPO_BASE_URL", TRIPO_DEFAULT_BASE_URL)).rstrip("/")
         parsed_base = urlparse(self.base_url)
-        if parsed_base.scheme != "https" and os.getenv("APP_ENV") != "test":
+        if parsed_base.scheme != "https" and provider_value("APP_ENV") != "test":
             raise TripoProviderError("TRIPO_BASE_URL must use HTTPS", retryable=False)
         if not parsed_base.hostname:
             raise TripoProviderError("TRIPO_BASE_URL is invalid", retryable=False)
         self.base_hostname = parsed_base.hostname.lower()
         configured_hosts = {
             value.strip().lower()
-            for value in os.getenv("TRIPO_ALLOWED_DOWNLOAD_HOSTS", "").split(",")
+            for value in provider_value("TRIPO_ALLOWED_DOWNLOAD_HOSTS", "").split(",")
             if value.strip()
         }
         self.allowed_download_hosts = {self.base_hostname, *configured_hosts}
@@ -93,7 +95,7 @@ class TripoClient:
             self.poll_interval_seconds = (
                 float(poll_interval_seconds)
                 if poll_interval_seconds is not None
-                else float(os.getenv("TRIPO_POLL_INTERVAL_SECONDS", "2"))
+                else float(provider_value("TRIPO_POLL_INTERVAL_SECONDS", "2"))
             )
         except ValueError as exc:
             raise TripoProviderError("TRIPO_POLL_INTERVAL_SECONDS must be numeric", retryable=False) from exc

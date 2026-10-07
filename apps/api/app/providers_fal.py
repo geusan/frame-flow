@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 import os
 import time
 from dataclasses import dataclass
@@ -20,10 +22,10 @@ class FalProviderConfig:
 
     @classmethod
     def from_env(cls) -> "FalProviderConfig":
-        api_key = os.getenv("FAL_KEY", "").strip()
+        api_key = provider_value("FAL_KEY", "").strip()
         if not api_key:
             raise RuntimeError("FAL_KEY is required for fal LoRA generation")
-        return cls(api_key=api_key, queue_base_url=os.getenv("FAL_QUEUE_BASE_URL", "https://queue.fal.run").rstrip("/"))
+        return cls(api_key=api_key, queue_base_url=provider_value("FAL_QUEUE_BASE_URL", "https://queue.fal.run").rstrip("/"))
 
 
 @dataclass(frozen=True)

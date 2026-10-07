@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import io
 import os
 import tempfile
@@ -27,7 +29,7 @@ def animation_timing(info, requested):
 class OmniAnimationExecutor:
     @staticmethod
     def runtime_revision(definition, config):
-        return definition.execution.revision + ':' + os.getenv('GENERATION_PROVIDER_MODE','live') + '+ffmpeg:' + _renderer_revision()[1]
+        return definition.execution.revision + ':' + provider_value('GENERATION_PROVIDER_MODE','live') + '+ffmpeg:' + _renderer_revision()[1]
 
     def execute(self, context, config, inputs):
         if context.model_alias != 'google.video.omni.vertex':
@@ -47,7 +49,7 @@ class OmniAnimationExecutor:
             raise MediaProviderError('Starting image is invalid') from exc
         payload=animation_request(prompt=context.prompt,image=image.data,image_content_type=image.content_type,
             resolution=config['resolution'],aspect_ratio=config['aspect_ratio'],duration_seconds=config['duration_seconds'])
-        fixture=os.getenv('GENERATION_PROVIDER_MODE','live')!='live'
+        fixture=provider_value('GENERATION_PROVIDER_MODE','live')!='live'
         if fixture:
             result=ProviderMedia(render_video_mp4(context.request_hash,config['duration_seconds']),'video/mp4',
                 'fixture_'+context.request_hash[:20],{'cost_status':'fixture'})

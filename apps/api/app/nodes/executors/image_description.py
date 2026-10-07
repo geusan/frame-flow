@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import io
 import os
 
@@ -20,7 +22,7 @@ class ImageDescriptionError(ValueError):
 class ImageDescriptionExecutor:
     @staticmethod
     def runtime_revision(definition, resolved_config):
-        mode = os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower()
+        mode = provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower()
         return f"{definition.execution.revision}:{mode}"
 
     def execute(self, context, config, typed_inputs):
@@ -44,9 +46,9 @@ class ImageDescriptionExecutor:
         exact_model = model_id_for_alias(context.model_alias)
         if not exact_model or not context.model_alias.startswith(tuple(context.definition.execution.model_families)):
             raise ImageDescriptionError("Image description requires a registered OpenAI text/vision model")
-        mode = os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower()
+        mode = provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower()
         context.report_progress(15, "Reading the reference image's action, pose and contact points")
-        if mode == "fixture" and os.getenv("APP_ENV") == "test":
+        if mode == "fixture" and provider_value("APP_ENV") == "test":
             observation = "Fixture image description: a subject is performing the action shown in the supplied image."
             request_id = "fixture_vision_" + context.request_hash[:16]
             provider_metadata = {"usage": {}, "response_model": exact_model}

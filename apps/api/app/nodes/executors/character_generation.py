@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import json
 import os
 from typing import Any
@@ -17,7 +19,7 @@ class CharacterGenerationCapabilityExecutor:
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Character"
             and context.model_alias.startswith(("google.image.", "openai.image."))
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
     def execute(

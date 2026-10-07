@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 from .billing import call_with_cost
 
 import json
@@ -322,7 +324,7 @@ def get_speech_recognizer() -> SpeechRecognizer:
     project = google_project_from_env()
     if not project:
         raise RuntimeError("GOOGLE_CLOUD_PROJECT is required for Chirp 3 Speech-to-Text")
-    speech_location = os.getenv("GOOGLE_SPEECH_LOCATION", "us").strip() or "us"
+    speech_location = provider_value("GOOGLE_SPEECH_LOCATION", "us").strip() or "us"
     return GoogleChirp3Recognizer(project, speech_location)
 
 

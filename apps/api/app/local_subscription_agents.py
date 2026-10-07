@@ -52,6 +52,9 @@ def _executable(env_name: str, fallback: str) -> str | None:
 
 
 def _command_env(*, setup_token: str = "", chatgpt_subscription: bool = False) -> dict[str, str]:
+    from .access import AccessDenied, current_scope
+    if current_scope():
+        raise AccessDenied(403, "host_subscription_credentials_disabled")
     env = dict(os.environ)
     if chatgpt_subscription:
         env.pop("OPENAI_API_KEY", None)

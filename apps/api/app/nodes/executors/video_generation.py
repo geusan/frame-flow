@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import os
 from typing import Any
 
@@ -21,7 +23,7 @@ class VideoGenerationCapabilityExecutor:
             context.definition.execution.kind == "provider"
             and context.definition.artifact_contract.primary_type == "Video"
             and context.model_alias.startswith("google.video.")
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
     def execute(

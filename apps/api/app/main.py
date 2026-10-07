@@ -52,38 +52,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
-app = FastAPI(
-    title="Frameflow Control Plane",
-    version="0.1.0",
-    description="Reference-isolated, artifact-first shorts workflow API",
-    lifespan=lifespan,
-)
+from .factory import create_app
 
-
-@app.middleware("http")
-async def record_request_costs(request, call_next):
-    with request_cost_scope():
-        return await call_next(request)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):3\d{3}",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.include_router(artifacts_router)
-app.include_router(canvases_router)
-app.include_router(fonts_router)
-app.include_router(formats_router)
-app.include_router(generation_router)
-app.include_router(references_router)
-app.include_router(runs_router)
-app.include_router(settings_router)
-app.include_router(skills_router)
-app.include_router(system_router)
-app.include_router(workflows_router)
+app = create_app(lifespan=lifespan)
 
 
 def uses_temporal() -> bool:

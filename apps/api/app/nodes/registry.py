@@ -111,6 +111,12 @@ class NodeRegistry:
         parameters: dict[str, Any],
         typed_inputs: list[dict[str, Any]],
     ) -> NodeExecutionResult:
+        from ..access import AccessDenied,require_live_scope
+        scope=require_live_scope()
+        if context.workspace_context is not None and (scope is None or context.workspace_context!=scope.context):
+            raise AccessDenied(403,"execution_context_mismatch")
+        if scope and scope.adapters.execution_policy:
+            scope.adapters.execution_policy.assert_executor(scope.context,context.definition)
         self.assert_runnable(context.definition)
         config = self.resolve_config(context.definition, parameters)
         return self._executors[context.definition.execution.executor].execute(context, config, typed_inputs)

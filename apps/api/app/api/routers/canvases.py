@@ -212,6 +212,7 @@ def save_canvas_document(
             )
         )
     except (
+        CanvasNotFoundError,
         CanvasRevisionConflictError,
         CanvasValidationError,
     ) as exc:

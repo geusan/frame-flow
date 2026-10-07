@@ -458,6 +458,9 @@ def apply_provider_settings_to_environment(records: list[ProviderSettingRecord])
 
 
 def refresh_provider_environment() -> None:
+    from .access import current_scope
+    if current_scope():
+        return  # Scoped Providers resolve references directly on each call.
     """Refresh long-running worker processes before executing provider work."""
     with SessionLocal() as db:
         records = ensure_provider_settings(db)

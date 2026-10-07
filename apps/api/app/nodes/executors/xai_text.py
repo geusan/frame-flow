@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import os
 from typing import Any
 
@@ -13,7 +15,7 @@ class XAITextCapabilityExecutor:
         return (
             context.definition.execution.kind == "provider"
             and context.model_alias.startswith("xai.text.")
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
     def execute(

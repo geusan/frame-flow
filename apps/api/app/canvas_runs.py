@@ -338,6 +338,22 @@ class LocalCanvasRunEngine:
         self.tasks: dict[str, asyncio.Task[None]] = {}
 
     async def start(self, run_id: str) -> None:
+        from .access import current_scope, execution_scope
+        from .scoped_worker import context_from_record
+        scope=current_scope()
+        existing=self.tasks.get(run_id)
+        if existing and not existing.done():return
+        if scope:
+            with SessionLocal() as db:
+                run=db.get(CanvasRunRecord,run_id)
+                if run is None:
+                    raise ValueError("Run not found")
+                context=context_from_record(run)
+            with execution_scope(context,scope.adapters):
+                task=asyncio.create_task(self._execute(run_id))
+            self.tasks[run_id] = task
+            task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+            return
         existing = self.tasks.get(run_id)
         if existing and not existing.done():
             return
@@ -405,6 +421,12 @@ class LocalCanvasRunEngine:
 
 
 local_canvas_engine = LocalCanvasRunEngine()
+
+
+def get_local_canvas_engine():
+    from .access import current_scope
+    scope=current_scope()
+    return scope.adapters.scheduler if scope and scope.adapters.scheduler else local_canvas_engine
 
 
 def canvas_run_parameters(run: CanvasRunRecord, data: dict[str, Any]) -> dict[str, Any]:

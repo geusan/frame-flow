@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import os
 from typing import Any
 
@@ -15,7 +17,7 @@ class FalLoraImageCapabilityExecutor:
             and context.definition.artifact_contract.primary_type == "Image"
             and context.model_alias.startswith("fal.image.")
             and "lora_url" in context.definition.config_schema.get("properties", {})
-            and os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
+            and provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower() == "live"
         )
 
     def execute(

@@ -5,6 +5,7 @@ from typing import Any, Callable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ...canvas_runs import get_local_canvas_engine
 from ...canvas_runs import (
     canvas_run_response,
     create_canvas_run,
@@ -157,7 +158,7 @@ class LegacySqlAlchemyRunOperations:
                     )
                 except ValueError as exc:
                     raise RunConflictError(str(exc)) from exc
-                await local_canvas_engine.start(command.run_id)
+                await get_local_canvas_engine().start(command.run_id)
             db.expire_all()
             refreshed = db.get(CanvasRunRecord, command.run_id)
             if refreshed is None:
@@ -188,7 +189,7 @@ class LegacySqlAlchemyRunOperations:
                     )
                 except ValueError as exc:
                     raise RunConflictError(str(exc)) from exc
-                await local_canvas_engine.start(command.run_id)
+                await get_local_canvas_engine().start(command.run_id)
             db.expire_all()
             refreshed = db.get(CanvasRunRecord, command.run_id)
             if refreshed is None:

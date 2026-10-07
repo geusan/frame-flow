@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 from .billing import call_with_cost
 
 import base64
@@ -36,14 +38,14 @@ class OpenAIProviderConfig:
 
     @classmethod
     def from_env(cls) -> "OpenAIProviderConfig":
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        api_key = provider_value("OPENAI_API_KEY", "").strip()
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is required for OpenAI provider models")
         return cls(
             api_key=api_key,
-            base_url=os.getenv("OPENAI_BASE_URL") or None,
-            organization=os.getenv("OPENAI_ORG_ID") or None,
-            project=os.getenv("OPENAI_PROJECT_ID") or None,
+            base_url=provider_value("OPENAI_BASE_URL") or None,
+            organization=provider_value("OPENAI_ORG_ID") or None,
+            project=provider_value("OPENAI_PROJECT_ID") or None,
         )
 
 

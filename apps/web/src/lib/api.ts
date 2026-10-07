@@ -1,4 +1,6 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+import { createBrowserTransport, type ApiTransport } from "./api-transport";
+const defaultTransport = createBrowserTransport(process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000", process.env.NEXT_PUBLIC_STUDIO_EMBED_ROOT ?? "");
+export const API_BASE = defaultTransport.baseUrl;
 
 export interface InspectResult {
   canonical_url: string;
@@ -721,9 +723,9 @@ export interface ArtifactLineageGraph {
   edges: ArtifactLineageEdge[];
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function requestWithTransport<T>(transport: ApiTransport, path: string, init?: RequestInit): Promise<T> {
   const hasFormBody = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await transport.send(path, {
     ...init,
     headers: { ...(hasFormBody ? {} : { "content-type": "application/json" }), ...init?.headers },
   });
@@ -735,8 +737,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function requestBlob(path: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_BASE}${path}`);
+async function blobWithTransport(transport: ApiTransport, path: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await transport.send(path);
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(body.detail ?? `API request failed (${response.status})`);
@@ -752,7 +754,10 @@ const EMPTY_CANVAS_DOCUMENT: CanvasDocumentV1 = {
   runtime: { schema_version: "canvas.runtime.v1", nodes: {} },
 };
 
-export const frameflowApi = {
+export function createFrameflowApi(transport: ApiTransport) {
+  const request = <T>(path: string, init?: RequestInit) => requestWithTransport<T>(transport, path, init);
+  const requestBlob = (path: string) => blobWithTransport(transport, path);
+  return {
   storageSettings: () => request<StorageConfiguration>("/settings/storage"),
   saveStorage: (values: Record<string, string | number>, baseProfileId?: string) => request<StorageProfile>("/settings/storage/profiles", { method: "POST", body: JSON.stringify({ values, base_profile_id: baseProfileId }) }),
   testStorage: (id: string) => request<{ok: boolean}>(`/settings/storage/profiles/${encodeURIComponent(id)}/test`, { method: "POST" }),
@@ -881,9 +886,9 @@ export const frameflowApi = {
   cancelCanvasRun: (runId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/cancel`, { method: "POST" }),
   selectCanvasCandidate: (runId: string, canvasNodeId: string, artifactId: string) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/select`, { method: "POST", body: JSON.stringify({ artifact_id: artifactId }) }),
   approveCanvasNode: (runId: string, canvasNodeId: string, parameters: Record<string, unknown>) => request<CanvasRunRecord>(`/canvas-runs/${runId}/nodes/${canvasNodeId}/approve`, { method: "POST", body: JSON.stringify({ parameters }) }),
-  canvasRunEventsUrl: (runId: string) => `${API_BASE}/canvas-runs/${runId}/events`,
+  canvasRunEventsUrl: (runId: string) => `${transport.baseUrl}/canvas-runs/${runId}/events`,
 };
-
+}
 
 export interface StorageProfile {
   id: string;
@@ -906,3 +911,5 @@ export interface StorageProfile {
 }
 export interface StorageConfiguration { providers: string[]; active_profile_id: string | null; environment_provider: string; profiles: StorageProfile[] }
 export interface StorageMigrationPlan { target_profile_id: string; count: number; size_bytes: number; artifact_ids: string[]; source_deleted: boolean }
+
+export const frameflowApi = createFrameflowApi(defaultTransport);

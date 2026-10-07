@@ -1,5 +1,7 @@
 "use client";
 
+import { draftBackups } from "../../lib/draft-backups";
+
 import { CostValue } from "@/components/shared/cost-value";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -611,7 +613,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       if (recoveredImport || reconciled.changed || migrated.nodes.length !== document.nodes.length || migrated.edges.length !== document.edges.length) setSaveState("Unsaved");
     }).catch(() => {
       try {
-        const stored = window.localStorage.getItem(backupKey);
+        const stored = draftBackups.getItem(backupKey);
         if (stored) {
           const graph = JSON.parse(stored) as GraphSnapshot;
           if (Array.isArray(graph.nodes) && Array.isArray(graph.edges)) {
@@ -623,7 +625,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
           }
         }
       } catch {
-        window.localStorage.removeItem(backupKey);
+        draftBackups.removeItem(backupKey);
       }
       loadedRef.current = true;
     });
@@ -703,7 +705,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
     const timer = window.setTimeout(() => {
       setSaveState("Saving");
       const backup = { ...cloneGraph(nodes, edges), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
-      window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
+      draftBackups.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
       frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodes, edges, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, expected_revision: canvasRevision, draft_contract: draftContract })
         .then((document) => { setCanvasRevision(document.revision); setSaveState("Saved"); })
         .catch((saveError) => { setSaveState("Unsaved"); notify(saveError instanceof Error ? saveError.message : "Canvas save failed", "error"); });
@@ -716,7 +718,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
   const saveNow = useCallback(async () => {
     setSaveState("Saving");
     const backup = { ...cloneGraph(nodesRef.current, edgesRef.current), id: canvasId, name: canvasName, activeRunId: activeCanvasRunId ?? undefined };
-    window.localStorage.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
+    draftBackups.setItem(`${BACKUP_STORAGE_PREFIX}.${canvasId}`, JSON.stringify(backup));
     try {
       const document = await frameflowApi.saveCanvas(canvasId, { name: canvasName, document: serializeCanvasDocument(nodesRef.current, edgesRef.current, nodeDefinitions), active_run_id: activeCanvasRunId ?? undefined, expected_revision: canvasRevision, draft_contract: draftContract });
       setCanvasRevision(document.revision);

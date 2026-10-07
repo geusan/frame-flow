@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ..access import WorkspaceContext, CredentialResolver
+
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -360,6 +362,8 @@ class NodeExecutionContext:
     character_lora_runtime: NodeCharacterLoraRuntime | None = None
     character_motion_runtime: NodeCharacterMotionRuntime | None = None
     provider_tasks: NodeProviderTasks | None = None
+    workspace_context: WorkspaceContext | None = None
+    credential_resolver: CredentialResolver | None = None
 
     def report_progress(self, progress: int, message: str) -> None:
         if self.progress_callback:

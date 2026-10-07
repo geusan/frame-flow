@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from .provider_credentials import provider_value
 from decimal import Decimal
 
 from .billing import call_with_cost
@@ -22,7 +24,7 @@ class XAIProviderConfig:
 
     @classmethod
     def from_env(cls) -> "XAIProviderConfig":
-        api_key = os.getenv("XAI_API_KEY", "").strip()
+        api_key = provider_value("XAI_API_KEY", "").strip()
         if not api_key:
             raise RuntimeError("XAI_API_KEY is required for Grok models")
         return cls(api_key=api_key)

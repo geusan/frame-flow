@@ -354,12 +354,16 @@ def storage_location(uri: str, metadata: dict[str, Any] | None = None) -> tuple[
     if bucket and key:
         return str(bucket), str(key)
     parsed = urlparse(uri)
-    if parsed.scheme in {"s3", "memory"} and parsed.netloc and parsed.path.lstrip("/"):
+    if parsed.scheme in {"s3", "memory", "filesystem"} and parsed.netloc and parsed.path.lstrip("/"):
         return parsed.netloc, parsed.path.lstrip("/")
     raise StorageError("artifact is not backed by the configured object storage")
 
 
 def artifact_content_url(artifact_id: str) -> str:
+    from .access import current_scope
+    scope = current_scope()
+    if scope and scope.adapters.artifact_url:
+        return scope.adapters.artifact_url(scope.context, artifact_id)
     api_base = os.getenv("API_PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
     return f"{api_base}/artifacts/{artifact_id}/content"
 
@@ -373,6 +377,10 @@ def _environment_storage() -> ObjectStorage:
 
 
 def get_storage() -> ObjectStorage:
+    from .access import require_live_scope
+    scope = require_live_scope()
+    if scope:
+        return scope.adapters.storage(scope.context)
     if os.getenv("STORAGE_PROVIDER", "minio").strip().lower() == "memory":
         return _environment_storage()
     from .storage_profiles import selected_profile_id, storage_from_profile
@@ -381,6 +389,10 @@ def get_storage() -> ObjectStorage:
 
 
 def get_artifact_storage(uri: str, metadata: dict[str, Any] | None = None) -> ObjectStorage:
+    from .access import require_live_scope
+    scope = require_live_scope()
+    if scope:
+        return scope.adapters.storage(scope.context)
     location = (metadata or {}).get("storage") or {}
     profile_id = location.get("profile_id")
     if profile_id:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from .access import safe_error, credential_scope_key, current_scope
+from .provider_credentials import provider_value
+
 import hashlib
 import json
 import os
@@ -91,7 +94,7 @@ def resolve_character_lora_parameters(db: Session, payload: ExperimentRunRequest
 
 
 def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
-    mode = os.getenv("GENERATION_PROVIDER_MODE", "live").strip().lower()
+    mode = provider_value("GENERATION_PROVIDER_MODE", "live").strip().lower()
     if mode == "live":
         if model_alias.startswith("openai."):
             return OPENAI_LIVE_REVISION
@@ -101,7 +104,7 @@ def generation_executor_revision(model_alias: str = "google.text.fast") -> str:
             return FAL_LIVE_REVISION
         return LIVE_GENERATION_REVISION
     if mode == "fixture":
-        if os.getenv("APP_ENV") != "test":
+        if os.getenv("APP_ENV") != "test" and not (current_scope() and current_scope().adapters.allow_fixtures):
             raise ValueError("GENERATION_PROVIDER_MODE=fixture is only allowed when APP_ENV=test")
         return FIXTURE_EXECUTOR_REVISION
     raise ValueError("GENERATION_PROVIDER_MODE must be live or fixture")
@@ -236,7 +239,7 @@ def run_experiment(
     digest = request_fingerprint(payload, model_alias, exact_model_id)
     cached = db.scalar(
         select(ExperimentRunRecord)
-        .where(ExperimentRunRecord.request_hash == digest, ExperimentRunRecord.status == NodeStatus.SUCCEEDED)
+        .where(ExperimentRunRecord.request_hash == digest, ExperimentRunRecord.credential_scope == credential_scope_key(), ExperimentRunRecord.status == NodeStatus.SUCCEEDED)
         .order_by(ExperimentRunRecord.created_at.desc())
     )
     record = ExperimentRunRecord(
@@ -250,7 +253,7 @@ def run_experiment(
         ),
         prompt=payload.prompt,
         model_alias=model_alias, exact_model_id=exact_model_id, parameters=normalized_parameters,
-        input_snapshot=payload.inputs, request_hash=digest, output_artifact_ids=[], output_payload={},
+        input_snapshot=payload.inputs, request_hash=digest, credential_scope=credential_scope_key(), output_artifact_ids=[], output_payload={},
         billing_run_id=current_owner()[0], billing_node_run_id=current_owner()[1],
         cost_summary=summary("pending", unresolved=1, reason="execution_in_progress"),
     )
@@ -277,6 +280,8 @@ def run_experiment(
     try:
         context = NodeExecutionContext(
             definition=definition,
+            workspace_context=current_scope().context if current_scope() else None,
+            credential_resolver=current_scope().adapters.credentials if current_scope() else None,
             prompt=payload.prompt,
             model_alias=payload.model_alias,
             request_hash=digest,
@@ -316,7 +321,7 @@ def run_experiment(
         record = db.get(ExperimentRunRecord, record.id) or record
         record.status = NodeStatus.FAILED
         record.duration_ms = max(1, round((time.perf_counter() - started) * 1000))
-        record.error = str(exc)
+        record.error = safe_error(exc)
         record.cost_summary = costs.finish() if costs else summary("no_charge", reason="failed_before_execution")
         record.cost_usd = float(record.cost_summary["known_cost_usd"])
         audit(db, "experiment.failed", record.id, {"error": record.error})

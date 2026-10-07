@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .provider_credentials import provider_value
+
 import hashlib
 import json
 import os
@@ -31,7 +33,7 @@ class ProviderMedia:
 
 class FalPerformanceService:
     def __init__(self, *, api_key: str | None = None, client: httpx.Client | None = None, poll_interval: float = 3) -> None:
-        self.key = api_key if api_key is not None else os.getenv("FAL_KEY", "")
+        self.key = api_key if api_key is not None else provider_value("FAL_KEY", "")
         if not self.key:
             raise MediaProviderError("FAL_KEY is required for performance transfer")
         self.client = client or httpx.Client(timeout=httpx.Timeout(120, connect=30))
@@ -138,10 +140,10 @@ class FalPerformanceService:
 
 class ElevenLabsVoiceService:
     def __init__(self, *, api_key: str | None = None, client: httpx.Client | None = None) -> None:
-        self.key = api_key if api_key is not None else os.getenv("ELEVENLABS_API_KEY", "")
+        self.key = api_key if api_key is not None else provider_value("ELEVENLABS_API_KEY", "")
         if not self.key:
             raise MediaProviderError("ELEVENLABS_API_KEY is required for voice conversion")
-        self.base = os.getenv("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io").rstrip("/")
+        self.base = provider_value("ELEVENLABS_BASE_URL", "https://api.elevenlabs.io").rstrip("/")
         self.client = client or httpx.Client(timeout=httpx.Timeout(300, connect=30))
 
     def close(self) -> None:

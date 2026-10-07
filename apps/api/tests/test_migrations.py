@@ -28,4 +28,4 @@ def test_alembic_upgrade_head_supports_the_default_sqlite_installation(tmp_path)
     assert {"skill_definitions", "skill_versions", "skill_installations", "workflow_versions", "fonts"} <= tables
     assert "logs" in canvas_node_columns
     assert {"provider_costs", "provider_cost_observations"} <= tables
-    assert version == "0012"
+    assert version == "ws_scope_v1"

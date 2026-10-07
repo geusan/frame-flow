@@ -27,3 +27,5 @@ artifacts/
 !*.tfvars.example
 
 /apps/web/public/mediapipe/
+
+*.egg-info/

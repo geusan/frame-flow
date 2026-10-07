@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .access import current_scope
+
 import os
 from typing import Any, Literal
 
@@ -7,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from temporalio.client import Client
 
+from .canvas_runs import get_local_canvas_engine
 from .canvas_runs import (
     canvas_dependencies,
     canvas_human_gate_modes,
@@ -41,10 +44,17 @@ TERMINAL_STATUSES = {NodeStatus.SUCCEEDED, NodeStatus.FAILED, NodeStatus.CANCELE
 
 
 def uses_temporal() -> bool:
+    from .access import current_scope
+    scope=current_scope()
+    if scope:return scope.adapters.execution_backend=="temporal"
     return os.getenv("EXECUTION_BACKEND", "local").lower() == "temporal"
 
 
 async def temporal_client() -> Client:
+    from .access import current_scope
+    scope=current_scope()
+    if scope:
+        return await Client.connect(scope.adapters.temporal_address,namespace=scope.adapters.temporal_namespace)
     return await Client.connect(
         os.getenv("TEMPORAL_ADDRESS", "localhost:7233"),
         namespace=os.getenv("TEMPORAL_NAMESPACE", "default"),
@@ -74,10 +84,10 @@ async def schedule_canvas_run(run: CanvasRunRecord, nodes: list[dict[str, Any]])
                 gate_modes,
             ),
             id=f"frameflow/canvas/{run.id}",
-            task_queue=TASK_QUEUE,
+            task_queue=current_scope().adapters.temporal_queue if current_scope() else TASK_QUEUE,
         )
     else:
-        await local_canvas_engine.start(run.id)
+        await get_local_canvas_engine().start(run.id)
 
 
 def _workflow_version(
@@ -350,7 +360,7 @@ async def respond_to_workflow_run(
             await handle.signal(CanvasRunWorkflow.node_approved, args=[node_id, approval_parameters])
         else:
             record_canvas_approval(run_id, node_id, approval_parameters)
-            await local_canvas_engine.start(run_id)
+            await get_local_canvas_engine().start(run_id)
     else:
         if not artifact_id:
             raise ValueError("artifact_id is required for candidate selection")
@@ -360,7 +370,7 @@ async def respond_to_workflow_run(
             await handle.signal(CanvasRunWorkflow.candidate_selected, args=[node_id, artifact_id])
         else:
             record_canvas_selection(run_id, node_id, artifact_id)
-            await local_canvas_engine.start(run_id)
+            await get_local_canvas_engine().start(run_id)
     db.expire_all()
     refreshed = db.get(CanvasRunRecord, run_id)
     if refreshed is None:

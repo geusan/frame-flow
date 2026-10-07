@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ...provider_credentials import provider_value
+
 import io
 import os
 import tempfile
@@ -84,7 +86,7 @@ def validate_references(grouped):
 class ReferenceVideoExecutor:
     @staticmethod
     def runtime_revision(definition, config):
-        return definition.execution.revision + ':' + os.getenv('GENERATION_PROVIDER_MODE', 'live') + '+ffmpeg:' + _renderer_revision()[1]
+        return definition.execution.revision + ':' + provider_value('GENERATION_PROVIDER_MODE', 'live') + '+ffmpeg:' + _renderer_revision()[1]
 
     def result_timing(self, info, config):
         duration = media_duration_seconds(info)
@@ -103,7 +105,7 @@ class ReferenceVideoExecutor:
         except (OSError, ValueError, RuntimeError, ZeroDivisionError) as exc:
             raise MediaProviderError("Reference media could not be validated; check the input files") from exc
         payload = reference_request(prompt=context.prompt, resolution=config['resolution'], duration=config['duration_seconds'], ratio=config['aspect_ratio'], media=media)
-        fixture = os.getenv('GENERATION_PROVIDER_MODE', 'live') != 'live'
+        fixture = provider_value('GENERATION_PROVIDER_MODE', 'live') != 'live'
         if fixture:
             result = ProviderMedia(render_video_mp4(context.request_hash, config['duration_seconds']), 'video/mp4', 'fixture_' + context.request_hash[:20], {'cost_status': 'fixture'})
         else:

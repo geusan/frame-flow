@@ -169,6 +169,9 @@ class CanvasApplication:
             canvas = uow.canvases.get(command.canvas_id)
             created = canvas is None
             if canvas is None:
+                from ....access import current_scope
+                if current_scope():
+                    raise CanvasNotFoundError("canvas not found")
                 canvas = Canvas(
                     id=command.canvas_id,
                     created_at=now,

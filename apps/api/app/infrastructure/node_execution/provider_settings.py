@@ -15,6 +15,11 @@ class SqlAlchemyNodeProviderSettings:
         self._session = session
 
     def get_auth(self, provider_key: str) -> NodeProviderAuth | None:
+        from ...access import require_live_scope
+        scope = require_live_scope()
+        if scope:
+            reference = next((ref for ref in scope.context.credential_references if ref.provider == provider_key), None)
+            return NodeProviderAuth(auth_method="api_key", configured=reference is not None, setup_token="")
         record = get_provider_record(self._session, provider_key)
         if record is None:
             return None
