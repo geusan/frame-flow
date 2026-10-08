@@ -97,7 +97,7 @@ def canvas_human_gate_modes(
     return modes
 
 
-def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord:
+def create_canvas_run(db: Session, payload: CanvasRunRequest, *, commit: bool = True) -> CanvasRunRecord:
     if payload.nodes:
         nodes = payload.nodes
         edges = payload.edges
@@ -169,8 +169,9 @@ def create_canvas_run(db: Session, payload: CanvasRunRequest) -> CanvasRunRecord
             output_payload=dict(data.get("output") or {}),
             logs=[],
         ))
-    db.commit()
-    db.refresh(run)
+    if commit:
+        db.commit()
+        db.refresh(run)
     return run
 
 

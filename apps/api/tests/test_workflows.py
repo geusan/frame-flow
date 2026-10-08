@@ -512,3 +512,26 @@ def test_restore_version_creates_new_draft_and_preserves_previous_draft(client):
     republished = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": restored["revision"]})
     assert republished.status_code == 201, republished.text
     assert republished.json()["content_hash"] == version["content_hash"]
+
+
+def test_run_creation_rolls_back_with_incomplete_provenance(client, monkeypatch):
+    """A dispatch consumer must never observe a partially created Version run."""
+    import asyncio
+    import pytest
+    from sqlalchemy import select
+    from app.database import CanvasRunRecord, SessionLocal
+    from app import workflow_runtime_service
+
+    workflow, canvas = create_configured_workflow(client)
+    published = client.post(f"/workflows/{workflow['id']}/publish", json={"expected_canvas_revision": canvas["revision"]})
+    assert published.status_code == 201
+
+    def fail_audit(*args, **kwargs):
+        raise RuntimeError("injected provenance transaction failure")
+
+    monkeypatch.setattr(workflow_runtime_service, "audit", fail_audit)
+    with SessionLocal() as db, pytest.raises(RuntimeError):
+        asyncio.run(workflow_runtime_service.start_published_workflow_run(
+            db, workflow_id=workflow["id"], version_number=1, inputs={"topic": "A cat"}))
+    with SessionLocal() as db:
+        assert db.scalars(select(CanvasRunRecord)).all() == []

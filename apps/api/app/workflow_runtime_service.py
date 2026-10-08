@@ -131,7 +131,9 @@ async def start_published_workflow_run(
         version,
         request,
     )
-    run = create_canvas_run(db, run_payload)
+    # Persist provenance and resolved inputs in the same transaction as the run.
+    # A transactional scheduler must never observe a partially initialized run.
+    run = create_canvas_run(db, run_payload, commit=False)
     run.source_type = "WORKFLOW_VERSION"
     run.workflow_definition_id = definition.id
     run.workflow_version_id = version.id
