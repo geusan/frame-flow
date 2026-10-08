@@ -47,3 +47,20 @@ def test_artifact_bucket_and_keys_are_deterministic_and_path_safe():
     assert bucket_for_artifact(settings, "Image") == settings.buckets.generation
     assert artifact_object_key("Video", "art_123", "video/mp4") == "artifacts/video/art_123.mp4"
     assert safe_upload_key("upload_123", "../../my clip.mp4") == "uploads/upload_123/my-clip.mp4"
+
+
+def test_private_filesystem_content_is_served_without_redirect(client, tmp_path, monkeypatch):
+    from dataclasses import replace
+    from app.database import ArtifactRecord, SessionLocal
+    from app.file_storage import FileObjectStorage
+    from app.infrastructure.persistence.artifact_operations import LegacySqlAlchemyArtifactOperations
+
+    storage = FileObjectStorage(tmp_path, replace(StorageSettings.from_env(), provider="filesystem"))
+    storage.initialize()
+    stored = storage.put_bytes(bucket=storage.settings.buckets.generation, key="artifacts/image/art_local.png", data=b"private-image", content_type="image/png")
+    with SessionLocal() as db:
+        db.add(ArtifactRecord(id="art_local", type="Image", uri=stored.uri, sha256=stored.sha256, metadata_json={"storage": {"content_type": "image/png"}}))
+        db.commit()
+    monkeypatch.setattr("app.infrastructure.persistence.artifact_operations.get_artifact_storage", lambda *args: storage)
+    result = LegacySqlAlchemyArtifactOperations().get_content("art_local")
+    assert result.data == b"private-image" and result.redirect_url is None
