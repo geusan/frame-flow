@@ -11,6 +11,7 @@ from sqlalchemy import event, inspect, select
 from sqlalchemy.orm import Session, with_loader_criteria
 
 from .access import AccessDenied, WorkspaceContext
+from .database_namespace import table_name as database_table_name
 from .database import Base, ProviderCostRecord, ProviderCostObservation, ProviderSettingRecord, WorkspaceOwned, WorkspaceRecord
 
 
@@ -126,7 +127,7 @@ def validate_writes(session, flush_context, instances):
             if value is None or column.key == "workspace_id":
                 continue
             for foreign in column.foreign_keys:
-                if foreign.column.table.name != "workspaces":
+                if foreign.column.table.name != database_table_name("workspaces"):
                     references.append((foreign.column.table.name, value))
             if column.key in REFERENCE_TABLES and isinstance(value, str):
                 references.append((REFERENCE_TABLES[column.key], value))
@@ -135,6 +136,8 @@ def validate_writes(session, flush_context, instances):
             names = table_name if isinstance(table_name,tuple) else (table_name,)
             found = False
             for name in names:
+                if name not in Base.metadata.tables:
+                    name = database_table_name(name)
                 if (name,identifier) in pending:
                     target=pending[name,identifier]
                     if target.workspace_id in (None,session.context.workspace_id):

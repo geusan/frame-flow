@@ -1,0 +1,393 @@
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Any, Iterator
+
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, create_engine, text
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
+
+from .domain import utc_now
+from .database_namespace import NamespaceMetaData, NamespaceTable, validate_prefix
+from functools import lru_cache
+
+
+
+
+@lru_cache(maxsize=None)
+def build_models(prefix: str = ""):
+    """One model definition; independent registries for deployment and legacy DDL."""
+    validate_prefix(prefix)
+    def physical_name(logical):
+        return prefix + logical
+
+    class Base(DeclarativeBase):
+        __table_cls__ = NamespaceTable
+        metadata = NamespaceMetaData(prefix, lambda: build_models("")["Base"].metadata)
+
+
+    class Timestamped:
+        id: Mapped[str] = mapped_column(String(64), primary_key=True)
+        created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+    class WorkspaceRecord(Timestamped, Base):
+        __tablename__ = physical_name("workspaces")
+        name: Mapped[str] = mapped_column(String(255), default="Local workspace")
+        status: Mapped[str] = mapped_column(String(32), default="active")
+
+
+    class WorkspaceOwned:
+        workspace_id: Mapped[str] = mapped_column(ForeignKey(physical_name("workspaces") + ".id"), default="legacy-default", server_default="legacy-default", index=True)
+
+
+    class ReferenceRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("reference_assets")
+        __table_args__ = (UniqueConstraint("workspace_id", "canonical_url", name=physical_name("uq_reference_workspace_url")),)
+        canonical_url: Mapped[str] = mapped_column(Text, index=True)
+        source_id: Mapped[str] = mapped_column(String(255), index=True)
+        title: Mapped[str] = mapped_column(String(512))
+        creator: Mapped[str] = mapped_column(String(255))
+        duration_ms: Mapped[int] = mapped_column(Integer)
+        rights_basis: Mapped[str] = mapped_column(String(32))
+        allow_generation_input: Mapped[bool] = mapped_column(Boolean, default=False)
+        allow_direct_asset_use: Mapped[bool] = mapped_column(Boolean, default=False)
+        status: Mapped[str] = mapped_column(String(32), default="ready")
+        metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+    class ReferenceSetRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("reference_sets")
+        name: Mapped[str] = mapped_column(String(160))
+        reference_ids: Mapped[list[str]] = mapped_column(JSON)
+
+
+    class DefinitionRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("definitions")
+        kind: Mapped[str] = mapped_column(String(64), index=True)
+        version: Mapped[int] = mapped_column(Integer)
+        payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+    class FormatRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("formats")
+        name: Mapped[str] = mapped_column(String(255))
+        kind: Mapped[str] = mapped_column(String(32), default="profile")
+        parent_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+        payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+        lineage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+    class GenerationBriefRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("generation_briefs")
+        topic: Mapped[str] = mapped_column(String(512))
+        format_id: Mapped[str] = mapped_column(ForeignKey(physical_name("formats") + ".id"))
+        payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+    class RunRecord(Timestamped, WorkspaceOwned, Base):
+        access_context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+        __tablename__ = physical_name("runs")
+        name: Mapped[str] = mapped_column(String(512))
+        status: Mapped[str] = mapped_column(String(32))
+        progress: Mapped[int] = mapped_column(Integer, default=0)
+        estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0)
+        actual_cost_usd: Mapped[float] = mapped_column(Float, default=0)
+        budget_limit_usd: Mapped[float] = mapped_column(Float, default=0)
+        execution_plan: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+        node_runs: Mapped[list["NodeRunRecord"]] = relationship(back_populates="run", cascade="all, delete-orphan", order_by="NodeRunRecord.ordinal")
+
+
+    class NodeRunRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("node_runs")
+        run_id: Mapped[str] = mapped_column(ForeignKey(physical_name("runs") + ".id"), index=True)
+        node_key: Mapped[str] = mapped_column(String(128))
+        ordinal: Mapped[int] = mapped_column(Integer)
+        status: Mapped[str] = mapped_column(String(32))
+        progress: Mapped[int] = mapped_column(Integer, default=0)
+        cost_usd: Mapped[float] = mapped_column(Float, default=0)
+        provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        provider_operation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+        output_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+        run: Mapped[RunRecord] = relationship(back_populates="node_runs")
+
+
+    class ArtifactRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("artifacts")
+        type: Mapped[str] = mapped_column(String(64), index=True)
+        schema_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+        uri: Mapped[str] = mapped_column(Text)
+        sha256: Mapped[str] = mapped_column(String(64), index=True)
+        producer_node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        input_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+        metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+    class ArtifactEdgeRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("artifact_edges")
+        __table_args__ = (
+            UniqueConstraint(
+                "parent_artifact_id",
+                "child_artifact_id",
+                "role",
+                "ordinal",
+                name=physical_name("uq_artifact_edges_relation"),
+            ),
+        )
+        parent_artifact_id: Mapped[str] = mapped_column(
+            ForeignKey(physical_name("artifacts") + ".id", ondelete="CASCADE"), index=True
+        )
+        child_artifact_id: Mapped[str] = mapped_column(
+            ForeignKey(physical_name("artifacts") + ".id", ondelete="CASCADE"), index=True
+        )
+        role: Mapped[str] = mapped_column(String(64), default="input")
+        ordinal: Mapped[int] = mapped_column(Integer, default=0)
+        operation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+    class ExperimentRunRecord(Timestamped, WorkspaceOwned, Base):
+        credential_scope: Mapped[str] = mapped_column(String(64), default="local", server_default="local")
+        __tablename__ = physical_name("experiment_runs")
+        canvas_id: Mapped[str] = mapped_column(String(128), index=True)
+        node_id: Mapped[str] = mapped_column(String(128), index=True)
+        node_key: Mapped[str] = mapped_column(String(128), index=True)
+        status: Mapped[str] = mapped_column(String(32), index=True)
+        execution_mode: Mapped[str] = mapped_column(String(64), default="google-live.v1")
+        prompt: Mapped[str] = mapped_column(Text)
+        model_alias: Mapped[str] = mapped_column(String(128))
+        exact_model_id: Mapped[str] = mapped_column(String(255))
+        parameters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        input_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+        request_hash: Mapped[str] = mapped_column(String(64), index=True)
+        provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        output_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+        output_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+        cost_usd: Mapped[float] = mapped_column(Float, default=0)
+        cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
+        cached_from_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        is_baseline: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+        error: Mapped[str | None] = mapped_column(Text, nullable=True)
+        billing_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        billing_node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        cost_summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+    class ProviderCostRecord(Timestamped, WorkspaceOwned, Base):
+        credential_scope: Mapped[str] = mapped_column(String(64), default="local", server_default="local")
+        """Independent receipts survive failed execution transactions and task resumes."""
+        __tablename__ = physical_name("provider_costs")
+        __table_args__ = (UniqueConstraint("workspace_id", "credential_scope", "provider", "provider_request_id", name=physical_name("uq_provider_cost_request")),)
+        experiment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        node_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        provider: Mapped[str] = mapped_column(String(32), index=True)
+        operation: Mapped[str] = mapped_column(String(128))
+        requested_model: Mapped[str] = mapped_column(String(255))
+        model: Mapped[str] = mapped_column(String(255))
+        provider_request_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+        status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+        outcome: Mapped[str] = mapped_column(String(32), default="pending")
+        amount_usd: Mapped[Decimal | None] = mapped_column(Numeric(24, 12), nullable=True)
+        usage: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        pricing: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+    class ProviderCostObservation(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("provider_cost_observations")
+        cost_id: Mapped[str] = mapped_column(ForeignKey(physical_name("provider_costs") + ".id"), index=True)
+        payload: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+    class CanvasRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("canvases")
+        name: Mapped[str] = mapped_column(String(255))
+        graph_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        active_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        workflow_definition_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        base_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        revision: Mapped[int] = mapped_column(Integer, default=1)
+        draft_contract_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+
+
+    class WorkflowDefinitionRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("workflow_definitions")
+        name: Mapped[str] = mapped_column(String(255), index=True)
+        description: Mapped[str] = mapped_column(Text, default="")
+        status: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+        draft_canvas_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+        current_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        tags: Mapped[list[str]] = mapped_column(JSON, default=list)
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+        versions: Mapped[list["WorkflowVersionRecord"]] = relationship(back_populates="definition", cascade="all, delete-orphan", order_by="WorkflowVersionRecord.version_number")
+
+
+    class WorkflowVersionRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("workflow_versions")
+        __table_args__ = (
+            UniqueConstraint("workflow_definition_id", "version_number", name=physical_name("uq_workflow_version_number")),
+            UniqueConstraint("workflow_definition_id", "source_canvas_id", "source_canvas_revision", name=physical_name("uq_workflow_canvas_revision")),
+        )
+        workflow_definition_id: Mapped[str] = mapped_column(ForeignKey(physical_name("workflow_definitions") + ".id"), index=True)
+        version_number: Mapped[int] = mapped_column(Integer)
+        schema_version: Mapped[str] = mapped_column(String(64), default="workflow.version.v1")
+        graph_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+        input_schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        bindings_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        output_schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        content_hash: Mapped[str] = mapped_column(String(64), index=True)
+        source_canvas_id: Mapped[str] = mapped_column(String(64), index=True)
+        source_canvas_revision: Mapped[int] = mapped_column(Integer)
+        release_notes: Mapped[str] = mapped_column(Text, default="")
+        published_by: Mapped[str] = mapped_column(String(128), default="local-user")
+        published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+        definition: Mapped[WorkflowDefinitionRecord] = relationship(back_populates="versions")
+
+
+    class WorkflowAnnotationRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("workflow_annotations")
+        workflow_definition_id: Mapped[str] = mapped_column(ForeignKey(physical_name("workflow_definitions") + ".id"), index=True)
+        workflow_version_id: Mapped[str | None] = mapped_column(ForeignKey(physical_name("workflow_versions") + ".id"), nullable=True, index=True)
+        node_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+        body: Mapped[str] = mapped_column(Text)
+        position_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        color: Mapped[str] = mapped_column(String(32), default="yellow")
+        revision: Mapped[int] = mapped_column(Integer, default=1)
+        created_by: Mapped[str] = mapped_column(String(128), default="local-user")
+        updated_by: Mapped[str] = mapped_column(String(128), default="local-user")
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+        deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+
+
+    class CanvasRunRecord(Timestamped, WorkspaceOwned, Base):
+        access_context_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
+        __tablename__ = physical_name("canvas_runs")
+        canvas_id: Mapped[str] = mapped_column(String(128), index=True)
+        name: Mapped[str] = mapped_column(String(255))
+        status: Mapped[str] = mapped_column(String(32), index=True)
+        progress: Mapped[int] = mapped_column(Integer, default=0)
+        graph_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        source_type: Mapped[str] = mapped_column(String(32), default="CANVAS_DRAFT", index=True)
+        workflow_definition_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        workflow_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        input_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        model_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        compiler_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+        node_runs: Mapped[list["CanvasNodeRunRecord"]] = relationship(back_populates="run", cascade="all, delete-orphan", order_by="CanvasNodeRunRecord.ordinal")
+
+
+    class CanvasNodeRunRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("canvas_node_runs")
+        run_id: Mapped[str] = mapped_column(ForeignKey(physical_name("canvas_runs") + ".id"), index=True)
+        canvas_node_id: Mapped[str] = mapped_column(String(128), index=True)
+        node_key: Mapped[str] = mapped_column(String(128), index=True)
+        ordinal: Mapped[int] = mapped_column(Integer)
+        status: Mapped[str] = mapped_column(String(32), index=True)
+        progress: Mapped[int] = mapped_column(Integer, default=0)
+        attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+        provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        provider_operation_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+        request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+        output_artifact_ids: Mapped[list[str]] = mapped_column(JSON, default=list)
+        output_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+        cost_usd: Mapped[float] = mapped_column(Float, default=0)
+        error: Mapped[str | None] = mapped_column(Text, nullable=True)
+        logs: Mapped[list[str]] = mapped_column(JSON, default=list)
+        run: Mapped[CanvasRunRecord] = relationship(back_populates="node_runs")
+
+
+    class ProviderSettingRecord(Timestamped, Base):
+        __tablename__ = physical_name("provider_settings")
+        provider: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+        enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+        configuration: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        secrets: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        source: Mapped[str] = mapped_column(String(32), default="default")
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+    class FontRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("fonts")
+        __table_args__ = (UniqueConstraint("artifact_id", "profile_version", name=physical_name("uq_font_artifact_profile_version")),)
+        artifact_id: Mapped[str] = mapped_column(ForeignKey(physical_name("artifacts") + ".id", ondelete="RESTRICT"), index=True)
+        profile_version: Mapped[int] = mapped_column(Integer, default=1)
+        supersedes_id: Mapped[str | None] = mapped_column(ForeignKey(physical_name("fonts") + ".id", ondelete="RESTRICT"), nullable=True, index=True)
+        display_name: Mapped[str] = mapped_column(String(160), index=True)
+        family_name: Mapped[str] = mapped_column(String(160), index=True)
+        subfamily_name: Mapped[str] = mapped_column(String(96), default="Regular")
+        postscript_name: Mapped[str] = mapped_column(String(160))
+        weight: Mapped[int] = mapped_column(Integer, default=400)
+        style: Mapped[str] = mapped_column(String(32), default="normal")
+        size_adjust: Mapped[float] = mapped_column(Float, default=1.0)
+        baseline_shift: Mapped[float] = mapped_column(Float, default=0.0)
+        lifecycle: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+        license_name: Mapped[str] = mapped_column(String(160), default="User provided")
+        metrics_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+
+
+    class SkillDefinitionRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("skill_definitions")
+        __table_args__ = (UniqueConstraint("workspace_id", "skill_key", name=physical_name("uq_skill_workspace_key")),)
+        skill_key: Mapped[str] = mapped_column(String(64), index=True)
+        display_name: Mapped[str] = mapped_column(String(160))
+        description: Mapped[str] = mapped_column(Text)
+        lifecycle: Mapped[str] = mapped_column(String(32), default="ACTIVE", index=True)
+        current_version_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+        source: Mapped[str] = mapped_column(String(32), default="database")
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True)
+        versions: Mapped[list["SkillVersionRecord"]] = relationship(
+            back_populates="definition",
+            cascade="all, delete-orphan",
+            order_by="SkillVersionRecord.version_number",
+        )
+
+
+    class SkillVersionRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("skill_versions")
+        __table_args__ = (
+            UniqueConstraint("skill_definition_id", "version_number", name=physical_name("uq_skill_version_number")),
+            UniqueConstraint("skill_definition_id", "content_digest", name=physical_name("uq_skill_version_digest")),
+        )
+        skill_definition_id: Mapped[str] = mapped_column(ForeignKey(physical_name("skill_definitions") + ".id", ondelete="CASCADE"), index=True)
+        version_number: Mapped[int] = mapped_column(Integer)
+        schema_version: Mapped[str] = mapped_column(String(64), default="project.skill.v1")
+        content_digest: Mapped[str] = mapped_column(String(64), index=True)
+        manifest_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+        instruction_body: Mapped[str] = mapped_column(Text)
+        source_archive_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+        created_by: Mapped[str] = mapped_column(String(128), default="local-user")
+        definition: Mapped[SkillDefinitionRecord] = relationship(back_populates="versions")
+
+
+    class SkillInstallationRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("skill_installations")
+        __table_args__ = (UniqueConstraint("workspace_id", "skill_definition_id", name=physical_name("uq_skill_workspace_installation")),)
+        skill_definition_id: Mapped[str] = mapped_column(
+            ForeignKey(physical_name("skill_definitions") + ".id", ondelete="CASCADE"), index=True
+        )
+        enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+        permission_policy_json: Mapped[dict[str, Any]] = mapped_column(
+            JSON, default=lambda: {"mode": "prompt_only", "tools": []}
+        )
+        default_config_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+        updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+
+    class AuditEventRecord(Timestamped, WorkspaceOwned, Base):
+        __tablename__ = physical_name("audit_events")
+        action: Mapped[str] = mapped_column(String(128), index=True)
+        actor_id: Mapped[str] = mapped_column(String(128), default="local-user")
+        subject_id: Mapped[str] = mapped_column(String(128), index=True)
+        payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    return {'Base': Base, 'Timestamped': Timestamped, 'WorkspaceRecord': WorkspaceRecord, 'WorkspaceOwned': WorkspaceOwned, 'ReferenceRecord': ReferenceRecord, 'ReferenceSetRecord': ReferenceSetRecord, 'DefinitionRecord': DefinitionRecord, 'FormatRecord': FormatRecord, 'GenerationBriefRecord': GenerationBriefRecord, 'RunRecord': RunRecord, 'NodeRunRecord': NodeRunRecord, 'ArtifactRecord': ArtifactRecord, 'ArtifactEdgeRecord': ArtifactEdgeRecord, 'ExperimentRunRecord': ExperimentRunRecord, 'ProviderCostRecord': ProviderCostRecord, 'ProviderCostObservation': ProviderCostObservation, 'CanvasRecord': CanvasRecord, 'WorkflowDefinitionRecord': WorkflowDefinitionRecord, 'WorkflowVersionRecord': WorkflowVersionRecord, 'WorkflowAnnotationRecord': WorkflowAnnotationRecord, 'CanvasRunRecord': CanvasRunRecord, 'CanvasNodeRunRecord': CanvasNodeRunRecord, 'ProviderSettingRecord': ProviderSettingRecord, 'FontRecord': FontRecord, 'SkillDefinitionRecord': SkillDefinitionRecord, 'SkillVersionRecord': SkillVersionRecord, 'SkillInstallationRecord': SkillInstallationRecord, 'AuditEventRecord': AuditEventRecord}
