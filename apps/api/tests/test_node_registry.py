@@ -41,7 +41,7 @@ def test_node_inventory_characterizes_every_canvas_key_and_registry_definition()
     assert inventory["schema_version"] == "node.inventory.v1"
     assert not production & canvas_only
 
-    canvas_model = Path(__file__).parents[2] / "web/src/lib/canvas-model.ts"
+    canvas_model = Path(__file__).parents[3] / "packages/studio/src/lib/canvas-model.ts"
     template_keys = re.findall(r'key: "([a-z][a-z0-9_.-]+)"', canvas_model.read_text())
     counts = Counter(template_keys)
     assert set(template_keys) == canvas_only - {"utility.text"}
