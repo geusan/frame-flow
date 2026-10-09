@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { BodyTrackingSession } from '../src/features/avatar-2d/tracking-session.ts';
+import { BodyTrackingSession } from '../../../packages/studio/src/features/avatar-2d/tracking-session.ts';
 const workers=[],tracks=[];
 class WorkerMock {
   terminated=false;

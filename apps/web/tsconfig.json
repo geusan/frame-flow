@@ -24,7 +24,7 @@
     ],
     "paths": {
       "@/*": [
-        "./src/*"
+        "../../packages/studio/src/*"
       ]
     }
   },
@@ -33,7 +33,9 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    ".next/dev/types/**/*.ts",
+    "../../packages/studio/src/**/*.ts",
+    "../../packages/studio/src/**/*.tsx"
   ],
   "exclude": [
     "node_modules"

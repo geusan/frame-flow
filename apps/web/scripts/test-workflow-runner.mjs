@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { httpImageUrl, missingWorkflowInputs, workflowPresentation, workflowRunInputs, workflowRunOutputs, rerunRequest, isActiveRun } from '../src/features/workflows/run-model.ts';
+import { httpImageUrl, missingWorkflowInputs, workflowPresentation, workflowRunInputs, workflowRunOutputs, rerunRequest, isActiveRun } from '../../../packages/studio/src/features/workflows/run-model.ts';
 
 assert.equal(httpImageUrl(' https://example.com/outfit.png?size=large '), 'https://example.com/outfit.png?size=large');
 for (const value of ['javascript:alert(1)', 'file:///tmp/image.png', 'data:image/png;base64,abc', 'https://user:password@example.com/image.png', 'not a URL']) assert.equal(httpImageUrl(value), null);

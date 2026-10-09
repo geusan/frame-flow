@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { latestNodeTemplates } from '../src/features/nodes/contracts.ts';
-import { importedAssetData, recoverInterruptedAssetImport } from '../src/features/nodes/artifact-source.ts';
+import { latestNodeTemplates } from '../../../packages/studio/src/features/nodes/contracts.ts';
+import { importedAssetData, recoverInterruptedAssetImport } from '../../../packages/studio/src/features/nodes/artifact-source.ts';
 const root = new URL('../../api/app/nodes/', import.meta.url);
 const definitions = readdirSync(new URL('definitions/', root)).filter(name => name.endsWith('.json')).flatMap(name => JSON.parse(readFileSync(new URL(`definitions/${name}`, root))));
 const ports = JSON.parse(readFileSync(new URL('port_types.v1.json', root)));

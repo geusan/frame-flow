@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { canRestoreExperiment } from "../src/features/nodes/experiment-restore.ts";
-import { refreshReadyStatuses } from "../src/lib/canvas-model.ts";
+import { canRestoreExperiment } from "../../../packages/studio/src/features/nodes/experiment-restore.ts";
+import { refreshReadyStatuses } from "../../../packages/studio/src/lib/canvas-model.ts";
 
 const node = { data: { key: "character.image_to_3d", contractVersion: 3, status: "READY" } };
 const definition = { execution: { executor: "character-turnaround-to-3d", revision: "tripo-turnaround-to-3d.v1" } };

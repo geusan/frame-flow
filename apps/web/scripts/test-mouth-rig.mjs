@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import {mouthContours,freshMouthRig,parseMouthRig} from '../src/features/avatar-2d/mouth-rig.ts';
-import {freshFaceRig,neutralRigFace} from '../src/features/avatar-2d/face-rig.ts';
-import {DEFAULT_FEATURE_ALIGNMENT} from '../src/features/avatar-2d/feature-alignment.ts';
+import {mouthContours,freshMouthRig,parseMouthRig} from '../../../packages/studio/src/features/avatar-2d/mouth-rig.ts';
+import {freshFaceRig,neutralRigFace} from '../../../packages/studio/src/features/avatar-2d/face-rig.ts';
+import {DEFAULT_FEATURE_ALIGNMENT} from '../../../packages/studio/src/features/avatar-2d/feature-alignment.ts';
 const rest=freshFaceRig('test').poses.neutral.points,rig=freshMouthRig(),zero=neutralRigFace(),a=DEFAULT_FEATURE_ALIGNMENT;
 const closed=mouthContours(rest,zero,a,rig);assert.deepEqual(closed.upper,closed.lower);assert.equal(closed.upper.length,9);
 const open=mouthContours(rest,{...zero,jawOpen:1},a,rig),half=mouthContours(rest,{...zero,jawOpen:.5},a,rig);assert.ok(Math.abs((open.lower[4][1]-open.upper[4][1])/2-(half.lower[4][1]-half.upper[4][1]))<1e-8);

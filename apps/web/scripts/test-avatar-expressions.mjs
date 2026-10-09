@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { freshExpressions, parseExpressions, faceMask, expressionRect, EXPRESSION_SOURCE_SHA } from '../src/features/avatar-2d/expression-library.ts';
+import { freshExpressions, parseExpressions, faceMask, expressionRect, EXPRESSION_SOURCE_SHA } from '../../../packages/studio/src/features/avatar-2d/expression-library.ts';
 
 const library = freshExpressions();
 assert.deepEqual(parseExpressions(library), library);

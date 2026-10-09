@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import {FaceRigCapture,FACE_POINT_IDS,FACE_CHANNELS_2D,freshFaceRig,parseFaceRig,neutralRigFace,solveFacePoints,solveFaceValues,smoothRigFace} from '../src/features/avatar-2d/face-rig.ts';
-import {triangulateFace,triangleArea,safeFaceDeformation,affineTriangle} from '../src/features/avatar-2d/face-triangulation.ts';
+import {FaceRigCapture,FACE_POINT_IDS,FACE_CHANNELS_2D,freshFaceRig,parseFaceRig,neutralRigFace,solveFacePoints,solveFaceValues,smoothRigFace} from '../../../packages/studio/src/features/avatar-2d/face-rig.ts';
+import {triangulateFace,triangleArea,safeFaceDeformation,affineTriangle} from '../../../packages/studio/src/features/avatar-2d/face-triangulation.ts';
 const profile=parseFaceRig(freshFaceRig('source-sha'),'source-sha');
 assert.equal(FACE_CHANNELS_2D.length,20);assert.equal(FACE_POINT_IDS.length,36);
 assert.throws(()=>parseFaceRig(profile,'wrong-source'),/원화/);

@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const cache=resolve(import.meta.dirname,'../../../node_modules/.cache');mkdirSync(cache,{recursive:true});
 const output=mkdtempSync(join(cache,'e11-test-'));
 try{
- execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-tangent-e11.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+ execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-tangent-e11.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
  const {tangentPose,tangentAngles}=require(join(output,'shoulder-tangent-e10.js'));
  const {tangentPoseE11,crossSectionWidths}=require(join(output,'shoulder-tangent-e11.js'));
  const reports=[];

@@ -8,7 +8,7 @@ const cache=resolve(import.meta.dirname,'../../../node_modules/.cache');
 mkdirSync(cache,{recursive:true});
 const output=mkdtempSync(join(cache,'shoulder-test-'));
 try {
-  execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-lab-model.ts'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-surface.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+  execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-lab-model.ts'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-surface.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
   const {manualLeftShoulderPose,restShoulderElevation,sweepElevation,parseShoulderReview,emptyReview}=require(join(output,'shoulder-lab-model.js'));
   const {REST,JOINTS,sub,length,angle,angleDelta}=require(join(output,'rig.js'));
   const original=JSON.stringify(REST);

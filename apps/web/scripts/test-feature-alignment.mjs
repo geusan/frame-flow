@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';import {createRequire} from 'node:module';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join,resolve,dirname} from 'node:path';
 const require=createRequire(import.meta.url),out=mkdtempSync(join(tmpdir(),'feature-align-test-'));
-try{execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/feature-alignment.ts'),resolve(import.meta.dirname,'../src/features/avatar-2d/eye-layout.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+try{execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/feature-alignment.ts'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/eye-layout.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
 const {freshFaceRig,neutralRigFace,solveFacePoints}=require(join(out,'face-rig.js'));const {characterEyes}=require(join(out,'eye-layout.js'));const {alignFaceFeatures,DEFAULT_FEATURE_ALIGNMENT,parseFeatureAlignment}=require(join(out,'feature-alignment.js'));
 const rig=freshFaceRig('test'),rest=rig.poses.neutral.points,layout=characterEyes(rest,.9),base=alignFaceFeatures(rest,rest,layout,DEFAULT_FEATURE_ALIGNMENT);
 assert.ok(Math.abs(base.leftBrowMid[0]-rest.leftBrowMid[0]-(layout.left.center.x-rest.leftIris[0]))<1e-8);

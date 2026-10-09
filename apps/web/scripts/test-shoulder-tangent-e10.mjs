@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const cache=resolve(import.meta.dirname,'../../../node_modules/.cache');mkdirSync(cache,{recursive:true});
 const output=mkdtempSync(join(cache,'e10-test-'));
 try{
- execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-tangent-e10.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+ execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-tangent-e10.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
  const {tangentPose,tangentAngles,actualWidths}=require(join(output,'shoulder-tangent-e10.js'));
  const {contourPose,metrics,sampleCurves}=require(join(output,'shoulder-contour-e09.js'));
  const baseline=tangentPose('baseline'),before=JSON.stringify(baseline),candidate=tangentPose('aligned');

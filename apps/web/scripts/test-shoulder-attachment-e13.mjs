@@ -5,7 +5,7 @@ import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 const require=createRequire(import.meta.url),cache=resolve(import.meta.dirname,'../../../node_modules/.cache');mkdirSync(cache,{recursive:true});const out=mkdtempSync(join(cache,'e13-test-'));
 try{
- execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-attachment-e13.ts'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-handle-e12.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+ execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-attachment-e13.ts'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-handle-e12.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
  const {attachmentPoseE13,PROPOSED_CAP}=require(join(out,'shoulder-attachment-e13.js'));
  const {tangentPoseE13Base,crossSectionWidths}=require(join(out,'shoulder-base-e13.js'));
  const {tangentPoseE11}=require(join(out,'shoulder-tangent-e11.js'));

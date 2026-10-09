@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import {mouthContours,freshMouthRig} from '../src/features/avatar-2d/mouth-rig.ts';
-import {freshFaceRig,neutralRigFace,solveFaceValues,EXTRA_MOUTH_CHANNELS,FaceRigCapture} from '../src/features/avatar-2d/face-rig.ts';
-import {DEFAULT_FEATURE_ALIGNMENT as a} from '../src/features/avatar-2d/feature-alignment.ts';
+import {mouthContours,freshMouthRig} from '../../../packages/studio/src/features/avatar-2d/mouth-rig.ts';
+import {freshFaceRig,neutralRigFace,solveFaceValues,EXTRA_MOUTH_CHANNELS,FaceRigCapture} from '../../../packages/studio/src/features/avatar-2d/face-rig.ts';
+import {DEFAULT_FEATURE_ALIGNMENT as a} from '../../../packages/studio/src/features/avatar-2d/feature-alignment.ts';
 const p=freshFaceRig('test'),rest=p.poses.neutral.points,rig=freshMouthRig(),zero=neutralRigFace(),shape=v=>mouthContours(rest,{...zero,...v},a,rig),closed=shape({}),width=c=>c.upper[8][0]-c.upper[0][0];
 assert.ok(width(shape({mouthPucker:1}))<width(closed)*.6);assert.ok(shape({mouthFunnel:1}).aperture>7);
 const lower=shape({mouthLowerDownLeft:1,mouthLowerDownRight:1});assert.equal(lower.jaw,0);assert.deepEqual(lower.upper,closed.upper);assert.ok(lower.lower[4][1]>closed.lower[4][1]+5);

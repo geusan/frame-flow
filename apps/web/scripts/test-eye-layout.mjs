@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 const require=createRequire(import.meta.url),out=mkdtempSync(join(tmpdir(),'eye-layout-test-'));
 try{
-execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/eye-layout.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/eye-layout.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
 const {freshFaceRig}=require(join(out,'face-rig.js'));
 const {characterEyes,characterFixation}=require(join(out,'eye-layout.js'));
 const {EYE_FRONT_CENTER}=require(join(out,'eye-projection.js'));

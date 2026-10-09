@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {freshEyelidRig,eyelidCurves,parseEyelidRig} from '../src/features/avatar-2d/eyelid-rig.ts';
+import {freshEyelidRig,eyelidCurves,parseEyelidRig} from '../../../packages/studio/src/features/avatar-2d/eyelid-rig.ts';
 const rig=freshEyelidRig();const open=eyelidCurves(0,0,rig.left),half=eyelidCurves(.5,0,rig.left),closed=eyelidCurves(1,1,rig.left);
 assert.equal(open.upper.length,9);assert.equal(open.lower.length,9);assert.deepEqual(closed.upper,closed.lower);
 for(let i=0;i<9;i++){assert.ok(half.lower[i][1]-half.upper[i][1]<=(open.lower[i][1]-open.upper[i][1])*.5+1e-7);assert.deepEqual(open.upper[i][0],closed.upper[i][0]);}

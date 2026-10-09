@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { installExclusiveMediaPlayback } from '../src/lib/exclusive-media-playback.ts';
+import { installExclusiveMediaPlayback } from '../../../packages/studio/src/lib/exclusive-media-playback.ts';
 class Media extends EventTarget {
   paused = true;
   currentTime = 12;

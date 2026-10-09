@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const cache=resolve(import.meta.dirname,'../../../node_modules/.cache');mkdirSync(cache,{recursive:true});
 const output=mkdtempSync(join(cache,'e09-test-'));
 try {
- execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-contour-e09.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+ execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-contour-e09.ts'),'--ignoreConfig','--outDir',output,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
  const {contourPose,metrics,sampleCurves,VARIANTS,REST_ELEVATION}=require(join(output,'shoulder-contour-e09.js'));
  const rows=[];
  // Static protocol only. Deliberately no intermediate-angle sweep after visual failure.

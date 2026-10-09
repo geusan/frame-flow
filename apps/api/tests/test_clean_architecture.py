@@ -93,8 +93,8 @@ def test_all_active_executable_contracts_have_registry_capabilities(monkeypatch)
 
 
 def test_web_uses_registry_templates_for_production_nodes() -> None:
-    canvas_model = (REPOSITORY_ROOT / "apps/web/src/lib/canvas-model.ts").read_text()
-    canvas_view = (REPOSITORY_ROOT / "apps/web/src/components/views/generation-canvas.tsx").read_text()
+    canvas_model = (REPOSITORY_ROOT / "packages/studio/src/lib/canvas-model.ts").read_text()
+    canvas_view = (REPOSITORY_ROOT / "packages/studio/src/components/views/generation-canvas.tsx").read_text()
     assert "export const nodeTemplates" not in canvas_model
     assert "legacyNodeTemplates" not in canvas_model
     assert "execute_canvas_operation" not in (REPOSITORY_ROOT / "apps/api/app/canvas_operations.py").read_text()

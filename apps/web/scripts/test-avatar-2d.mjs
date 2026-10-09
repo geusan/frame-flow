@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { CONNECTIONS, JOINTS, REST, freshProfile, parseProfile, neutralPose, solvePose, smoothPose, sub, length, hipOrigin } from '../src/features/avatar-2d/rig.ts';
-import { PARTS } from '../src/features/avatar-2d/parts.ts';
+import { CONNECTIONS, JOINTS, REST, freshProfile, parseProfile, neutralPose, solvePose, smoothPose, sub, length, hipOrigin } from '../../../packages/studio/src/features/avatar-2d/rig.ts';
+import { PARTS } from '../../../packages/studio/src/features/avatar-2d/parts.ts';
 
 const profile = freshProfile();
 assert.deepEqual(parseProfile(profile), profile);
@@ -41,7 +41,7 @@ console.log('2D avatar: 854 reference frames, limb lengths, smoothing, missing t
 
 // A source pixel belongs to exactly one layer. This prevents both doubled hair
 // silhouettes and the earlier loss of neck/shoulder skin during head extraction.
-const {partitionArtwork}=await import('../src/features/avatar-2d/artwork-partition.ts');
+const {partitionArtwork}=await import('../../../packages/studio/src/features/avatar-2d/artwork-partition.ts');
 const pixels=new Uint8ClampedArray(4*2*360), region=new Uint8ClampedArray(pixels.length);
 for(let y=0;y<360;y++)for(let x=0;x<2;x++){const k=(y*2+x)*4;pixels.set(x===0?[35,32,30,255]:[247,205,173,255],k);region[k+3]=255;}
 const partition=partitionArtwork(pixels,region,2,360);
@@ -56,7 +56,7 @@ assert.equal(partition.body[(300*2+1)*4+3],255,'that shoulder skin is retained o
 assert.ok(PARTS.every(p=>p.paint!=='joint'),'no independent skin discs can protrude from an attachment');
 assert.equal(PARTS.length,6);
 console.log('Original-pixel ownership, skin retention and no duplicate skin geometry passed.');
-const {torsoTransform,neckTransform,rotate,add}=await import('../src/features/avatar-2d/rig.ts');
+const {torsoTransform,neckTransform,rotate,add}=await import('../../../packages/studio/src/features/avatar-2d/rig.ts');
 for(const f of motion.frames){
   const p=solvePose(f,REST,aspect,undefined,origin);
   for(const side of ['left','right']){

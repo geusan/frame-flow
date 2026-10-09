@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const projectRoot = resolve(import.meta.dirname, "..");
-const sourceRoot = join(projectRoot, "src");
+const sourceRoot = resolve(projectRoot, "../../packages/studio/src");
 
 function sourceFiles(directory) {
   return readdirSync(directory).flatMap((entry) => {
@@ -35,7 +35,7 @@ if (/legacyNodeTemplates|export const nodeTemplates/.test(canvasModel)) violatio
 const legacyLoader = readFileSync(join(sourceRoot, "features", "nodes", "legacy-canvas-loader.ts"), "utf8");
 if (/graph\.nodes\.filter|graph\.edges\.filter/.test(legacyLoader)) violations.push("legacy-canvas-loader.ts: load must preserve unknown Nodes and Edges");
 
-const globalsPath = join(sourceRoot, "app", "globals.css");
+const globalsPath = join(projectRoot, "src", "app", "globals.css");
 if (readFileSync(globalsPath, "utf8").length > 2_000) violations.push("src/app/globals.css: keep the global entrypoint import-only");
 
 const generationCanvasPath = join(sourceRoot, "components", "views", "generation-canvas.tsx");

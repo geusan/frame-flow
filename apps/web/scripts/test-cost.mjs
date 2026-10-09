@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { costPresentation, formatCostAmount } from "../src/lib/cost.ts";
+import { costPresentation, formatCostAmount } from "../../../packages/studio/src/lib/cost.ts";
 
 const base = {version: 1, currency: "USD", known_cost_usd: "0", amount_usd: null, unresolved_calls: 1, call_count: 1};
 assert.equal(costPresentation({...base, status:"unreported"}).label, "미확정");

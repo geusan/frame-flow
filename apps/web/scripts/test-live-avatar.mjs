@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { calibratedValues, neutralFace, meanBaseline, smoothFace, influence, parseFaceProfile, defaultGaze, estimateGaze, calibratedGaze, neutralGaze, meanGaze, smoothGaze, gazeMorphs, EXPRESSION_CHANNELS, GAZE_CHANNELS, expressionChannels, defaultExpressions } from "../src/features/live-avatar/face-state.ts";
-import { applyMorphValues, findMorphMapping, restoreMorphGeometry } from "../src/features/live-avatar/morph-binding.ts";
-import { SurfaceEyeGaze, rotateEye } from "../src/features/live-avatar/eye-gaze.ts";
+import { calibratedValues, neutralFace, meanBaseline, smoothFace, influence, parseFaceProfile, defaultGaze, estimateGaze, calibratedGaze, neutralGaze, meanGaze, smoothGaze, gazeMorphs, EXPRESSION_CHANNELS, GAZE_CHANNELS, expressionChannels, defaultExpressions } from "../../../packages/studio/src/features/live-avatar/face-state.ts";
+import { applyMorphValues, findMorphMapping, restoreMorphGeometry } from "../../../packages/studio/src/features/live-avatar/morph-binding.ts";
+import { SurfaceEyeGaze, rotateEye } from "../../../packages/studio/src/features/live-avatar/eye-gaze.ts";
 import { Bone, BufferAttribute, BufferGeometry, Mesh, MeshStandardMaterial, SkinnedMesh, Texture, Quaternion, Vector3 } from "three";
-import { CameraSession } from "../src/features/live-avatar/camera-session.ts";
+import { CameraSession } from "../../../packages/studio/src/features/live-avatar/camera-session.ts";
 
 const profile = { schema_version: "avatar.face_profile.v1", source_sha256: "sha", mode: "starter", mesh: "head", head_bone: "Head", front_axis: "+x", anchors: {}, eye_radius: .38, depth: .3, gain: 1.4, smoothing: .09, mappings: {} };
 const upgraded = parseFaceProfile(profile, "sha");

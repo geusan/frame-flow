@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {fixationTarget,EYE_FRONT_CENTER,projectEye,projectEyeSurface,binocularGaze} from '../src/features/avatar-2d/eye-projection.ts';
+import {fixationTarget,EYE_FRONT_CENTER,projectEye,projectEyeSurface,binocularGaze} from '../../../packages/studio/src/features/avatar-2d/eye-projection.ts';
 const front=projectEye(0,0,180),side=projectEye(1,0,180),left=projectEye(-1,0,180),diagonal=projectEye(1,1,180);
 assert.equal(front.x,EYE_FRONT_CENTER.x);assert.equal(front.y,EYE_FRONT_CENTER.y);assert.equal(front.foreshortening,1);
 assert.ok(side.foreshortening<.8);assert.ok(diagonal.foreshortening<1);

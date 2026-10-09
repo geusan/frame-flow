@@ -1,0 +1,648 @@
+"use client";
+import { useStudioRuntime } from "../../../runtime/studio-runtime";
+
+
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import {
+  Activity,
+  ArrowRight,
+  AudioWaveform,
+  BadgeCheck,
+  Bot,
+  Box,
+  Braces,
+  ChevronDown,
+  ChevronUp,
+  CircleCheck,
+  Clapperboard,
+  ContactRound,
+  Crosshair,
+  Dna,
+  Film,
+  Folder,
+  FolderOpen,
+  GitFork,
+  Headphones,
+  Image as ImageIcon,
+  Languages,
+  Layers3,
+  Link2,
+  LoaderCircle,
+  MessageSquareText,
+  Mic2,
+  Paintbrush,
+  Play,
+  RefreshCw,
+  ScrollText,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  StickyNote,
+  Subtitles,
+  Type,
+  Upload,
+  Video,
+  Workflow,
+  X,
+} from "lucide-react";
+
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Button } from "../../../components/ui/button";
+import { StatusPill } from "../../../components/ui/status-pill";
+import { VideoPlayer } from "../../../components/ui/video-player";
+import { PromptTokenEditor } from "./prompt-token-editor";
+import { type ArtifactListItem, type CharacterRecord } from "../../../lib/api";
+import { inputHandleId, type CanvasOutput, type IconName, type StickyColor, type StudioFlowNode } from "../../../lib/canvas-model";
+import { ImageOutputGallery } from "../../../components/media/image-output-gallery";
+import { isModel3DArtifactType, modelPreviewUrl } from "../../nodes/model-preview";
+import modelPreviewStyles from "../../../components/media/model-preview.module.css";
+import { maximizePlaybackVolume } from "../../../lib/media";
+import type { PortType } from "../../../lib/types";
+
+export const icons: Record<IconName, typeof Sparkles> = {
+  brief: MessageSquareText,
+  format: Braces,
+  reference: Layers3,
+  motion: Activity,
+  resolve: Workflow,
+  script: ScrollText,
+  shot: Clapperboard,
+  character: ContactRound,
+  lora: Dna,
+  image: ImageIcon,
+  video: Video,
+  voice: Mic2,
+  select: BadgeCheck,
+  subtitle: Subtitles,
+  timeline: Layers3,
+  render: Film,
+  qc: ShieldCheck,
+  upload: Upload,
+  assets: FolderOpen,
+  folder: Folder,
+  assistant: Bot,
+  skill: Sparkles,
+  text: Type,
+  sticky: StickyNote,
+  drawing: Paintbrush,
+  changeVoice: AudioWaveform,
+  translate: Languages,
+};
+
+export interface CanvasSpaceHoldRequest {
+  commit: () => void;
+  blur: () => void;
+  isFocused: () => boolean;
+}
+
+export interface NodeActions {
+  openNodeDetails: (nodeId: string) => void;
+  runStep: (nodeId: string) => void;
+  updateConfig: (nodeId: string, value: string) => void;
+  updateStickyColor: (nodeId: string, color: StickyColor) => void;
+  openDrawingEditor: (nodeId: string) => void;
+  getPromptImages: (nodeId: string) => Array<{ id: string; title: string; url?: string; outdated: boolean }>;
+  uploadAsset: (nodeId: string, file: File) => void;
+  importAssetUrl: (nodeId: string, url: string) => void;
+  selectAsset: (nodeId: string, artifactId: string) => void;
+  selectCharacter: (nodeId: string, characterId: string) => void;
+  beginSpaceHold: (request: CanvasSpaceHoldRequest) => void;
+  assetOptions: ArtifactListItem[];
+  characterOptions: CharacterRecord[];
+}
+
+export const NodeActionsContext = createContext<NodeActions>({ openNodeDetails: () => undefined, runStep: () => undefined, updateConfig: () => undefined, updateStickyColor: () => undefined, openDrawingEditor: () => undefined, getPromptImages: () => [], uploadAsset: () => undefined, importAssetUrl: () => undefined, selectAsset: () => undefined, selectCharacter: () => undefined, beginSpaceHold: ({ commit }) => commit(), assetOptions: [], characterOptions: [] });
+
+export function CanvasNodeStatus({ data, compact = false }: { data: StudioFlowNode["data"]; compact?: boolean }) {
+  return <StatusPill status={data.status} compact={compact} />;
+}
+
+export function httpUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value.trim());
+    return ["http:", "https:"].includes(parsed.protocol) ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function AssetUploadControl({ nodeId, busy }: { nodeId: string; busy: boolean }) {
+  const actions = useContext(NodeActionsContext);
+  const [url, setUrl] = useState("");
+  const submitUrl = (value: string) => {
+    const sourceUrl = httpUrl(value);
+    if (!sourceUrl || busy) return;
+    setUrl(sourceUrl);
+    actions.importAssetUrl(nodeId, sourceUrl);
+  };
+  return <div className="node-upload-control nodrag nopan">
+    <label className="node-upload-drop">
+      <Upload size={18} />
+      <span><strong>Choose a file</strong><small>Image, video, audio or GLB</small></span>
+      <input type="file" accept="image/*,video/*,audio/*,.glb,model/gltf-binary" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) actions.uploadAsset(nodeId, file); }} />
+    </label>
+    <span className="node-upload-divider">or paste an image or video URL</span>
+    <form className="node-url-import" onSubmit={(event) => { event.preventDefault(); submitUrl(url); }}>
+      <Link2 size={13} />
+      <input
+        value={url}
+        type="url"
+        inputMode="url"
+        placeholder="https://… (image or video)"
+        aria-label="Image or video URL"
+        disabled={busy}
+        onChange={(event) => setUrl(event.target.value)}
+        onKeyDown={(event) => event.stopPropagation()}
+        onPaste={(event) => {
+          const pastedUrl = httpUrl(event.clipboardData.getData("text/plain"));
+          if (!pastedUrl) return;
+          event.preventDefault();
+          submitUrl(pastedUrl);
+        }}
+      />
+      <button type="submit" aria-label="Import image or video URL" disabled={busy || !httpUrl(url)}><ArrowRight size={13} /></button>
+    </form>
+  </div>;
+}
+
+export function isVideoAsset(asset: ArtifactListItem): boolean {
+  return asset.type === "Video" || asset.type === "FinalVideo";
+}
+
+export function isAudioAsset(asset: ArtifactListItem): boolean {
+  return asset.type === "Audio";
+}
+
+export function isModel3DAsset(asset: ArtifactListItem): boolean {
+  return isModel3DArtifactType(asset.type);
+}
+
+export function storedAssetOutput(asset: ArtifactListItem): { outputType: PortType; output: CanvasOutput } {
+  const outputType = (asset.type === "FinalVideo" ? "Video" : asset.type) as PortType;
+  const kind: CanvasOutput["kind"] = outputType === "Image" ? "image" : outputType === "Video" ? "video" : outputType === "Text" ? "text" : isModel3DAsset(asset) ? "json" : "audio";
+  return {
+    outputType,
+    output: { kind, title: asset.filename, url: asset.url, mimeType: asset.content_type, ...(kind === "json" ? { text: JSON.stringify({ schema_version: "model.gltf.v1", artifact_id: asset.id }) } : {}) },
+  };
+}
+
+type AssetPickerTab = "images" | "videos" | "audio" | "models";
+
+function AssetPickerPopover({ nodeId, value, preferredTab }: { nodeId: string; value: string; preferredTab?: AssetPickerTab }) {
+  const actions = useContext(NodeActionsContext);
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<AssetPickerTab>(preferredTab ?? "images");
+  const [query, setQuery] = useState("");
+  const selected = actions.assetOptions.find((asset) => asset.id === value);
+  const imageCount = actions.assetOptions.filter((asset) => asset.type === "Image").length;
+  const videoCount = actions.assetOptions.filter(isVideoAsset).length;
+  const audioCount = actions.assetOptions.filter(isAudioAsset).length;
+  const modelCount = actions.assetOptions.filter(isModel3DAsset).length;
+  const visibleAssets = actions.assetOptions.filter((asset) => {
+    const matchesType = tab === "images" ? asset.type === "Image" : tab === "videos" ? isVideoAsset(asset) : tab === "audio" ? isAudioAsset(asset) : isModel3DAsset(asset);
+    return matchesType && (!query.trim() || asset.filename.toLowerCase().includes(query.trim().toLowerCase()));
+  });
+
+  const openPicker = () => {
+    if (selected) setTab(isModel3DAsset(selected) ? "models" : isAudioAsset(selected) ? "audio" : isVideoAsset(selected) ? "videos" : "images");
+    else if (preferredTab) setTab(preferredTab);
+    else if (!imageCount && videoCount) setTab("videos");
+    else if (!imageCount && !videoCount && audioCount) setTab("audio");
+  };
+
+  return <Popover open={open} onOpenChange={(nextOpen) => { if (nextOpen) openPicker(); setOpen(nextOpen); }}>
+    <div className="node-asset-picker nodrag nopan">
+    <PopoverTrigger asChild><button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button">
+      <span className={`node-asset-trigger-thumb ${selected && isModel3DAsset(selected) ? "model" : selected && isAudioAsset(selected) ? "audio" : selected && isVideoAsset(selected) ? "video" : "image"}`}>
+        {selected
+          ? isModel3DAsset(selected)
+            ? <Box size={18} />
+            : isAudioAsset(selected)
+            ? <Headphones size={17} />
+            : isVideoAsset(selected)
+            ? <VideoPlayer src={selected.url} mimeType={selected.content_type} title={selected.filename} controls={false} />
+            : <i style={{ backgroundImage: `url(${selected.url})` }} />
+          : <FolderOpen size={16} />}
+      </span>
+      <span><strong>{selected?.filename ?? "Choose an asset"}</strong><small>{selected ? `${isModel3DAsset(selected) ? "3D model" : isAudioAsset(selected) ? "Audio" : isVideoAsset(selected) ? "Video" : "Image"} · Click to replace` : `${imageCount} images · ${videoCount} videos · ${audioCount} audio · ${modelCount} models`}</small></span>
+      <ChevronDown size={14} />
+    </button></PopoverTrigger>
+    </div>
+
+    <PopoverContent className="node-asset-popover nodrag nopan nowheel" align="start" side="bottom" sideOffset={7} aria-label="Choose an asset">
+      <div className="node-asset-popover-head"><span><strong>Assets</strong><small>Select one for this node</small></span><button type="button" onClick={() => setOpen(false)} aria-label="Close asset picker"><X size={13} /></button></div>
+      <div className="node-asset-popover-tabs">
+        <button type="button" className={tab === "images" ? "active" : ""} onClick={() => setTab("images")}><ImageIcon size={12} /> Images <span>{imageCount}</span></button>
+        <button type="button" className={tab === "videos" ? "active" : ""} onClick={() => setTab("videos")}><Film size={12} /> Videos <span>{videoCount}</span></button>
+        <button type="button" className={tab === "audio" ? "active" : ""} onClick={() => setTab("audio")}><Headphones size={12} /> Audio <span>{audioCount}</span></button>
+        <button type="button" className={tab === "models" ? "active" : ""} onClick={() => setTab("models")}><Box size={12} /> 3D <span>{modelCount}</span></button>
+      </div>
+      <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder={`Search ${tab}…`} /></label>
+      <div className="node-asset-popover-grid nowheel">
+        {visibleAssets.map((asset) => <button type="button" className={asset.id === value ? "selected" : ""} key={asset.id} onClick={() => { actions.selectAsset(nodeId, asset.id); setOpen(false); }} title={asset.filename}>
+          <span className={`node-asset-popover-media ${isAudioAsset(asset) ? "audio" : ""}`}>
+            {isModel3DAsset(asset) ? <Box size={24} /> : isAudioAsset(asset) ? <Headphones size={22} /> : isVideoAsset(asset) ? <VideoPlayer src={asset.url} mimeType={asset.content_type} title={asset.filename} controls={false} /> : <i style={{ backgroundImage: `url(${asset.url})` }} />}
+            {isVideoAsset(asset) && <Film size={13} />}
+            {asset.id === value && <b><CircleCheck size={13} /></b>}
+          </span>
+          <strong>{asset.filename}</strong>
+        </button>)}
+        {!visibleAssets.length && <div className="node-asset-popover-empty">No {tab} found</div>}
+      </div>
+      <div className="node-asset-popover-foot"><span>{visibleAssets.length} assets</span>{selected && <button type="button" onClick={() => { actions.selectAsset(nodeId, ""); setOpen(false); }}>Clear selection</button>}</div>
+    </PopoverContent>
+  </Popover>;
+}
+
+function CharacterPickerPopover({ nodeId, value }: { nodeId: string; value: string }) {
+  const actions = useContext(NodeActionsContext);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = actions.characterOptions.find((character) => character.id === value);
+  const normalized = query.trim().toLowerCase();
+  const visible = actions.characterOptions.filter((character) => !normalized || `${character.name} ${character.synopsis}`.toLowerCase().includes(normalized));
+  return <Popover open={open} onOpenChange={setOpen}>
+    <div className="node-asset-picker node-character-picker nodrag nopan">
+      <PopoverTrigger asChild><button className={`node-asset-picker-trigger ${selected ? "has-selection" : ""}`} type="button">
+        <span className="node-asset-trigger-thumb image">{selected?.cover_url ? <i style={{ backgroundImage: `url(${selected.cover_url})` }} /> : <ContactRound size={16} />}</span>
+        <span><strong>{selected?.name ?? "Choose a character"}</strong><small>{selected ? `${selected.image_count} identity views · Click to replace` : `${actions.characterOptions.length} saved characters`}</small></span>
+        <ChevronDown size={14} />
+      </button></PopoverTrigger>
+    </div>
+    <PopoverContent className="node-asset-popover nodrag nopan nowheel" align="start" side="bottom" sideOffset={7} aria-label="Choose a character">
+      <div className="node-asset-popover-head"><span><strong>Characters</strong><small>Select a reusable identity bundle</small></span><button type="button" onClick={() => setOpen(false)} aria-label="Close character picker"><X size={13} /></button></div>
+      <label className="node-asset-popover-search"><Search size={12} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.stopPropagation()} placeholder="Search characters…" /></label>
+      <div className="node-asset-popover-grid node-character-grid nowheel">
+        {visible.map((character) => <button type="button" className={character.id === value ? "selected" : ""} key={character.id} onClick={() => { actions.selectCharacter(nodeId, character.id); setOpen(false); }} title={character.name}>
+          <span className="node-asset-popover-media"><i style={{ backgroundImage: `url(${character.cover_url})` }} />{character.id === value && <b><CircleCheck size={13} /></b>}</span>
+          <strong>{character.name}</strong><small>{character.image_count} views</small>
+        </button>)}
+        {!visible.length && <div className="node-asset-popover-empty">No characters found</div>}
+      </div>
+      <div className="node-asset-popover-foot"><span>{visible.length} characters</span>{selected && <button type="button" onClick={() => { actions.selectCharacter(nodeId, ""); setOpen(false); }}>Clear selection</button>}</div>
+    </PopoverContent>
+  </Popover>;
+}
+
+const stickyColors: Array<{ value: StickyColor; label: string }> = [
+  { value: "yellow", label: "Yellow" },
+  { value: "pink", label: "Pink" },
+  { value: "blue", label: "Blue" },
+  { value: "green", label: "Green" },
+  { value: "lavender", label: "Lavender" },
+  { value: "gray", label: "Gray" },
+];
+
+function StickyNoteNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
+  const actions = useContext(NodeActionsContext);
+  const color = data.stickyColor ?? "yellow";
+  return <article className={`sticky-note-node ${selected ? "selected" : ""}`} data-color={color}>
+    {selected && <div className="sticky-note-colors nodrag nopan" aria-label="Sticky note color">
+      {stickyColors.map((option) => <button
+        type="button"
+        className={color === option.value ? "active" : ""}
+        data-color={option.value}
+        title={option.label}
+        aria-label={`${option.label} note`}
+        aria-pressed={color === option.value}
+        onClick={(event) => { event.stopPropagation(); actions.updateStickyColor(id, option.value); }}
+        key={option.value}
+      />)}
+    </div>}
+    <NodePromptEditor nodeId={id} value={data.configText ?? ""} onCommit={actions.updateConfig} className="sticky-note-text nodrag nopan nowheel" placeholder="메모를 입력하세요…" collapsible={false} />
+  </article>;
+}
+
+function DrawingCanvasNode({ id, data, selected }: NodeProps<StudioFlowNode>) {
+  const actions = useContext(NodeActionsContext);
+  const hasDrawing = Boolean(data.output?.url);
+  return <article
+    className={`drawing-canvas-node ${selected ? "selected" : ""}`}
+    onClick={(event) => { if (!(event.target as HTMLElement).closest(".react-flow__handle")) actions.openDrawingEditor(id); }}
+    onDoubleClick={(event) => event.stopPropagation()}
+  >
+    <div className="drawing-node-head">
+      <span><Paintbrush size={15} /></span>
+      <div><small>utility.drawing</small><strong>{data.label}</strong></div>
+      <CanvasNodeStatus data={data} compact />
+    </div>
+    <div className={`drawing-node-preview ${hasDrawing ? "has-drawing" : ""}`} style={hasDrawing ? { backgroundImage: `url(${data.output?.url})` } : undefined}>
+      {!hasDrawing && <span><Paintbrush size={22} /><strong>Click to draw</strong><small>이미지 붙여넣기 · 배치 · 낙서</small></span>}
+      {hasDrawing && <i><Paintbrush size={12} /> 다시 편집</i>}
+    </div>
+    <div className="drawing-node-foot"><span>{data.drawing?.images.length ?? 0} images</span><span>{data.drawing?.strokes.length ?? 0} strokes</span><b>Image</b></div>
+    <Handle type="source" position={Position.Right} id="output" className="typed-handle type-image"><span>Image</span></Handle>
+  </article>;
+}
+
+function WorkflowNode(props: NodeProps<StudioFlowNode>) {
+  const { API_BASE } = useStudioRuntime();
+  const { id, data, selected } = props;
+  const actions = useContext(NodeActionsContext);
+  if (data.key === "utility.sticky") return <StickyNoteNode {...props} />;
+  if (data.key === "utility.drawing") return <DrawingCanvasNode {...props} />;
+  const Icon = icons[data.icon];
+  const inputs = data.inputTypes ?? [];
+  const running = ["QUEUED", "CLAIMED", "SUBMITTED", "RUNNING"].includes(data.status);
+  const progress = Math.max(0, Math.min(100, data.runProgress ?? 0));
+  const runningLabel = data.outputType === "Character"
+    ? "Generating character views"
+    : data.outputType === "Image"
+      ? "Generating image"
+      : data.outputType === "Video"
+        ? "Generating video"
+        : "Running step";
+  const nodeEditor: Record<string, ReactNode> = {
+    "prompt.input": <PromptTokenEditor nodeId={id} value={data.configText ?? ""} images={actions.getPromptImages(id)} onCommit={actions.updateConfig} onSpaceHoldStart={actions.beginSpaceHold} />,
+    "skill.execute": <div className="node-skill-chip"><Sparkles size={12} /><span>{data.skillId ?? "Select a project skill"}</span></div>,
+    "asset.upload": <AssetUploadControl nodeId={id} busy={data.status === "RUNNING"} />,
+    "asset.select": <AssetPickerPopover nodeId={id} value={data.configText ?? ""} preferredTab={data.outputType === "Audio" ? "audio" : undefined} />,
+    "character.select": <CharacterPickerPopover nodeId={id} value={data.configText ?? ""} />,
+  };
+  const editor = nodeEditor[data.key];
+  return (
+    <article className={`workflow-node kind-${data.kind} ${selected ? "selected" : ""} status-border-${data.status.toLowerCase()}`}>
+      {inputs.map((type, index) => (
+        <Handle
+          key={`${type}-${index}`}
+          type="target"
+          position={Position.Left}
+          id={inputHandleId(type, index)}
+          className={`typed-handle type-${type.toLowerCase()}`}
+          style={{ top: `${((index + 1) / (inputs.length + 1)) * 100}%` }}
+        >
+          <span>{type}</span>
+        </Handle>
+      ))}
+      {data.inputPorts?.flatMap((port, index) => [port.key, `input-${port.key}`].map((handle) => <Handle key={`alias-${handle}`} type="target" position={Position.Left} id={handle} isConnectable={false} style={{ top: `${((index + 1) / (inputs.length + 1)) * 100}%`, opacity: 0, pointerEvents: "none" }} />))}
+      <div className="node-head">
+        <span className="node-icon"><Icon size={16} /></span>
+        <span className="node-title"><small>{data.key}</small><strong>{data.label}</strong></span>
+        <CanvasNodeStatus data={data} compact />
+      </div>
+      <p className="node-description">{data.description}</p>
+      {running && <div className="node-running-indicator" aria-live="polite">
+        <LoaderCircle className="spin" size={16} />
+        <span><strong>{runningLabel}…</strong><small>{progress > 5 ? `${progress}% complete` : "Provider request in progress"}</small></span>
+        <i className="node-running-track"><b className={progress > 5 ? "determinate" : "indeterminate"} style={progress > 5 ? { width: `${progress}%` } : undefined} /></i>
+      </div>}
+      {editor}
+      {data.configText !== undefined && !editor && <NodePromptEditor nodeId={id} value={data.configText} onCommit={actions.updateConfig} />}
+      {modelPreviewUrl(data, API_BASE) ? <button type="button" className={`${modelPreviewStyles.card} nodrag nopan`} onClick={() => actions.openNodeDetails(id)}>
+        <Box size={32} /><span><strong>3D 프리뷰 열기</strong><small>회전 · 확대/축소{data.status === "STALE" ? " · 이전 결과" : ""}</small></span>
+      </button> : data.output ? data.outputType === "ReferenceAnalysis"
+        ? <ReferenceAnalysisOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+        : data.outputType === "MotionTrack"
+          ? <MotionTrackOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+          : <NodeOutput output={data.output} stateLabel={data.status === "SUCCEEDED" ? undefined : data.status === "STALE" ? "Outdated" : "Previous result"} />
+        : data.preview && <div className={`node-preview preview-${data.icon}`}><span>{data.preview}</span></div>}
+      <div className="node-meta">
+        {data.model && <span><Sparkles size={10} /> {data.provider ? `${data.provider} · ` : ""}{data.model}</span>}
+        {data.outputType === "Character" ? <span><GitFork size={10} /> {data.shotCount ?? 6} views</span> : data.fanout && <span><GitFork size={10} /> {data.fanout}</span>}
+        {!!data.attemptCount && <span><RefreshCw size={10} /> {data.attemptCount}</span>}
+        {data.cost && <span className="node-cost">{data.cost}</span>}
+        {data.executable !== false && <button className="node-run-inline nodrag" type="button" onClick={() => actions.runStep(id)} disabled={running || data.status === "BLOCKED"}>{running ? <><RefreshCw className="spin" size={13} /> Running</> : <><Play size={12} fill="currentColor" /> Run</>}</button>}
+      </div>
+      {data.outputPorts?.map((port, index) => <Handle key={port.key} type="source" position={Position.Right} id={port.key} isConnectable={index > 0} className={`typed-handle type-${port.legacyType.toLowerCase()}`} style={{ top: `${((index + 1) / (data.outputPorts!.length + 1)) * 100}%`, ...(!index ? { opacity: 0, pointerEvents: "none" as const } : {}) }}><span>{port.label}</span></Handle>)}
+      {data.outputType && (
+        <Handle type="source" position={Position.Right} id="output" style={data.outputPorts && data.outputPorts.length > 1 ? { top: `${100 / (data.outputPorts.length + 1)}%` } : undefined} className={`typed-handle type-${data.outputType.toLowerCase()}`}>
+          <span>{data.outputType}</span>
+        </Handle>
+      )}
+    </article>
+  );
+}
+
+function NodePromptEditor({ nodeId, value, onCommit, className = "node-inline-prompt nodrag nopan nowheel", placeholder = "Describe what to generate…", collapsible = true }: { nodeId: string; value: string; onCommit: (nodeId: string, value: string) => void; className?: string; placeholder?: string; collapsible?: boolean }) {
+  const actions = useContext(NodeActionsContext);
+  const [draft, setDraft] = useState(value);
+  const [collapsed, setCollapsed] = useState(false);
+  const composingRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaId = `node-prompt-${nodeId}`;
+  const resizeTextarea = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "0px";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!collapsed) resizeTextarea();
+  }, [collapsed, draft, resizeTextarea]);
+
+  const textarea = <textarea
+    ref={textareaRef}
+    id={textareaId}
+    rows={1}
+    hidden={collapsible && collapsed}
+    className={`${className} nokey`}
+    value={draft}
+    placeholder={placeholder}
+    onKeyDown={(event) => {
+      event.stopPropagation();
+      if (event.code !== "Space" || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      const textarea = event.currentTarget;
+      const selectionStart = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      actions.beginSpaceHold({
+        commit: () => {
+          if (!textarea.isConnected) return;
+          textarea.setRangeText(" ", selectionStart, selectionEnd, "end");
+          setDraft(textarea.value);
+          onCommit(nodeId, textarea.value);
+        },
+        blur: () => textarea.blur(),
+        isFocused: () => textarea.isConnected && document.activeElement === textarea,
+      });
+    }}
+    onCompositionStart={() => { composingRef.current = true; }}
+    onCompositionEnd={(event) => {
+      composingRef.current = false;
+      const completed = event.currentTarget.value;
+      setDraft(completed);
+      onCommit(nodeId, completed);
+    }}
+    onChange={(event) => {
+      const nextValue = event.target.value;
+      setDraft(nextValue);
+      if (!composingRef.current) onCommit(nodeId, nextValue);
+    }}
+    onBlur={(event) => onCommit(nodeId, event.target.value)}
+  />;
+
+  if (!collapsible) return textarea;
+
+  return <div className="node-prompt-editor nodrag nopan nowheel" data-collapsed={collapsed}>
+    <div className="node-prompt-toolbar">
+      <span className="node-prompt-label">Prompt</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="node-prompt-toggle nodrag nopan"
+        aria-expanded={!collapsed}
+        aria-controls={textareaId}
+        onClick={(event) => { event.stopPropagation(); setCollapsed((current) => !current); }}
+      >
+        {collapsed ? <><ChevronDown size={13} /> 펼치기</> : <><ChevronUp size={13} /> 접기</>}
+      </Button>
+    </div>
+    {collapsed && <p className="node-prompt-summary" title={draft || placeholder}>{draft.trim() || placeholder}</p>}
+    {textarea}
+  </div>;
+}
+
+type StructuredOutput = Record<string, unknown>;
+
+function structuredOutput(output: CanvasOutput): StructuredOutput | null {
+  try {
+    const parsed = output.text ? JSON.parse(output.text) : null;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as StructuredOutput : null;
+  } catch {
+    return null;
+  }
+}
+
+function objectValue(value: unknown): StructuredOutput {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as StructuredOutput : {};
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function MotionPlanPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const { API_BASE } = useStudioRuntime();
+  const plan = structuredOutput(output) ?? {};
+  const source = objectValue(plan.source);
+  const start = objectValue(plan.start);
+  const end = objectValue(plan.end);
+  const sourceId = typeof source.artifact_id === "string" ? source.artifact_id : "";
+  const imageUrl = sourceId ? `${API_BASE}/artifacts/${sourceId}/content` : undefined;
+  const keyframes = [["START", start], ["END", end]] as const;
+  return <div className="node-output node-output-motion-plan">
+    <header><span><Activity size={13} /> Motion preview</span><b>{numberValue(plan.duration_seconds, 0).toFixed(1)}s</b></header>
+    <section>{keyframes.map(([label, transform]) => {
+      const scale = numberValue(transform.scale, 1);
+      const x = numberValue(transform.x, 0.5);
+      const y = numberValue(transform.y, 0.5);
+      return <figure key={label}>
+        <div style={imageUrl ? { backgroundImage: `url(${imageUrl})`, backgroundSize: `${scale * 100}%`, backgroundPosition: `${x * 100}% ${y * 100}%` } : undefined}><i><Crosshair size={9} /></i></div>
+        <figcaption><span>{label}</span><b>{scale.toFixed(2)}×</b></figcaption>
+      </figure>;
+    })}</section>
+    {state}
+  </div>;
+}
+
+function MediaFramePreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output) ?? {};
+  const canvas = objectValue(payload.canvas);
+  const frame = objectValue(payload.frame);
+  const ratio = canvas.aspect_ratio === "16:9" ? "16 / 9" : canvas.aspect_ratio === "1:1" ? "1 / 1" : "9 / 16";
+  const x = numberValue(frame.x, 0.04);
+  const y = numberValue(frame.y, 0.02);
+  const width = numberValue(frame.width, 0.92);
+  const height = numberValue(frame.height, 0.62);
+  return <div className="node-output node-output-layout-preview">
+    <header><span><Layers3 size={13} /> Media frame</span><b>{String(canvas.aspect_ratio ?? "9:16")}</b></header>
+    <div style={{ aspectRatio: ratio, backgroundColor: String(canvas.background_color ?? "#11100E") }}><i style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%` }}><span>MEDIA</span></i></div>
+    {state}
+  </div>;
+}
+
+function CaptionRegionPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output) ?? {};
+  const frame = objectValue(payload.frame);
+  const x = numberValue(frame.x, 0.06);
+  const y = numberValue(frame.y, 0.68);
+  const width = numberValue(frame.width, 0.88);
+  const height = numberValue(frame.height, 0.28);
+  return <div className="node-output node-output-layout-preview caption">
+    <header><span><Subtitles size={13} /> Caption region</span><b>{numberValue(payload.cue_count, 0)} cues</b></header>
+    <div style={{ aspectRatio: "9 / 16" }}><i style={{ left: `${x * 100}%`, top: `${y * 100}%`, width: `${width * 100}%`, height: `${height * 100}%` }}><span>CAPTION</span></i></div>
+    {state}
+  </div>;
+}
+
+function StructuredDataPreview({ output, state }: { output: CanvasOutput; state: ReactNode }) {
+  const payload = structuredOutput(output);
+  const schema = typeof payload?.schema_version === "string" ? payload.schema_version : "structured.data";
+  if (schema === "image.motion.v1") return <MotionPlanPreview output={output} state={state} />;
+  if (schema === "layout.media_frame.v1") return <MediaFramePreview output={output} state={state} />;
+  if (schema === "subtitle.layout.v1") return <CaptionRegionPreview output={output} state={state} />;
+  return <div className="node-output node-output-structured">
+    <Braces size={17} />
+    <span><strong>{output.title}</strong><small>{schema} · Structured output ready</small></span>
+    {state}
+  </div>;
+}
+
+function NodeOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
+  const state = stateLabel && <b className="node-output-state">{stateLabel}</b>;
+  if (output.kind === "image" && output.images?.length) return <div className="node-output"><ImageOutputGallery images={output.images} compact />{state}</div>;
+  if (output.kind === "image") return <div className="node-output node-output-image">
+    {/* Artifact URLs are dynamic and their dimensions are only known once loaded. */}
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    {output.url && <img className="node-output-art" src={output.url} alt={output.title} />}
+    <span>{output.title}</span>{state}
+  </div>;
+  if (output.kind === "video") {
+    const playable = output.mimeType?.startsWith("video/");
+    return <div className={`node-output node-output-video ${playable ? "native-ratio" : "thumbnail-ratio"}`}>{playable ? <VideoPlayer className="nodrag nowheel" src={output.url ?? ""} mimeType={output.mimeType} title={output.title} compact preload="auto" /> : <div className="node-output-art" role="img" aria-label={output.title} style={{ backgroundImage: `url(${output.url})` }} />}{state}</div>;
+  }
+  if (output.kind === "audio") return <div className="node-output node-output-audio">{output.url ? <audio className="nodrag nowheel" src={output.url} controls onPlay={(event) => maximizePlaybackVolume(event.currentTarget)} /> : <div className="audio-wave">{[10, 18, 27, 15, 34, 23, 38, 16, 29, 21, 35, 14, 26, 18, 31, 12].map((height, index) => <i key={index} style={{ height }} />)}</div>}<span>{output.text}</span>{state}</div>;
+  if (output.kind === "text") return <div className="node-output node-output-text"><small>{output.title}</small><p>{output.text}</p>{state}</div>;
+  return <StructuredDataPreview output={output} state={state} />;
+}
+
+function ReferenceAnalysisOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
+  let analysis: {
+    speech?: { segments?: unknown[] };
+    audio?: { music_intervals?: unknown[]; sound_effects?: unknown[] };
+    visual?: { shots?: unknown[]; actions?: unknown[]; text_tracks?: unknown[] };
+    quality?: { completeness?: string; warnings?: unknown[] };
+  } | null = null;
+  try {
+    analysis = output.text ? JSON.parse(output.text) : null;
+  } catch {
+    analysis = null;
+  }
+  if (!analysis) return <NodeOutput output={output} stateLabel={stateLabel} />;
+  const stats = [
+    ["Speech", analysis.speech?.segments?.length ?? 0],
+    ["Shots", analysis.visual?.shots?.length ?? 0],
+    ["Actions", analysis.visual?.actions?.length ?? 0],
+    ["Captions", analysis.visual?.text_tracks?.length ?? 0],
+    ["Music", analysis.audio?.music_intervals?.length ?? 0],
+    ["SFX", analysis.audio?.sound_effects?.length ?? 0],
+  ];
+  return <div className="node-output node-output-reference-analysis">
+    <div><span><Layers3 size={13} /> Reference timeline</span><b className={analysis.quality?.completeness === "complete" ? "complete" : "partial"}>{analysis.quality?.completeness ?? "partial"}</b></div>
+    <section>{stats.map(([label, value]) => <span key={label}><strong>{value}</strong><small>{label}</small></span>)}</section>
+    {!!analysis.quality?.warnings?.length && <p>{analysis.quality.warnings.length} analysis warning{analysis.quality.warnings.length === 1 ? "" : "s"}</p>}
+    {stateLabel && <b className="node-output-state">{stateLabel}</b>}
+  </div>;
+}
+
+function MotionTrackOutput({ output, stateLabel }: { output: CanvasOutput; stateLabel?: string }) {
+  const coverage = [
+    ["Pose", output.poseCoverage ?? 0],
+    ["Face", output.faceCoverage ?? 0],
+    ["L hand", output.leftHandCoverage ?? 0],
+    ["R hand", output.rightHandCoverage ?? 0],
+  ] as const;
+  return <div className="node-output node-output-motion-track">
+    <div><span><Activity size={13} /> Motion track</span><b>{output.frameCount ?? 0} frames</b></div>
+    <section>{coverage.map(([label, value]) => <span key={label}><strong>{Math.round(value * 100)}%</strong><small>{label}</small></span>)}</section>
+    <p>{output.sampleFps ?? 0} fps · MediaPipe Holistic</p>
+    {stateLabel && <b className="node-output-state">{stateLabel}</b>}
+  </div>;
+}
+
+export const nodeTypes = { studio: WorkflowNode };

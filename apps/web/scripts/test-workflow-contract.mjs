@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { renameWorkflowInput, bindingValue, workflowOutputOptions, workflowTargets, outputReachability } from '../src/features/workflows/draft-contract.ts';
-import { migrateStoredGraph } from '../src/features/nodes/legacy-canvas-loader.ts';
-import { latestNodeTemplates, nodeTemplateFromDefinition } from '../src/features/nodes/contracts.ts';
+import { renameWorkflowInput, bindingValue, workflowOutputOptions, workflowTargets, outputReachability } from '../../../packages/studio/src/features/workflows/draft-contract.ts';
+import { migrateStoredGraph } from '../../../packages/studio/src/features/nodes/legacy-canvas-loader.ts';
+import { latestNodeTemplates, nodeTemplateFromDefinition } from '../../../packages/studio/src/features/nodes/contracts.ts';
 
 const root = new URL('../../api/app/nodes/', import.meta.url);
 const definitions = readdirSync(new URL('definitions/', root)).filter(name => name.endsWith('.json')).flatMap(name => JSON.parse(readFileSync(new URL(`definitions/${name}`, root))));
@@ -34,13 +34,13 @@ const options = workflowOutputOptions([prompt],definitions);
 assert.equal(options[0].portType,'prompt.text.v1');
 assert.deepEqual([...outputReachability([{node_id:'a'},{node_id:'b'}],[{source:'root',target:'a'},{source:'root',target:'b'},{source:'unused',target:'unused'}])].sort(),['a','b','root']);
 console.log('Workflow authoring: shared inputs, token rename, typed outputs, reachability, pinned versions and lossless unknown graph load passed.');
-const {workflowVersionDiff}=await import('../src/features/workflows/version-diff.ts');
+const {workflowVersionDiff}=await import('../../../packages/studio/src/features/workflows/version-diff.ts');
 const before={graph:{nodes:[{id:'a',config:{text:'old'}}],edges:[]}, input_schema:{inputs:[]},bindings:{bindings:[]},output_schema:{outputs:[]}};
 const after=structuredClone(before);after.graph.nodes[0].config.text='new';
 assert.deepEqual(workflowVersionDiff(before,after),[{path:'nodes.a.config.text',before:'old',after:'new'}]);
 assert.deepEqual(workflowVersionDiff(before,structuredClone(before)),[]);
 console.log('Frozen version diff compares stored configs without consulting registry defaults.');
-const {inputPortMatches}=await import('../src/lib/canvas-model.ts');
+const {inputPortMatches}=await import('../../../packages/studio/src/lib/canvas-model.ts');
 const modelNode={id:'model',data:templates.find(item=>item.data.key==='character.auto_rig' && item.data.contractVersion===1).data};
 assert.equal(modelNode.data.outputPorts.length,2);
 assert.ok(inputPortMatches(modelNode,modelNode.data.inputPorts[0].key,0));
@@ -60,7 +60,7 @@ for (const key of ['video.frame_extract','video.animate_image']) {
 }
 assert.equal(templates.find(t=>t.data.key==='video.frame_extract').data.outputPorts[0].type,'media.image.v1');
 assert.equal(templates.find(t=>t.data.key==='video.animate_image').data.inputPorts.find(p=>p.key==='image').required,true);
-const {nodeHumanGateMode}=await import('../src/features/nodes/contracts.ts');
+const {nodeHumanGateMode}=await import('../../../packages/studio/src/features/nodes/contracts.ts');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='candidate.select')),'select_artifact');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='timeline.compose' && d.contract_version===1)),'approve');
 assert.equal(nodeHumanGateMode(definitions.find(d=>d.type_key==='image.generate')),undefined);

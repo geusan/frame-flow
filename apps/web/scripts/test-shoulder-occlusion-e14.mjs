@@ -5,7 +5,7 @@ import {mkdirSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 const require=createRequire(import.meta.url),cache=resolve(import.meta.dirname,'../../../node_modules/.cache');mkdirSync(cache,{recursive:true});const out=mkdtempSync(join(cache,'e14-test-'));
 try{
- execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../src/features/avatar-2d/shoulder-occlusion-e14.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
+ execFileSync(process.execPath,[join(dirname(require.resolve('typescript/package.json')),'bin/tsc'),resolve(import.meta.dirname,'../../../packages/studio/src/features/avatar-2d/shoulder-occlusion-e14.ts'),'--ignoreConfig','--outDir',out,'--target','ES2022','--module','commonjs','--skipLibCheck'],{stdio:'inherit'});
  const {occlusionSurfaces,ownershipAudit,paintOrder,winding}=require(join(out,'shoulder-occlusion-e14.js'));
  const {contourPose,metrics,sampleCurves}=require(join(out,'shoulder-contour-e09.js'));
  const s=occlusionSurfaces(),original=JSON.stringify(s),c=s.pose.curves;
