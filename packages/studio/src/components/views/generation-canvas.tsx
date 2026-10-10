@@ -413,7 +413,7 @@ export function GenerationCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onC
 }
 
 function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeDetail, onBack }: { canvasId: string; nodeDetailId?: string; onOpenNodeDetail: (nodeId: string) => void; onCloseNodeDetail: () => void; onBack: () => void }) {
-  const { frameflowApi, draftBackups } = useStudioRuntime();
+  const { frameflowApi, draftBackups, isNodeAvailable } = useStudioRuntime();
   const [nodes, setNodes, applyNodeChanges] = useNodesState<StudioFlowNode>([]);
   const [edges, setEdges] = useEdgesState<Edge>([]);
   const [compileOpen, setCompileOpen] = useState(false);
@@ -592,7 +592,9 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       frameflowApi.listModels().catch(() => []),
     ]).then(([document, experiments, definitions, availablePortTypes, availableModels]) => {
       if (!active) return;
-      const manifestTemplates = latestNodeTemplates(definitions, availablePortTypes);
+      // Hosts can limit new authoring choices. Keep every contract below for
+      // existing Draft/Version decoding, migration and read-only inspection.
+      const manifestTemplates = latestNodeTemplates(definitions.filter(isNodeAvailable), availablePortTypes);
       const templates = [...canvasElementTemplates, ...definitions.map((definition) => nodeTemplateFromDefinition(definition, availablePortTypes))];
       setNodeDefinitions(definitions);
       setPortTypeRegistry(availablePortTypes);
@@ -635,7 +637,7 @@ function EditableCanvas({ canvasId, nodeDetailId, onOpenNodeDetail, onCloseNodeD
       loadedRef.current = true;
     });
     return () => { active = false; };
-  }, [canvasId, setEdges, setNodes, frameflowApi, draftBackups]);
+  }, [canvasId, setEdges, setNodes, frameflowApi, draftBackups, isNodeAvailable]);
 
   useEffect(() => {
     if (!loadedRef.current || !nodes.some((node) => node.data.executable !== false && node.data.status === "RUNNING")) return;

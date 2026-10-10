@@ -11,6 +11,11 @@ provider owns its API client, UI store and cancellation lifetime; authenticated
 customer drafts are not written to browser localStorage. API authorization stays
 server-authoritative. No secrets belong in the package or browser bundle.
 
+Hosts may pass `availableNodeContracts` (`type_key@contract_version` strings)
+to limit the new-node catalog. Omitting it preserves the standalone catalog.
+Hidden contracts remain available for decoding and inspecting existing graphs;
+the host's server execution policy must enforce its own capability boundary.
+
 Import reusable client views from `@video-canvas/studio` and global UI styles from
 `@video-canvas/studio/styles.css`. Next hosts transpile the package; React,
 React DOM and Next are peer dependencies provided by the host. Internal Node

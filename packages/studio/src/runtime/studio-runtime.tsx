@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { API_BASE, frameflowApi, createFrameflowApi } from "../lib/api";
+import { API_BASE, frameflowApi, createFrameflowApi, type NodeDefinitionRecord } from "../lib/api";
 import type { ApiTransport } from "../lib/api-transport";
 import { draftBackups } from "../lib/draft-backups";
 import { createStudioStore } from "../lib/studio-store";
@@ -13,6 +13,7 @@ export interface StudioRuntime {
   API_BASE: string;
   draftBackups: DraftStorage;
   uiStore: ReturnType<typeof createStudioStore>;
+  isNodeAvailable: (definition: NodeDefinitionRecord) => boolean;
 }
 
 const noDraftStorage: DraftStorage = {
@@ -23,17 +24,19 @@ const noDraftStorage: DraftStorage = {
 
 // Compatibility for the public standalone app. Authenticated hosts supply a
 // provider with an immutable transport and fresh state for every workspace.
-const standaloneRuntime: StudioRuntime = { frameflowApi, API_BASE, draftBackups, uiStore: createStudioStore() };
+const standaloneRuntime: StudioRuntime = { frameflowApi, API_BASE, draftBackups, uiStore: createStudioStore(), isNodeAvailable: () => true };
 const RuntimeContext = createContext<StudioRuntime | null>(null);
 
-export function StudioProvider({ transport, children, onSessionExpired }: {
+export function StudioProvider({ transport, children, onSessionExpired, availableNodeContracts }: {
   transport: ApiTransport;
   children: ReactNode;
   onSessionExpired?: () => void;
+  availableNodeContracts?: readonly string[];
 }) {
   const mountedScopes = useRef(new Set<AbortController>());
   const scope = useMemo(() => {
     const controller = new AbortController();
+    const available = availableNodeContracts ? new Set(availableNodeContracts) : null;
     const scopedTransport: ApiTransport = {
       baseUrl: transport.baseUrl,
       async send(path, init) {
@@ -46,8 +49,9 @@ export function StudioProvider({ transport, children, onSessionExpired }: {
     return { controller, runtime: {
       frameflowApi: createFrameflowApi(scopedTransport), API_BASE: scopedTransport.baseUrl,
       draftBackups: noDraftStorage, uiStore: createStudioStore(),
+      isNodeAvailable: (definition: NodeDefinitionRecord) => available === null || available.has(`${definition.type_key}@${definition.contract_version}`),
     } satisfies StudioRuntime };
-  }, [transport, onSessionExpired]);
+  }, [transport, onSessionExpired, availableNodeContracts]);
   useEffect(() => {
     const mounted = mountedScopes.current;
     mounted.add(scope.controller);
